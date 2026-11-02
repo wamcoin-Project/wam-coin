@@ -63,6 +63,9 @@ import subprocess
 import sys
 import time
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from wamssh import run as _ssh, UNREACHABLE        # noqa: E402
+
 RED = "\033[31m"; GRN = "\033[32m"; YEL = "\033[33m"; BLD = "\033[1m"; OFF = "\033[0m"
 
 _fails = []
@@ -131,17 +134,45 @@ def run(host, cmd, timeout=60):
     a red service nothing was reading. Feeding stdin removes the ceiling for
     good; bounding the work (see heights_to_check) removes the growth that
     walked into it.
+
+    THE REMOTE HALF IS wamssh NOW, not a private copy.
+
+    This one never crashed the way check_peer_versions.py and
+    check_concentration.py did -- every caller wraps it in `except Exception`
+    and reports an unmeasured host rather than a finding, which is
+    load-bearing here: a finding in this check publishes "Chain
+    reorganisation detected" to the channels. But it still had its own ssh,
+    so it got no retry and no way to tell ssh's own 255 from a status the
+    node returned. A host that dropped one connection on a bad minute became
+    "could not read block hashes" with nothing asked twice.
+
+    What it raises is unchanged on purpose: callers already catch it, and a
+    timeout now arrives as RuntimeError through the same door as everything
+    else instead of escaping as TimeoutExpired.
+
+    Still two round trips per host. The heights to re-read are chosen here,
+    out of state this machine holds, and cannot be chosen before the tip is
+    known. Two is not what makes the ops panel grey -- the shell checks
+    opening twelve and sixteen are -- and guessing the rotation remotely to
+    save one handshake would put the chain's reorg alarm at risk to save a
+    few seconds.
     """
     if host in (None, "", "local", "localhost"):
-        argv = ["bash", "-ls"]
-    else:
-        argv = ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=15",
-                f"root@{host}", "bash -s"]
-    p = subprocess.run(argv, input=cmd, capture_output=True, text=True,
-                       timeout=timeout)
-    if p.returncode != 0:
-        raise RuntimeError((p.stderr or p.stdout or "no output").strip()[:300])
-    return p.stdout
+        try:
+            p = subprocess.run(["bash", "-ls"], input=cmd, capture_output=True,
+                               text=True, timeout=timeout)
+        except subprocess.TimeoutExpired:
+            raise RuntimeError(f"no answer within {timeout}s")
+        if p.returncode != 0:
+            raise RuntimeError((p.stderr or p.stdout or "no output").strip()[:300])
+        return p.stdout
+
+    rc, text = _ssh(host, cmd, timeout=timeout)
+    if rc == UNREACHABLE:
+        raise RuntimeError((text or "could not reach the host").strip()[:300])
+    if rc != 0:
+        raise RuntimeError((text or "no output").strip()[:300])
+    return text
 
 
 def cli(network, datadir=None):

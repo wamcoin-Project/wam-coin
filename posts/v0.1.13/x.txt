@@ -1,0 +1,24 @@
+POST 1 — the release. Counted, not estimated.
+==============================================
+WAM v0.1.13: the node tells you the moment it has a block.
+
+ZMQ is on — five publishers, on Linux, Windows and macOS. Anything watching the chain can stop polling it.
+
+Every archive carries its own libraries now, wallet included.
+
+wamcoin.org/downloads/
+https://discord.gg/Gxvmrjy9Qb
+==============================================
+
+POST 2 — a day later. The homes. Counted.
+==============================================
+WAM's source is in three places, at three companies:
+
+gitlab.com/WAMCoin/wam-coin
+github.com/wamcoin-Project/wam-coin
+gitea.com/WAMCoin/wam-coin
+
+Site wamcoin.org — and wamcoin.net, written down empty before it is needed.
+
+Questions: https://discord.gg/Gxvmrjy9Qb
+==============================================

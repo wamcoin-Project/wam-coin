@@ -62,33 +62,54 @@ echo " Is the deployed code this code?"
 echo "=================================================================="
 printf '\n  origin/main  %s  %s\n\n' "$WANT_SHORT" "$(git log -1 --format=%s "$WANT" 2>/dev/null | cut -c1-52)"
 
-SSH_OPTS=(-o BatchMode=yes -o ConnectTimeout=15 -o ServerAliveInterval=15 -o ServerAliveCountMax=3)
+. "$HERE/scripts/lib/remote.sh"
+
+# ONE CONNECTION PER HOST, NOT NINE.
+#
+# It was: one to see whether the host answers (twice on a blip), four to
+# probe the candidate paths, and one more per path that existed to read its
+# working tree -- up to nine per machine, twenty-seven across three. On the
+# founder's link each one costs five to fifteen seconds of handshake before
+# any work starts, which is why this check needed its panel budget raised
+# from 150 to 300 seconds in September and would have needed it raised
+# again.
+#
+# The liveness probe went with them, and nothing was lost: a host that does
+# not answer this reply is a host that does not answer, which is the same
+# fact the `true` call was buying a whole connection to learn. The retry it
+# wanted lives in lib/remote.sh and applies to every call rather than to one.
+probe() {
+    cat <<PROBE
+for p in $PATHS; do
+    [ -d "\$p/.git" ] || continue
+    H=\$(git -C "\$p" rev-parse HEAD 2>/dev/null)
+    [ -n "\$H" ] || continue
+    echo "HEAD \$p \$H"
+    git -C "\$p" status --porcelain 2>/dev/null | grep -v '^??' | head -5 \
+        | sed "s|^|DIRTY \$p |"
+done
+PROBE
+}
+
+# 60 rather than 45: the reply runs a rev-parse and a status in up to four
+# checkouts, and a status on a large working tree is not instant.
+REMOTE_TIMEOUT=60
 
 for h in "$@"; do
     printf '%s%s%s\n' "$BLD" "$h" "$OFF"
 
-    # Ask once whether the host answers at all, before four path probes that
-    # would each burn their own timeout and then blame the paths for it.
-    # Probed TWICE before a host is called unread. One transatlantic packet
-    # loss used to turn this line yellow, and on 18 September it turned two
-    # panel entries yellow at once for a host that answered in three seconds
-    # when asked again by hand. "Unknown" was the honest word for what
-    # happened -- but a panel that goes yellow on a blip is a panel whose
-    # yellow stops being read, and that is the failure this whole directory
-    # exists to prevent. A second attempt costs three seconds and removes
-    # nearly all of them; a host that misses twice is worth looking at.
-    if ! timeout 45 ssh "${SSH_OPTS[@]}" "root@$h" true >/dev/null 2>&1        && ! { sleep 2; timeout 45 ssh "${SSH_OPTS[@]}" "root@$h" true >/dev/null 2>&1; }; then
+    remote_ask "$h" "$(probe)"
+    if [ "$REMOTE_RC" = "$REMOTE_UNREACHABLE" ]; then
         printf '  %s??%s      unreachable over ssh -- the deployed code was not read,\n' "$YLW" "$OFF"
         printf '          so this is neither a pass nor a failure. It is unknown.\n'
         UNKNOWN=$((UNKNOWN + 1))
         continue
     fi
+    REPLY_TEXT="$REMOTE_OUT"
 
     FOUND=0
-    for p in $PATHS; do
-        HEAD="$(timeout 45 ssh "${SSH_OPTS[@]}" "root@$h" \
-            "[ -d $p/.git ] && git -C $p rev-parse HEAD 2>/dev/null" 2>/dev/null | tr -d '\r\n ')"
-        [ -n "$HEAD" ] || continue
+    while read -r p HEAD; do
+        [ -n "${HEAD:-}" ] || continue
         FOUND=1
         READ=$((READ + 1))
         if [ "$HEAD" = "$WANT" ]; then
@@ -104,13 +125,12 @@ for h in "$@"; do
             FAIL=$((FAIL + 1))
         fi
 
-        DIRTY="$(timeout 45 ssh "${SSH_OPTS[@]}" "root@$h" \
-            "git -C $p status --porcelain 2>/dev/null | grep -v '^??' | head -5" 2>/dev/null)"
+        DIRTY="$(printf '%s\n' "$REPLY_TEXT" | sed -n "s|^DIRTY $p ||p")"
         if [ -n "$DIRTY" ]; then
             printf '  %swarn%s    %s has uncommitted edits:\n' "$YLW" "$OFF" "$p"
             printf '%s\n' "$DIRTY" | sed 's/^/            /'
         fi
-    done
+    done < <(printf '%s\n' "$REPLY_TEXT" | sed -n 's/^HEAD //p')
     if [ "$FOUND" != 1 ]; then
         # The host answered, so this is not the network: either the checkout
         # lives somewhere not listed in PATHS, or there is none. Either way

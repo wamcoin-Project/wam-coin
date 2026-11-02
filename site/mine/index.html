@@ -77,15 +77,15 @@ hr{border:0;border-top:1px solid var(--rule);margin:2.2rem 0}
 <p><strong>Every command here is for the live chain.</strong> Mainnet opened at 00:00 UTC on 15 September 2026 and these coins are real ones. This page taught the test network until 19 September, with mainnet as an afterthought at the bottom -- so a reader who followed it from the top made a <code>twam1</code> address, pointed it at the live pool, and hashed for nothing until he reached a paragraph explaining why. The test network still exists for people developing against it; it is not on this page, and it is not where you start.</p>
 <p>The Linux commands are first because they are the ones strangers have been running since August. <a href="#windows">Windows</a> and <a href="#macos">macOS</a> are below them and both are new in v0.1.8 — including what each operating system will say about the files when you first run them, which is explained there rather than left to surprise you.</p>
 <h2 id="linux-nine-lines">Linux — nine lines</h2>
-<pre><code>curl -LO https://wamcoin.org/downloads/v0.1.12/wam-coin-v0.1.12-x86_64-linux-gnu.tar.gz
-curl -LO https://wamcoin.org/downloads/v0.1.12/wam-miner-v0.1.12-x86_64-linux-gnu.tar.gz
-curl -LO https://wamcoin.org/downloads/v0.1.12/SHA256SUMS
-curl -LO https://wamcoin.org/downloads/v0.1.12/SHA256SUMS.asc
+<pre><code>curl -LO https://wamcoin.org/downloads/v0.1.13/wam-coin-v0.1.13-x86_64-linux-gnu.tar.gz
+curl -LO https://wamcoin.org/downloads/v0.1.13/wam-miner-v0.1.13-x86_64-linux-gnu.tar.gz
+curl -LO https://wamcoin.org/downloads/v0.1.13/SHA256SUMS
+curl -LO https://wamcoin.org/downloads/v0.1.13/SHA256SUMS.asc
 curl -LO https://wamcoin.org/verify_release.sh
 curl -LO https://wamcoin.org/SIGNING-KEY.asc
 bash verify_release.sh .
-tar -xzf wam-coin-v0.1.12-x86_64-linux-gnu.tar.gz &amp;&amp; tar -xzf wam-miner-v0.1.12-x86_64-linux-gnu.tar.gz
-cd wam-coin-v0.1.12/bin
+tar -xzf wam-coin-v0.1.13-x86_64-linux-gnu.tar.gz &amp;&amp; tar -xzf wam-miner-v0.1.13-x86_64-linux-gnu.tar.gz
+cd wam-coin-v0.1.13/bin
 ./wamd -daemon
 ./wam-cli createwallet "mine"
 ./wam-cli -rpcwallet=mine getnewaddress</code></pre>
@@ -104,20 +104,20 @@ ls ~/.wam/wallets/              # what exists on disk
 <p>That needs the node you just started to be running, with <code>server=1</code> in <code>wam.conf</code>. <a href="#mining-alone-which-works-here">Mining alone</a> has the detail, including <code>--check</code>, which asks your node whether your block would be valid before you spend a second hashing.</p>
 <p><strong>In a pool</strong>, if you would rather be paid a little every few hours than the whole reward rarely:</p>
 <pre><code>./wam-miner -o stratum+tcp://pool.wamcoin.org:3333 -u YOUR_ADDRESS -t 4</code></pre>
-<p>There is more than one pool, and ours takes a 1% operator fee like the others. <a href="#which-pool">Which pool</a> lists them.</p>
+<p>There is more than one pool. <a href="#which-pool">Which pool</a> lists them. Each one states its own fee and its own payout rules on its own page, ours included — they are settings an operator can change, so this page does not carry numbers it has no way of keeping true.</p>
 <p><strong>COPY the address, do not retype it.</strong> The checksum catches a single wrong character, which is what it is for. If your miner's log says "bech32 checksum failed" or "invalid address", the pool has refused it and you are hashing for nothing until you fix it.</p>
 <p>An address beginning <code>twam1</code> is a <strong>test</strong> address and will be refused. If you have one, you followed an older version of this page or a testnet guide: make a new address with the commands above. The pool is 3333-3336; 13333 was the test pool before 15 September and answers nothing now.</p>
 <p><code>-t 4</code> is how many processor cores to use. Without it the miner takes every core but one, which makes the rest of the machine unpleasant to use.</p>
 <h2 id="windows">Windows</h2>
 <p>Since v0.1.8 there are Windows binaries, node and miner, and they need no WSL and no Linux. Open PowerShell and work in a folder you choose:</p>
 <pre><code>mkdir C:\wam ; cd C:\wam
-curl.exe -LO https://wamcoin.org/downloads/v0.1.12/wam-coin-v0.1.12-x86_64-w64-mingw32.zip
-curl.exe -LO https://wamcoin.org/downloads/v0.1.12/wam-miner-v0.1.12-x86_64-w64-mingw32.zip
-curl.exe -LO https://wamcoin.org/downloads/v0.1.12/SHA256SUMS
-Expand-Archive wam-coin-v0.1.12-x86_64-w64-mingw32.zip -DestinationPath .
-Expand-Archive wam-miner-v0.1.12-x86_64-w64-mingw32.zip -DestinationPath .</code></pre>
+curl.exe -LO https://wamcoin.org/downloads/v0.1.13/wam-coin-v0.1.13-x86_64-w64-mingw32.zip
+curl.exe -LO https://wamcoin.org/downloads/v0.1.13/wam-miner-v0.1.13-x86_64-w64-mingw32.zip
+curl.exe -LO https://wamcoin.org/downloads/v0.1.13/SHA256SUMS
+Expand-Archive wam-coin-v0.1.13-x86_64-w64-mingw32.zip -DestinationPath .
+Expand-Archive wam-miner-v0.1.13-x86_64-w64-mingw32.zip -DestinationPath .</code></pre>
 <p><strong>Check it before you run it.</strong> One command, and it is the only step here that cannot be checked afterwards:</p>
-<pre><code>curl.exe -LO https://wamcoin.org/downloads/v0.1.12/SHA256SUMS.asc
+<pre><code>curl.exe -LO https://wamcoin.org/downloads/v0.1.13/SHA256SUMS.asc
 curl.exe -LO https://wamcoin.org/SIGNING-KEY.asc
 curl.exe -LO https://wamcoin.org/verify_release.ps1
 powershell -ExecutionPolicy Bypass -File verify_release.ps1</code></pre>
@@ -125,7 +125,7 @@ powershell -ExecutionPolicy Bypass -File verify_release.ps1</code></pre>
 <p>This page used to tell you to run <code>certutil -hashfile</code> and compare sixty-four hexadecimal characters against <code>SHA256SUMS</code> by eye. Nobody does that: people check the first four characters and the last four, which is the check an attacker would design for. The script compares every one of them, and then does the part <code>certutil</code> cannot — it verifies that <code>SHA256SUMS</code> itself is ours, by the fingerprint published in <a href="/security/">SECURITY.md</a>.</p>
 <p>That last part needs GnuPG, which Windows does not ship. If you have <a href="https://gitforwindows.org/">Git for Windows</a> you already have one and the script finds it; otherwise install <a href="https://gpg4win.org/">Gpg4win</a>. Without it the script checks the hashes, tells you the signature was <strong>not</strong> checked, and exits without saying the release is good — because a matching hash against an unsigned list proves your download is not corrupt and proves nothing about who wrote the list.</p>
 <p>Then the node, with the directory named explicitly so you always know where the wallet is:</p>
-<pre><code>cd wam-coin-v0.1.12\bin
+<pre><code>cd wam-coin-v0.1.13\bin
 .\wamd.exe -datadir=C:\wam\data
 .\wam-cli.exe -datadir=C:\wam\data createwallet "mine"
 .\wam-cli.exe -datadir=C:\wam\data -rpcwallet=mine backupwallet C:\wam\wallet-backup.dat
@@ -171,18 +171,18 @@ echo server=1&gt; %LOCALAPPDATA%\WAM\wam.conf</code></pre>
 <p><strong>And one thing you should know before you start, because we would want to know it.</strong> These binaries are built on an Apple machine — a macOS runner — and on that machine they sync this chain from its genesis block before the archive is allowed to be published. What has <strong>not</strong> happened is a person sitting at a Mac they own, opening them, and using the wallet. Nobody on this project owns a Mac.</p>
 <p>So if you are that person: tell us what happened, whether it worked or not. The security contact is in <code>SECURITY.md</code>, and the channels are on the website. A first report from a platform we do not own is worth more to us than anything we can measure ourselves.</p>
 <pre><code>mkdir -p ~/wam &amp;&amp; cd ~/wam
-curl -LO https://wamcoin.org/downloads/v0.1.12/wam-coin-v0.1.12-arm64-apple-darwin.tar.gz
-curl -LO https://wamcoin.org/downloads/v0.1.12/wam-miner-v0.1.12-arm64-apple-darwin.tar.gz
-curl -LO https://wamcoin.org/downloads/v0.1.12/SHA256SUMS
-curl -LO https://wamcoin.org/downloads/v0.1.12/SHA256SUMS.asc
+curl -LO https://wamcoin.org/downloads/v0.1.13/wam-coin-v0.1.13-arm64-apple-darwin.tar.gz
+curl -LO https://wamcoin.org/downloads/v0.1.13/wam-miner-v0.1.13-arm64-apple-darwin.tar.gz
+curl -LO https://wamcoin.org/downloads/v0.1.13/SHA256SUMS
+curl -LO https://wamcoin.org/downloads/v0.1.13/SHA256SUMS.asc
 curl -LO https://wamcoin.org/SIGNING-KEY.asc
 curl -LO https://wamcoin.org/verify_release.sh
 bash verify_release.sh .</code></pre>
 <p><code>verify_release.sh</code> needs GnuPG, which macOS does not ship: <code>brew install gnupg</code> first, or the script will tell you the signature was <strong>not</strong> checked and exit without calling the release good. It should end with <code>this is the WAM release, unmodified since it was signed</code>.</p>
 <p>Then:</p>
-<pre><code>tar -xzf wam-coin-v0.1.12-arm64-apple-darwin.tar.gz
-tar -xzf wam-miner-v0.1.12-arm64-apple-darwin.tar.gz
-cd wam-coin-v0.1.12/bin
+<pre><code>tar -xzf wam-coin-v0.1.13-arm64-apple-darwin.tar.gz
+tar -xzf wam-miner-v0.1.13-arm64-apple-darwin.tar.gz
+cd wam-coin-v0.1.13/bin
 ./wamd -datadir=$HOME/wam/data -daemon
 ./wam-cli -datadir=$HOME/wam/data createwallet "mine"
 ./wam-cli -datadir=$HOME/wam/data -rpcwallet=mine backupwallet $HOME/wam/wallet-backup.dat
@@ -200,7 +200,7 @@ cd wam-coin-v0.1.12/bin
 <pre><code>xattr -d com.apple.quarantine ./wamd ./wam-cli ./wam-miner</code></pre>
 <p>That removes the <em>downloaded-from-the-internet</em> mark from those three files and nothing else. It is not "disable Gatekeeper", it is not <code>sudo</code>, and it does not change a system setting. Do it only for files whose signature you have just checked, and never because a stranger told you to.</p>
 <h2 id="the-one-line-that-is-not-optional">The one line that is not optional</h2>
-<pre><code>curl -LO https://wamcoin.org/downloads/v0.1.12/SHA256SUMS.asc
+<pre><code>curl -LO https://wamcoin.org/downloads/v0.1.13/SHA256SUMS.asc
 curl -LO https://wamcoin.org/verify_release.sh
 curl -LO https://wamcoin.org/SIGNING-KEY.asc
 bash verify_release.sh .</code></pre>
@@ -212,7 +212,7 @@ bash verify_release.sh .</code></pre>
 <p>Coins from a block cannot be spent for 100 blocks, about three hours. That is consensus, not the pool.</p>
 <h2 id="which-pool">Which pool</h2>
 <p>There is more than one, and they are not run by us:</p>
-<pre><code>pool.wamcoin.org:3333             run by this project, 1% operator fee
+<pre><code>pool.wamcoin.org:3333             run by this project
 stratum.cryptopickaxe.co.uk:6040
 wampool.vslabs.co.in:3333
 veinpool.fr:3310                  and :3311 for servers, a higher start</code></pre>
@@ -221,7 +221,8 @@ veinpool.fr:3310                  and :3311 for servers, a higher start</code></
 <pre><code>wam.ariabrain.com:3333</code></pre> <!-- wam:quote-line -->
 <p>On 2026-10-08 it refused the connection, measured from this laptop and from all three seeds, in three countries, so it was not a block on one address. On 2026-10-18 it had become worse: the name does not resolve at all. Its website is up and the pool is still listed there, which is why nobody noticed — the page a reader sees is not the port a miner dials.</p>
 <p>It is out of the block above rather than deleted from the page. The pool is its operator's to run and the page is ours, and a stranger following our instructions should not meet a dead address first. If it answers again it goes back up, and that is the operator's call to tell us rather than ours to keep testing forever.</p>
-<p><strong>Ours charges the same as the others on purpose.</strong> It ran at 0% while it was the only pool in existence, and a pool charging nothing is not competing with the others — nobody can offer less than nothing. Matching their rate means you pick a pool for how it runs rather than for a number that cannot be beaten. The 1% is taken after the chain's 5% treasury output, and it goes to an address that receives nothing else, named on pool.wamcoin.org.</p>
+<p><strong>Ours charges what the others charge, on purpose.</strong> It ran free while it was the only pool in existence, and a pool charging nothing is not competing with the others — nobody can offer less than nothing. Matching their rate means you pick a pool for how it runs rather than for a number that cannot be beaten. Whatever the rate is, it is taken after the chain's 5% treasury output and swept to an address that receives nothing else, so what stays in the pool wallet is miners' money.</p>
+<p><strong>The rate itself is on &lt;https://pool.wamcoin.org&gt;, not here.</strong> It is in the header and in the reward split, beside the address it is swept to, and in <code>/api/stats</code> under <code>config</code> — all three read out of the configuration the pool is actually running. That page is also where the rest of the payout policy is: the PPLNS window, the payout threshold, how often payments run, and how long a block matures before any of it reaches you. Those are settings, not consensus rules, and a number for any of them written here is a number nothing keeps in step. The fee was carried at two different values in two files for weeks — this page said one thing and <code>pool/config.mainnet.json</code> said another — and the only reason anybody found out was that somebody went looking. The pool always knew. Ask it.</p>
 <h2 id="mining-alone-which-works-here">Mining alone, which works here</h2>
 <p>Most guides tell you to join a pool and stop there. At this network size you do not have to, and the chain is better if some of you do not.</p>
 <p>A pool smooths your income: you are paid for the work you submit, a little at a time, whether or not your own machine finds anything. Alone, you are paid nothing until you find a block and then the whole 47.50 at once.</p>
@@ -261,12 +262,15 @@ node. That is real money; do not leave it running.</code></pre>
 <p><strong><code>accepted</code> stays at 0.</strong> Usually the wrong address format — it must start with <code>wam1</code>. An address beginning <code>twam1</code> belongs to the test chain and the pool refuses it.</p>
 <p><strong>No block ever found.</strong> Normal. One machine among many finds one rarely, which is what the pool is for; your share of what the pool finds is paid to your address anyway.</p>
 <h2 id="your-balance-will-say-zero-and-that-is-normal">Your balance will say zero, and that is normal</h2>
-<p>The pool pays out at <strong>1 WAM</strong> and runs a payment round every <strong>10 minutes</strong>. Below that threshold your earnings sit in the pool's ledger and not in your wallet, so</p>
+<p>Two things stand between your machine working and a number appearing in your wallet, and the first of them is a consensus rule rather than anything a pool decided.</p>
+<p><strong>A block's reward cannot be spent for 100 confirmations.</strong> That is coinbase maturity, it lives in the chain and not in the pool, and it binds a solo miner exactly as hard. The pool works out your share of a block the moment it finds one, but holds that share against the block until it matures — so your unpaid balance lags the work that earned it by about three and a half hours, and then moves in steps rather than smoothly. The maturity queue is on the pool page, counted beside the blocks found.</p>
+<p><strong>Then there is a payout threshold and a payment round.</strong> Both are settings, so both are on the pool's own page rather than on this one. Below the threshold your earnings sit in the pool's ledger and not in your wallet, so</p>
 <pre><code>./wam-cli -rpcwallet=mine getbalance
 0.00000000</code></pre>
 <p>is what you will see for the first while, however hard the machine is working. Nothing is missing and more threads is not the fix — it only raises your share of each block the pool finds.</p>
 <p>Watch the ledger instead of the wallet:</p>
-<pre><code>https://pool.wamcoin.org</code></pre>
+<pre><code>https://pool.wamcoin.org
+https://pool.wamcoin.org/api/miner?address=YOUR_ADDRESS</code></pre>
 <p>And if you change your payout address, your share history starts again from nothing. Whatever the old address had earned stays owed to that address.</p>
 <p>Written down on 6 September, after somebody mined for an hour, read <code>0.00000000</code>, and reasonably concluded something was broken.</p>
 <h3 id="and-getbalance-will-drop-when-you-send-to-yourself">And <code>getbalance</code> will DROP when you send to yourself</h3>

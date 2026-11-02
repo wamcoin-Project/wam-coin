@@ -123,14 +123,23 @@ CHANNELS = NEWLINE_KEPT + NEWLINE_JOINED
 # make this repository disagree with what is on Discord, Telegram and X.
 # check_channels.py carries the same rule for the same reason.
 #
-# So they are named here rather than fixed. The list is five directories and
-# it is not allowed to rot: a name in it that no longer exists FAILS this
-# check, because a forgiveness nobody can see the subject of is just a hole.
+# So they are named here rather than fixed, and the list is not allowed to
+# rot: a name in it that no longer exists FAILS this check, because a
+# forgiveness nobody can see the subject of is just a hole.
+#
+# THAT RULE IS ALSO THE ONLY THING STOPPING posts/ FROM BEING EMPTIED.
+#
+# posts/v0.1.12 is here because its three drafts were deleted on 18 October
+# by bc3ae27, which gave a reason -- a repository is code and the tools that
+# keep it honest, and posts are neither. Five checks read this directory and
+# none of them can read a file that is not there. The reason is argued with
+# in posts/README.md; the mechanism is this tuple.
 PUBLISHED = (
     "posts/preannounce",
     "posts/v0.1.8",
     "posts/v0.1.9",
     "posts/v0.1.10",
+    "posts/v0.1.12",
     "posts/bounty-address-validation",
 )
 

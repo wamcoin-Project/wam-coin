@@ -211,6 +211,51 @@ def main():
         except Exception:
             pass
 
+    # AND WHICH REPOSITORY IT IS WATCHING, WHICH NOTHING CHECKED.
+    #
+    # v0.1.13 was published on 2026-10-31 and no announcement went out. The
+    # bot had been saying "nothing to announce" every minute for two days:
+    # its config named wamcoin-core-dev/wam-coin, the account suspended on
+    # 29 October, and a 404 has no releases in it. The repository moved and
+    # the code moved with it -- but /etc/wam/announce.json is written once by
+    # bots/setup.sh and never again, so the hosts kept the dead name. One of
+    # them was still on wam-coin-official, lost five weeks earlier.
+    #
+    # A STOPPED announcer is caught above, by the state file's age. This one
+    # was not stopped. It polled, answered, saved its state and said nothing,
+    # which is the failure that looks exactly like a quiet month.
+    #
+    # Compared against CHANNELS.txt because that file is signed, and saying
+    # which GitHub account is ours is the one thing it exists to do.
+    canon = os.path.join(os.path.dirname(os.path.dirname(
+        os.path.abspath(__file__))), "CHANNELS.txt")
+    want = ""
+    try:
+        for line in open(canon, encoding="utf-8", errors="replace"):
+            s = line.strip()
+            if s.startswith("source") and "github.com/" in s:
+                want = s.split("github.com/", 1)[1].strip().rstrip("/")
+                break
+    except OSError:
+        pass
+
+    rc, repo, _ = rsh(args.host,
+                      "python3 -c \"import json;print(json.load("
+                      "open('/etc/wam/announce.json')).get('githubRepo') or '')\"")
+    repo = (repo or "").strip()
+    if not want:
+        warn("CHANNELS.txt names no GitHub source, so the announcer's "
+             "repository cannot be compared against anything")
+    elif not repo:
+        bad("the announcer has no githubRepo configured. It sees no release "
+            "and reports nothing to announce, which is not an error anywhere")
+    elif repo != want:
+        bad(f"the announcer watches {repo} and CHANNELS.txt names {want}. A "
+            f"release published to the second is invisible to the first, and "
+            f"the bot says 'nothing to announce' rather than failing")
+    else:
+        ok(f"the announcer watches {repo}, the repository CHANNELS.txt names")
+
     # Liveness comes from the file's mtime, not from lastHeightAt inside it.
     #
     # lastHeightAt records when the HEIGHT last changed -- once a block, so

@@ -8,7 +8,8 @@
 #
 #      sudo bash scripts/install_release.sh 0.1.6 \
 #          --root /home/grgo --bin /home/grgo/wam-current-bin \
-#          --owner grgo --restart wam-miner,wam-node
+#          --owner grgo --restart wam-miner,wam-node \
+#          --path-dir /home/grgo/bin
 #
 #  WHY THIS EXISTS
 #
@@ -40,7 +41,7 @@ GRN=$'\033[32m'; RED=$'\033[31m'; BLD=$'\033[1m'; OFF=$'\033[0m'
 
 usage() { sed -n '5,40p' "$0"; exit "${1:-0}"; }
 
-V=""; ROOT=""; BIN=""; OWNER=""; RESTART=""
+V=""; ROOT=""; BIN=""; OWNER=""; RESTART=""; PATHDIR=""
 while [ $# -gt 0 ]; do
     case "$1" in
         -h|--help) usage 0 ;;
@@ -48,6 +49,7 @@ while [ $# -gt 0 ]; do
         --bin)     BIN="${2:?}"; shift 2 ;;
         --owner)   OWNER="${2:?}"; shift 2 ;;
         --restart) RESTART="${2:?}"; shift 2 ;;
+        --path-dir) PATHDIR="${2:?}"; shift 2 ;;
         -*) echo "unknown option: $1" >&2; exit 2 ;;
         *)  V="$1"; shift ;;
     esac
@@ -58,6 +60,10 @@ case "$V" in v*) V="${V#v}" ;; esac
 ROOT="${ROOT:-/opt}"
 BIN="${BIN:-$ROOT/wam-current-bin}"
 OWNER="${OWNER:-root}"
+# The directory on PATH that the services and a person's shell both reach
+# for. Separate from $BIN so a laptop install can point it somewhere it is
+# allowed to write, or at $BIN itself to turn the second layer off.
+PATHDIR="${PATHDIR:-/usr/local/bin}"
 
 # Our own downloads, not a code-hosting account.
 #
@@ -211,6 +217,45 @@ chown -h "$OWNER:$OWNER" "$BIN/wamd" "$BIN/wam-cli" "$BIN/wam-miner" 2>/dev/null
 
 printf '\n  %ssymlinks%s\n' "$BLD" "$OFF"
 ls -l "$BIN" | tail -n +2 | sed 's/^/    /'
+
+# AND THE DIRECTORY ON EVERYBODY'S PATH, which this script did not own until
+# 2026-11-01 and which had drifted on all three seeds, in two different ways.
+#
+# $BIN is the swap directory the services point at. /usr/local/bin is what a
+# person gets by typing `wamd`, what wamd.service on every host executes, and
+# what check_nodes_agree.sh fingerprints. It was set up by hand, once, and
+# nothing moved it afterwards:
+#
+#   - US-east held COPIES of all five programs, taken on 15 October. Four
+#     releases later the testnet node was still running v0.1.9 from them,
+#     and every deploy restarted that service and reported success.
+#   - France and Singapore pointed wam-tx, wam-util and wam-wallet straight
+#     at /opt/wam-v0.1.7/ -- a version directory, not the swap directory --
+#     so those three stood still from 11 September.
+#
+# Both are the mistake the comment above warns about, made one layer up: a
+# copy, and a link to a version instead of to "current". And neither was
+# visible to a check that compares hosts to each other, because France and
+# Singapore were wrong in exactly the same way and so agreed.
+#
+# One indirection now: /usr/local/bin/<name> -> $BIN/<name> -> the release.
+# A release moves one set of links and everything follows.
+if [ "$BIN" != "$PATHDIR" ] && mkdir -p "$PATHDIR" 2>/dev/null && [ -w "$PATHDIR" ]; then
+    printf '\n  %son PATH (%s)%s\n' "$BLD" "$PATHDIR" "$OFF"
+    for t in wamd wam-cli wam-miner wam-tx wam-util wam-wallet; do
+        [ -e "$BIN/$t" ] || continue
+        # Said out loud, because replacing a real binary is not the same
+        # event as moving a symlink, and the machine where that happens is
+        # the machine that has been running something nobody chose.
+        if [ -f "$PATHDIR/$t" ] && [ ! -L "$PATHDIR/$t" ]; then
+            printf '    %-12s %sreplacing a copy, not a link%s\n' "$t" "$RED" "$OFF"
+        fi
+        ln -sfn "$BIN/$t" "$PATHDIR/$t"
+        printf '    %-12s -> %s\n' "$t" "$BIN/$t"
+    done
+else
+    printf '\n  %s left alone: %s\n' "$PATHDIR" "not writable, or it is \$BIN itself"
+fi
 
 if [ -n "$RESTART" ]; then
     printf '\n  %srestarting%s\n' "$BLD" "$OFF"

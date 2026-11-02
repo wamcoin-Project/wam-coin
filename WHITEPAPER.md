@@ -464,7 +464,9 @@ wrong about it at some future halving. Handing the raw coinbase value to the rew
 calculator throws an exception rather than silently over-distributing by 5%.
 
 The pool operator's own fee, if any, is taken *after* the treasury output and is entirely
-separate from it. A miner on a 1% pool sees 5% + 1%.
+separate from it: a miner on a pool sees the consensus 5% plus whatever that operator
+charges. The 5% is a consensus rule and is stated here. An operator's rate is a setting
+they can change, so it is not stated here — each pool publishes its own.
 
 ---
 

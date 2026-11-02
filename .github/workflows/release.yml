@@ -117,9 +117,12 @@ jobs:
           set -euo pipefail
           sudo apt-get update -qq
           # Upstream's depends/README.md for Linux, plus bison for Qt.
+          # patchelf: the wallet carries the X11 libraries depends builds as
+          # shared objects, and they are found through an RPATH relative to
+          # the binary. See scripts/lib/shared_deps.sh.
           sudo apt-get install -y --no-install-recommends \
               build-essential cmake autoconf automake libtool pkg-config \
-              curl patch python3 xz-utils bison
+              curl patch python3 xz-utils bison patchelf
 
       - name: Fetch and patch Bitcoin Core
         run: bash scripts/fetch-upstream.sh
@@ -196,14 +199,29 @@ jobs:
           # a dependency that crept back in; something missing means a feature
           # was silently compiled out, and the wallet disappearing is not a
           # smaller problem than Kerberos reappearing.
+          # RE-PINNED FOR v0.1.13, AND THE REMOVALS ARE THE POINT.
+          #
+          # This list held libevent-2.1.so.7, libevent_core, libevent_pthreads
+          # and libsqlite3.so.0 -- correctly, because the binary really did ask
+          # a stranger's machine for them, and a clean Ubuntu does not have the
+          # first of those. That is the loader error Jeeves got on 18 October,
+          # one day after v0.1.12 was published.
+          #
+          # build_linux.sh links them from depends now, so they are gone, and
+          # the pin fired on their going: "the shared library set changed",
+          # with four minus signs and nothing added. Exactly what it is for --
+          # this check refuses a change in EITHER direction, because a library
+          # disappearing can mean a feature was silently compiled out, and that
+          # is not a smaller problem than one creeping in.
+          #
+          # What is left is the C library and its companions, which is the
+          # whole requirement now. Anything that joins this list again is a
+          # dependency that came back, and it will have to be put here by hand
+          # with a reason beside it.
           cat > /tmp/expected-libs <<'LIBS'
           libc.so.6
-          libevent-2.1.so.7
-          libevent_core-2.1.so.7
-          libevent_pthreads-2.1.so.7
           libgcc_s.so.1
           libm.so.6
-          libsqlite3.so.0
           libstdc++.so.6
           LIBS
           sed -i 's/^ *//' /tmp/expected-libs
@@ -598,6 +616,35 @@ jobs:
           echo
           echo "::notice::$VERSION is a DRAFT. It is not downloadable by anyone"
           echo "::notice::until it is signed and published. See docs/RELEASING.md"
+
+      # KEEP THE LOGS WHEN IT FAILS, WHICH IS THE ONLY TIME THEY MATTER.
+      #
+      # build_linux.sh writes depends-linux.log, configure-linux.log and
+      # make-linux.log, and its own failure messages tell the reader to grep
+      # them. On 2026-10-29 a run died thirty-three minutes in, at the very
+      # last gate, saying
+      #
+      #     Check that depends really produced .../share/config.site and that
+      #     configure used it:
+      #       grep -i 'boost|event|sqlite' .../build/configure-linux.log
+      #
+      # and every one of those files went with the runner. A message that
+      # points at evidence nobody can reach is the same fault as a check that
+      # reports nothing: the next step is another thirty-three minutes, spent
+      # finding out what this run already knew.
+      #
+      # if: failure() and not always(): a green build's logs are forty
+      # megabytes of nothing.
+      - name: Keep the build logs when it failed
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: build-logs-${{ steps.v.outputs.version }}
+          path: |
+            build/*.log
+            build/wam-core/config.log
+          retention-days: 14
+          if-no-files-found: warn
 
       - name: Keep the artifact even when this was only a test build
         if: steps.v.outputs.publish != 'yes'

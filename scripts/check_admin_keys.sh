@@ -104,11 +104,7 @@ while IFS= read -r line; do
 done < "$f" | LC_ALL=C sort
 '
 
-rsh_stdin() {
-    printf '%s' "$REMOTE_PARSER" \
-        | timeout 45 ssh -o BatchMode=yes -o ConnectTimeout=15 \
-              "root@$1" "bash -s" 2>/dev/null
-}
+. "$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)/lib/remote.sh"
 
 echo "=================================================================="
 echo " Who can become root on each machine?"
@@ -119,11 +115,26 @@ LIVE=()
 UNREAD=0
 
 for h in "$@"; do
-    raw="$(rsh_stdin "$h" | tr -d '\r')"
+    remote_ask "$h" "$REMOTE_PARSER"
+    raw="$REMOTE_OUT"
     printf '\n%s%s%s\n' "$BLD" "$h" "$OFF"
+
+    # These were one line -- "unreachable, or no authorized_keys" -- and they
+    # are not the same thing at all. One is a machine nobody could ask. The
+    # other is a machine that answered, on the question of who can become
+    # root, with nobody. The second deserves to be read twice by a human; the
+    # first deserves to be asked again. lib/remote.sh can tell them apart
+    # because it keeps ssh's own 255 separate from a status the far end
+    # returned, which the private copy here could not.
+    if [ "$REMOTE_RC" = "$REMOTE_UNREACHABLE" ]; then
+        printf '  %s??%s     unreachable over ssh -- not compared\n' "$YLW" "$OFF"
+        UNREAD=$((UNREAD + 1))
+        continue
+    fi
     if [ -z "$raw" ]; then
-        printf '  %s??%s     unreachable, or no authorized_keys -- not compared\n' \
+        printf '  %s??%s     answered, but listed no authorized_keys at all --\n' \
             "$YLW" "$OFF"
+        printf '         either the file is missing or nobody can log in. Not compared.\n'
         UNREAD=$((UNREAD + 1))
         continue
     fi

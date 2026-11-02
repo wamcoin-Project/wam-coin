@@ -400,7 +400,7 @@ To check a download:
 ```
 gpg --import SIGNING-KEY.asc
 gpg --verify SHA256SUMS.asc SHA256SUMS
-curl -LO https://wamcoin.org/downloads/v0.1.12/SHA256SUMS.asc
+curl -LO https://wamcoin.org/downloads/v0.1.13/SHA256SUMS.asc
 curl -LO https://wamcoin.org/verify_release.sh
 curl -LO https://wamcoin.org/SIGNING-KEY.asc
 bash verify_release.sh .

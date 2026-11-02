@@ -54,6 +54,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from wamcli import flags as _wamcli_flags          # noqa: E402
+from wamssh import run as _ssh, UNREACHABLE        # noqa: E402
 
 RED = "\033[31m"; GRN = "\033[32m"; YEL = "\033[33m"; BLD = "\033[1m"; OFF = "\033[0m"
 
@@ -66,15 +67,38 @@ TREASURY = {
 }
 
 
-def rsh(host, cmd, timeout=120):
+def rsh(host, cmd, timeout=120, tries=2):
+    """Ask the node -- this machine, or one over ssh. Never raises.
+
+    Returns (rc, text). rc is UNREACHABLE when the question could not be put
+    at all, and then `text` is the reason rather than an answer.
+
+    THIS FILE CARRIED ITS OWN SSH, AND IT COST THE PANEL'S WORST FALSE RED.
+
+    On 2026-10-27 the ops panel printed "no one party writes the chain:
+    FAILING" -- the single verdict on it that says somebody is rewriting the
+    chain. Nothing had been measured. The window call ran with a 600 second
+    limit over a laptop link, subprocess raised TimeoutExpired, the old copy
+    below caught nothing, Python exited with a traceback, and the panel read
+    that exit code as the answer to the question.
+
+    A crash is not a verdict. "I could not ask" and "the answer is no" are
+    different things, and wamssh.run is the one place that knows it: it
+    returns UNREACHABLE rather than raising, retries once, and tells ssh's own
+    255 apart from a status the far end actually returned. This is the fourth
+    script to reach it after learning the same lesson by itself.
+    """
     if not host:
-        p = subprocess.run(["bash", "-lc", cmd], capture_output=True,
-                           text=True, timeout=timeout)
-    else:
-        p = subprocess.run(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=15",
-                            f"root@{host}", cmd],
-                           capture_output=True, text=True, timeout=timeout)
-    return p.returncode, p.stdout.strip(), p.stderr.strip()
+        try:
+            p = subprocess.run(["bash", "-lc", cmd], capture_output=True,
+                               text=True, timeout=timeout)
+        except subprocess.TimeoutExpired:
+            return UNREACHABLE, f"no answer within {timeout}s"
+        except Exception as e:                      # noqa: BLE001
+            return UNREACHABLE, f"{type(e).__name__}: {e}"
+        return p.returncode, (p.stdout if p.returncode == 0
+                              else (p.stderr or p.stdout))
+    return _ssh(host, cmd, timeout=timeout, tries=tries)
 
 
 def main():
@@ -97,25 +121,20 @@ def main():
     cli = f"wam-cli {flag}"
     print(f"\n{BLD}who is writing this chain?{OFF}")
 
-    rc, out, err = rsh(a.node, f"{cli} getblockcount")
-    if rc != 0 or not out.strip().isdigit():
-        print(f"  {YEL}??{OFF}    no height from the node "
-              f"({(err or out or 'no answer').splitlines()[0][:90]}). "
-              f"Nothing was measured.")
-        print()
-        return 2
-    tip = int(out.strip())
-
-    first = max(1, tip - a.window + 1)          # never block 0: it has no miner
-    count = tip - first + 1
-    if count < a.min_blocks:
-        print(f"  {YEL}??{OFF}    only {count} block(s) exist above genesis; "
-              f"{a.min_blocks} are needed before a share means anything.")
-        print()
-        return 2
-
-    # One round trip for the whole window. Asking per block over ssh takes
-    # longer than the window it is measuring once the chain is a day old.
+    # ONE round trip for the height AND the window, not two.
+    #
+    # It was two: ask the tip, work out the range here, ask for the range.
+    # Both of them pay for an ssh handshake, and on the founder's link a
+    # handshake is five to fifteen seconds before any work starts -- which is
+    # most of what the ops panel's grey "did not finish" lines were made of.
+    # The tip is a number the far end already knows; fetching it separately so
+    # that this side can subtract is a conversation, and a conversation over a
+    # slow link is the thing to remove. The remote picks its own window and
+    # states the tip it used in the first line, so the arithmetic below is
+    # still done against the height the blocks were actually read from.
+    #
+    # Asking per block over ssh takes longer than the window it is measuring
+    # once the chain is a day old, which is why the loop runs over there.
     #
     # The parser is written to a file on the far side rather than passed to
     # `python3 -c "..."`. An inline program has to survive this shell, ssh,
@@ -126,6 +145,18 @@ def main():
     # through untouched.
     treasury = TREASURY.get(a.network)
     remote = (
+        "set -u\n"
+        # Exit 9, and not a bare failure: the panel has to be able to tell
+        # "the node would not say how tall the chain is" from "ssh never got
+        # there", and both from a real answer. 9 is outside anything wam-cli
+        # returns and outside ssh's 255.
+        f"TIP=$({cli} getblockcount 2>/dev/null) || exit 9\n"
+        "case \"$TIP\" in ''|*[!0-9]*) exit 9;; esac\n"
+        "echo \"TIP $TIP\"\n"
+        f"FIRST=$(( TIP - {a.window} + 1 ))\n"
+        # Never block 0. It has no miner, and counting it as one invents a
+        # finder that does not exist.
+        "if [ \"$FIRST\" -lt 1 ]; then FIRST=1; fi\n"
         "cat > /tmp/wam_finder.py <<'WAMEOF'\n"
         "import json, sys\n"
         "treasury = sys.argv[1] if len(sys.argv) > 1 else ''\n"
@@ -135,15 +166,47 @@ def main():
         "print(max(outs, key=lambda o: o['value'])['scriptPubKey'].get('address', '?')\n"
         "      if outs else '?')\n"
         "WAMEOF\n"
-        f"for h in $(seq {first} {tip}); do "
+        "for h in $(seq $FIRST $TIP); do "
         f"{cli} getblock $({cli} getblockhash $h) 2 2>/dev/null | "
         f"python3 /tmp/wam_finder.py {json.dumps(treasury or '')}; done"
     )
-    rc, out, err = rsh(a.node, remote, timeout=600)
-    finders = [l.strip() for l in out.splitlines() if l.strip()]
+    # 240 with one retry, not 600 in a single shot. wamssh tries twice, and
+    # the ops panel allows this check 600 seconds in total: 240 + 3 + 240
+    # fits inside that, where 600 + 3 + 600 would be killed mid-answer and
+    # report nothing -- the failure mode this whole file exists to avoid.
+    rc, out = rsh(a.node, remote, timeout=240)
+
+    if rc == UNREACHABLE:
+        print(f"  {YEL}??{OFF}    could not ask the node "
+              f"({out.splitlines()[0][:90] if out else 'no reason given'}). "
+              f"Nothing was measured.")
+        print()
+        return 2
+    if rc == 9:
+        print(f"  {YEL}??{OFF}    the node gave no height. Nothing was measured.")
+        print()
+        return 2
+
+    lines = [l.strip() for l in out.splitlines() if l.strip()]
+    if not lines or not lines[0].startswith("TIP "):
+        print(f"  {YEL}??{OFF}    the node answered, but not with a height "
+              f"({(lines[0] if lines else 'nothing')[:70]}). "
+              f"Nothing was measured.")
+        print()
+        return 2
+
+    tip = int(lines[0].split()[1])
+    first = max(1, tip - a.window + 1)
+    count = tip - first + 1
+    finders = lines[1:]
+
+    if count < a.min_blocks:
+        print(f"  {YEL}??{OFF}    only {count} block(s) exist above genesis; "
+              f"{a.min_blocks} are needed before a share means anything.")
+        print()
+        return 2
     if len(finders) < a.min_blocks:
-        print(f"  {YEL}??{OFF}    read {len(finders)} of {count} block(s) "
-              f"({(err or 'no reason given').splitlines()[0][:70]}). "
+        print(f"  {YEL}??{OFF}    read {len(finders)} of {count} block(s). "
               f"Too few to say anything.")
         print()
         return 2

@@ -1,0 +1,118 @@
+#!/usr/bin/env bash
+# Copyright (c) 2026 The WAM Coin developers
+# Distributed under the MIT software license, see COPYING.
+#
+# ===========================================================================
+#  wam-reload-electrumx -- hand a renewed certificate to the running server
+# ===========================================================================
+#
+#  Installed by integration/electrumx/install.sh at
+#  /usr/local/bin/wam-reload-electrumx and symlinked into
+#  /etc/letsencrypt/renewal-hooks/deploy/, where certbot runs it after a
+#  certificate was actually renewed -- so it is silent on the many days when
+#  there is nothing to do.
+#
+#  WHY IT IS NEEDED
+#
+#  ElectrumX reads SSL_CERTFILE and SSL_KEYFILE once, at startup. Certbot
+#  replaces the files underneath it and the process never looks again, so a
+#  renewed certificate is served only after a restart. Without one the server
+#  keeps presenting the old certificate right up to the hour it expires, and
+#  then every wallet that verifies TLS -- which is every wallet -- stops being
+#  able to reach an endpoint this project publishes in the Komodo coins list.
+#
+#  France renewed electrum.wamcoin.org on 19 October 2026 and was serving the
+#  new certificate when this was written, because something restarted the
+#  service afterwards for an unrelated reason. That is luck. Luck is not a
+#  renewal policy, and the next renewal is not obliged to repeat it.
+#
+#  AND THE PERMISSIONS, WHICH ARE THE OTHER HALF
+#
+#  install.sh puts /etc/letsencrypt under group ssl-cert once, at install
+#  time, and that holds across renewals because certbot preserves a private
+#  key's group and mode when it renews an existing lineage.
+#
+#  It does not hold when a lineage is created anew. Then the key is written
+#  root:root 0600 and the unprivileged electrumx user cannot read it. That
+#  happened on seed3 on 1 November 2026: electrum2.wamcoin.org had been living
+#  on a certificate hand-copied from Singapore in August -- plain files, no
+#  archive, no renewal configuration -- and issuing a real one for the first
+#  time produced root:root. The service crash-looped six times with
+#  PermissionError and the endpoint was dark from 06:47:29 to 06:49:43 UTC.
+#
+#  So this puts the group back before restarting, every time, whether or not
+#  it was already right. Doing it unconditionally is cheaper than working out
+#  which of the two cases this renewal was.
+#
+#  IT RESTARTS ONLY WHAT READS THE LINEAGE THAT RENEWED
+#
+#  seed3 renews wamcoin.org here as well, which is nginx's and is reloaded by
+#  nginx's own hook. The instances to restart are therefore not guessed from
+#  the hostname but read out of /etc/wam/electrumx-<instance>.env, which is
+#  the file that actually names the certificate. On seed3 that is two of them,
+#  mainnet and testnet, both pointed at the same lineage -- which no list kept
+#  by hand would have remembered.
+# ===========================================================================
+
+set -uo pipefail
+
+log() { printf '%s wam-reload-electrumx: %s\n' \
+               "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$1"; }
+
+# certbot sets this per renewed lineage. Run by hand without it, do nothing:
+# restarting every ElectrumX on the host because somebody typed the script
+# name is not a thing this should be able to do by accident.
+if [ -z "${RENEWED_LINEAGE:-}" ]; then
+    log "RENEWED_LINEAGE is not set -- this runs as a certbot deploy hook"
+    exit 0
+fi
+
+NAME="$(basename "$RENEWED_LINEAGE")"
+ARCHIVE="/etc/letsencrypt/archive/$NAME"
+
+INSTANCES=""
+for env in /etc/wam/electrumx-*.env; do
+    [ -f "$env" ] || continue
+    grep -q "/live/$NAME/" "$env" || continue
+    i="${env##*/electrumx-}"
+    INSTANCES="$INSTANCES ${i%.env}"
+done
+
+if [ -z "$INSTANCES" ]; then
+    log "$NAME is not read by any ElectrumX on this host -- nothing to do"
+    exit 0
+fi
+
+# Group-readable rather than world, and the directories traversable. The same
+# arrangement install.sh makes, reapplied to whatever certbot has just
+# written. `chmod g+r` on a 0644 certificate is a no-op; on a 0600 key it is
+# the whole point.
+groupadd -f ssl-cert 2>/dev/null || true
+chgrp ssl-cert /etc/letsencrypt/live /etc/letsencrypt/archive \
+               "$RENEWED_LINEAGE" "$ARCHIVE" 2>/dev/null || true
+chmod 0750     /etc/letsencrypt/live /etc/letsencrypt/archive \
+               "$RENEWED_LINEAGE" "$ARCHIVE" 2>/dev/null || true
+chgrp ssl-cert "$ARCHIVE"/*.pem 2>/dev/null || true
+chmod g+r      "$ARCHIVE"/*.pem 2>/dev/null || true
+log "$NAME is readable by group ssl-cert"
+
+RC=0
+for i in $INSTANCES; do
+    UNIT="wam-electrumx@$i"
+    if ! systemctl is-enabled --quiet "$UNIT" 2>/dev/null \
+       && ! systemctl is-active --quiet "$UNIT" 2>/dev/null; then
+        log "$UNIT is neither enabled nor running -- left alone"
+        continue
+    fi
+    if systemctl restart "$UNIT"; then
+        log "restarted $UNIT"
+    else
+        # Loud, and not fatal. The certificate is renewed and on disk either
+        # way; refusing to exit 0 here would mark the whole renewal failed and
+        # send certbot after a problem it did not cause and cannot fix.
+        log "FAILED to restart $UNIT -- it is serving the OLD certificate"
+        RC=1
+    fi
+done
+
+exit "$RC"

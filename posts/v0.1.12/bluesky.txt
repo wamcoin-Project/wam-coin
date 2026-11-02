@@ -1,0 +1,57 @@
+BLUESKY - from @wamcoin.org. 300 characters, counted as real characters.
+=========================================================================
+Counted below, not estimated. Em dashes written as hyphens.
+
+SENT: 2026-10-16, posts 1 and 2 only.
+
+Checked against the public feed of @wamcoin.org on 1 November 2026, rather
+than remembered: both are there, and POST 3 is not. The links post was
+drafted and never went out, which is why the v0.1.12 announcement on Bluesky
+names no repository, no second domain and no Discord -- the three things
+every post is supposed to carry. Nobody noticed for sixteen days.
+
+Posts 1 and 2 below are left as they went out. They are a record, not a
+draft. Post 3 was never sent, so it is a draft and gets a draft's treatment:
+its bare Discord hostname was written out in full on 1 November, the same fault
+check_post_text.py caught in a DM on 3 October.
+
+---------------------------------------------------------------
+POST 1
+<!-- wam:quote-begin -->
+
+WAM v0.1.12.
+
+The solo miner used to read three of the node's answers as a refusal when
+each of them means a race you lost, and told you to stop. Two people shut
+down working machines on that advice in one day.
+
+Fixed. Update.
+
+wamcoin.org/downloads/
+
+---------------------------------------------------------------
+POST 2 - a reply to post 1
+
+Also in v0.1.12: nothing we ship has an executable stack any more.
+
+RandomX ships assembly with no stack note, so the linker marked the whole
+node RWE. Found with readelf by somebody who had to build Core from source
+to get around it.
+
+wamcoin.org/security
+<!-- wam:quote-end -->
+---------------------------------------------------------------
+POST 3 - a reply to post 2. The links, and where people actually talk.
+         DRAFTED, NEVER SENT.
+
+WAM's source lives in three places, at three companies:
+
+gitlab.com/WAMCoin/wam-coin
+github.com/wamcoin-core-dev/wam-coin
+gitea.com/WAMCoin/wam-coin
+
+wamcoin.org
+wamcoin.net
+
+Questions and the technical discussion are on Discord:
+https://discord.gg/Gxvmrjy9Qb

@@ -1,0 +1,41 @@
+POST THIS AS A SELF POST FROM u/WAMCoinCore
+===========================================
+
+Title and body. No figures that move.
+
+
+TITLE
+-----
+
+WAM v0.1.13 — ZMQ on all three platforms, and every archive carries its own libraries
+
+
+BODY
+----
+
+WAM Coin is a Bitcoin Core v28.1 fork with RandomX proof of work, so it mines on an ordinary CPU. 22,000,000 cap, halving every 200,000 blocks, two-minute blocks. Mainnet has been live since 15 September.
+
+**ZMQ is on.** A node can now say the moment it has something — `-zmqpubhashblock`, `-zmqpubhashtx`, `-zmqpubrawblock`, `-zmqpubrawtx`, `-zmqpubsequence`, each with its own high-water mark — instead of being asked every few seconds whether anything happened. An explorer, a pool, a wallet or something you write yourself can stop polling the chain. It is built on Linux, Windows and macOS alike.
+
+**Every archive now carries the libraries it needs**, the `wam-qt` wallet included. The wallet had been excused from the check that enforces that, and the excuse was the fault: unpacked on a machine that has never compiled anything it stopped on a missing shared object, which reads as a broken download rather than as a library you lack.
+
+The example configuration is generated from `wamd -help` rather than written by hand, so it cannot drift from the binary. 761 lines and 152 options, ten of them the ZMQ ones. The previous release's had 126 and named none of them.
+
+Nothing here touches consensus. A node on v0.1.12 is on the same chain and stays on it.
+
+Before it shipped, `wam-miner --solo` was run against the signed archives themselves — not a local build — on all three platforms. Two blocks mined and accepted on each, the reward reaching the address given.
+
+Downloads, with checksums and a signature you can check against a key published long before this release:
+
+* https://wamcoin.org/downloads/
+* https://wamcoin.net
+
+Discussion, questions, and the people running it: https://discord.gg/Gxvmrjy9Qb
+
+Source, in three places at three companies:
+
+* https://gitlab.com/WAMCoin/wam-coin
+* https://github.com/wamcoin-Project/wam-coin
+* https://gitea.com/WAMCoin/wam-coin
+
+Verify before you run it. `verify_release.sh` checks the signature over SHA256SUMS and then every file against SHA256SUMS, and a signature covers the files and never the place they are hosted.

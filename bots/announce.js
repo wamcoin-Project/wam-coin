@@ -320,6 +320,10 @@ const MANDATORY = /^[ \t>*_]*MANDATORY:[ \t]*(.+)$/im;
 // config change. The last move was not: it took thirty-two files.
 const DOWNLOADS_URL = process.env.WAM_DOWNLOADS_URL
     || 'https://wamcoin.org/downloads/';
+// The second name, empty on purpose, named before it is needed. See the block
+// that prints it for why a message nobody can edit must carry both.
+const RESERVE_URL = process.env.WAM_RESERVE_URL || 'https://wamcoin.net';
+
 const SOURCES = (process.env.WAM_SOURCES || [
     'https://gitlab.com/WAMCoin/wam-coin',
     'https://github.com/wamcoin-Project/wam-coin',
@@ -486,10 +490,23 @@ function releaseMessage(release) {
         // project owns, and the source is named in all three places it is
         // published. A reader who finds one of them gone does not have to ask
         // anybody where to go next.
+        // AND THE NAME THAT IS HELD IN RESERVE, WHICH WAS MISSING.
+        //
+        // The reasoning above goes one level short. It moved the download
+        // line off a host account and onto our own domain -- and then named
+        // that domain alone, in a message that cannot be edited afterwards.
+        // wamcoin.net exists for the day wamcoin.org does not, and
+        // CHANNELS.txt revision 5 gives the reason: a name that first appears
+        // during an outage cannot be told from an impostor's, and an outage
+        // is exactly when a reader can check least. It has to be written
+        // where people already are, before it is needed. Every release
+        // announcement this bot has sent named one domain.
         ...(DOWNLOADS_URL ? [b('Download'), t(DOWNLOADS_URL), ``] : []),
         b('Source, in three places'),
         ...SOURCES.map((u) => t(u)),
         ``,
+        ...(RESERVE_URL ? [b('If this project\'s name is ever lost, it moves here and nowhere else'),
+                           t(RESERVE_URL), ``] : []),
         t(release.url),
         ``,
         i('Verify the checksums before you run it.')

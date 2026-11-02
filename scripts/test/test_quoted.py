@@ -35,14 +35,22 @@
 
 from __future__ import annotations
 
+import os
 import pathlib
+import shutil
 import subprocess
 import sys
+import tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "scripts" / "lib"))
 
 import quoted  # noqa: E402
+
+# The shell twin, sourced by the test that proves the two agree. As_posix so
+# the path works when bash is WSL or Git Bash and the repository is on a
+# Windows drive.
+SH_LIB = (ROOT / "scripts" / "lib" / "quoted.sh").as_posix()
 
 for _stream in (sys.stdout, sys.stderr):
     try:
@@ -129,6 +137,72 @@ def test_line_numbers_survive():
 def test_a_last_line_that_is_quoted_is_not_lost():
     text = f"a\n{L}\n"
     assert len(quoted.strip_quoted(text).splitlines()) == 2
+
+
+def test_the_shell_twin_blanks_exactly_what_python_blanks():
+    """quoted.sh and quoted.py must not be able to disagree.
+
+    They did, for three weeks. quoted.py anchored the two region marks to the
+    whole line on 8 October, after a docstring that NAMED the mark silenced
+    the rest of its file. quoted.sh kept matching the words anywhere on a line
+    under a header reading "same marks, same meaning, one convention" -- so
+    every shell check went blind at the first sentence that mentions a mark,
+    in quoted.py's own header among others. Nothing compared the twins, which
+    is why nothing said so.
+
+    awk cannot import a Python regex, so the rule is written twice. This test
+    is the thing that keeps the two copies honest: it feeds both the same text
+    and requires byte-identical output.
+    """
+    if not shutil.which("bash") or not shutil.which("awk"):
+        return  # nothing to compare against on this machine
+
+    cases = [
+        # the plain region
+        f"a claim\n<!-- {B} -->\nhidden\n<!-- {E} -->\nshown\n",
+        # the mark named in a sentence: the fault itself
+        f"Lines the author marked, or inside a {B} region, are skipped.\n"
+        f"a claim that must stay readable\n",
+        # the mark inside a string, and inside a shell argument
+        f'    print("# {B}\\n")\na claim\n',
+        f'    ok "every {B} has its end"\na claim\n',
+        # every comment syntax that may carry one
+        f"# {B}\nhidden\n# {E}\nshown\n",
+        f"    #   {E}   \nshown\n",
+        # the per-line mark, which is deliberately NOT anchored
+        f"the old password was hunter2.   # {L}\na real claim\n",
+        # a region left open runs to the end of the file, in both
+        f"a claim\n<!-- {B} -->\nhidden\nalso hidden\n",
+        # a close with no open
+        f"a claim\n<!-- {E} -->\nshown\n",
+    ]
+
+    disagree = []
+    with tempfile.TemporaryDirectory() as d:
+        for i, text in enumerate(cases):
+            p = os.path.join(d, f"case{i}.txt")
+            # Newline written through, not translated: the shell twin reads
+            # the bytes and a \r would land inside the anchored pattern and
+            # fail the $ -- which is how this project's signatures broke once.
+            with open(p, "w", encoding="utf-8", newline="") as fh:
+                fh.write(text)
+
+            r = subprocess.run(
+                ["bash", "-c",
+                 f'. "{SH_LIB}"; unquoted "$1"', "_", p],
+                capture_output=True, text=True, timeout=60)
+            assert r.returncode == 0, f"quoted.sh failed: {r.stderr.strip()}"
+
+            # splitlines on both sides: awk ends its last line, Python's
+            # strip_quoted preserves whatever the text had, and a trailing
+            # newline is not the thing under test here.
+            from_sh = r.stdout.splitlines()
+            from_py = quoted.strip_quoted(text).splitlines()
+            if from_sh != from_py:
+                disagree.append(f"case {i}: sh={from_sh} py={from_py}")
+
+    assert not disagree, ("the twins enforce different rules:\n        "
+                          + "\n        ".join(disagree))
 
 
 def test_every_mark_in_the_repository_is_balanced():

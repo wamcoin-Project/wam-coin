@@ -63,6 +63,7 @@ set -uo pipefail
 SCRIPTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 . "$SCRIPTS_DIR/lib/python.sh"
 . "$SCRIPTS_DIR/lib/wamcli.sh"
+. "$SCRIPTS_DIR/lib/remote.sh"
 
 GRN=$'\033[32m'; RED=$'\033[31m'; YLW=$'\033[33m'; BLD=$'\033[1m'; OFF=$'\033[0m'
 FAIL=0       # nodes were compared and they differ          -> exit 1
@@ -103,63 +104,47 @@ fi
 # an empty flag string -- and an empty flag string is the testnet node.
 CLI="wam-cli $(wam_cli_flags "$NETWORK")" || exit 2
 
-# Two attempts, because an empty answer here means "not compared" and one
-# lost packet should not cost a comparison. On 18 September a single blip
-# reported US-east unread, and with it the only question this file exists to
-# answer; the same host answered in three seconds when asked again by hand.
+# The retry lives in lib/remote.sh now, along with the two statuses that are
+# not answers -- ssh's 255 and timeout's 124. The private copy that used to
+# be here retried on an EMPTY reply instead, which is the same intent read
+# off the wrong signal: a host returning an empty string because wam-cli is
+# not installed was asked twice, and a host that dropped the connection
+# after printing one line was not asked again at all.
 #
-# Only an EMPTY reply is retried. A host that answers something -- even an
-# error -- has been reached, and asking twice would hide a real fault behind
-# a second roll of the dice.
-rsh() {
-    local out
-    out="$(timeout 45 ssh -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -o BatchMode=yes -o ConnectTimeout=15 "root@$1" "$2" 2>/dev/null)"
-    if [ -z "$out" ]; then
-        sleep 2
-        out="$(timeout 45 ssh -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -o BatchMode=yes -o ConnectTimeout=15 "root@$1" "$2" 2>/dev/null)"
-    fi
-    printf '%s' "$out"
-}
-
-echo "=================================================================="
-echo " Do the deployed nodes agree?  [$NETWORK]"
-echo "=================================================================="
-
-# ---------------------------------------------------------------------------
-printf '\n%sreachable%s\n' "$BLD" "$OFF"
-
-LIVE=()
-for h in "${HOSTS[@]}"; do
-    if [ -n "$(rsh "$h" "$CLI getblockcount")" ]; then
-        ok "$h"
-        LIVE+=("$h")
-    else
-        unknown "$h -- no answer from wam-cli over ssh; it was not compared"
-    fi
-done
-
-if [ "${#LIVE[@]}" -lt 2 ]; then
-    # The line itself says nothing could be compared. Exit 2 says the same
-    # thing to the machine reading the exit code, instead of claiming a
-    # disagreement between nodes that were never asked.
-    printf '\n%sfewer than two nodes answered -- nothing can be compared%s\n' "$YLW" "$OFF"
-    exit 2
-fi
-
-# ---------------------------------------------------------------------------
-printf '\n%sthe same code%s\n' "$BLD" "$OFF"
-
-# Every wam-* executable, not just wamd. A wam-cli that disagrees with its
-# daemon is a subtler version of the same problem.
+# ONE CONNECTION PER HOST, NOT SIX.
 #
-# LC_ALL=C on the sort is load-bearing, not decoration. Without it each host
-# sorts in its own locale: under C the hyphen sorts before a letter, so wamd
-# comes last, while a UTF-8 locale ignores punctuation in its first pass and
-# puts wamd second. Identical binaries then produce differently ordered lists
-# and this reports a disagreement that does not exist -- and a check that
-# cries wolf is one nobody reads, which is the failure this file exists to
-# prevent.
+# This file opened six: reachable, binaries, helper scripts, genesis, height,
+# and the block at the common height. On three machines that is eighteen ssh
+# handshakes, and on the founder's link a handshake costs five to fifteen
+# seconds before any work begins -- so the ops panel gave this check 150
+# seconds and watched it spend most of them saying hello, then printed "did
+# not finish" about a network that was perfectly healthy.
+#
+# Five of the six are now one keyed reply. The sixth cannot join them: the
+# height to compare at is the lowest every node has reached, which is not
+# known until every node has answered. So it stays a second round trip, and
+# two is the floor rather than an oversight.
+
+# WHAT THIS FILE CANNOT ANSWER, so nobody reads a green here as more than it is.
+#
+# It compares the hosts TO EACH OTHER. A fleet that is uniformly wrong is
+# therefore the one case it is blind to, and it is not an exotic case -- it is
+# what a deploy that silently did nothing produces, on every machine at once.
+#
+# On 2026-11-01 this printed "byte-identical binaries" about France and
+# Singapore while wam-tx, wam-util and wam-wallet on both were pinned at
+# v0.1.7, six releases back, since 11 September. They agreed perfectly, so it
+# said so, correctly and uselessly.
+#
+# scripts/check_running_version.py asks the other question: does every machine
+# run the version we PUBLISH -- compared against the newest signed release in
+# our own download directory, which is outside the fleet. The two are not
+# alternatives; neither one covers the other.
+
 # THE FIVE CONSENSUS PROGRAMS, and deliberately not everything named wam*.
+#
+# Every wam-* executable, not just wamd: a wam-cli that disagrees with its
+# daemon is a subtler version of the same problem.
 #
 # This used to fingerprint /usr/local/bin/wam*, which is also where the
 # operational shell scripts live -- wam-backup.sh, wam-concentration-log.sh.
@@ -173,24 +158,86 @@ printf '\n%sthe same code%s\n' "$BLD" "$OFF"
 #
 # on a network whose five consensus programs were byte-identical. A check that
 # says "do not launch" about a log script is a check that gets ignored on the
-# day it means something.
-#
-# A wam-cli that disagrees with its daemon is still a real hazard, so all five
-# are compared, not just wamd.
+# day it means something. The helper scripts are still worth a word -- they
+# differ for a reason, and a reason someone should be able to state -- so they
+# come back under HELPER and are reported as a note, never as a finding.
 CONSENSUS_BINARIES='wamd wam-cli wam-tx wam-util wam-wallet'
 
-declare -A FINGERPRINT
-for h in "${LIVE[@]}"; do
-    FINGERPRINT[$h]="$(rsh "$h" "for f in $CONSENSUS_BINARIES; do p=/usr/local/bin/\$f; [ -f \"\$p\" ] && printf '%s %s\n' \"\$f\" \"\$(sha256sum \"\$p\" | cut -c1-16)\"; done | LC_ALL=C sort" | tr -d '\r')"
+# LC_ALL=C on the sort is load-bearing, not decoration. Without it each host
+# sorts in its own locale: under C the hyphen sorts before a letter, so wamd
+# comes last, while a UTF-8 locale ignores punctuation in its first pass and
+# puts wamd second. Identical binaries then produce differently ordered lists
+# and this reports a disagreement that does not exist -- and a check that
+# cries wolf is one nobody reads, which is the failure this file exists to
+# prevent.
+probe() {
+    local cli="$1"
+    cat <<PROBE
+H=\$($cli getblockcount 2>/dev/null)
+case "\$H" in ''|*[!0-9]*) : ;; *) echo "HEIGHT \$H" ;; esac
+G=\$($cli getblockhash 0 2>/dev/null)
+case "\$G" in '') : ;; *) echo "GENESIS \$G" ;; esac
+for f in $CONSENSUS_BINARIES; do
+    p=/usr/local/bin/\$f
+    [ -f "\$p" ] && printf 'BIN %s %s\n' "\$f" "\$(sha256sum "\$p" | cut -c1-16)"
+done | LC_ALL=C sort
+ls -1 /usr/local/bin/wam*.sh 2>/dev/null | xargs -r -n1 basename \
+    | LC_ALL=C sort | sed 's/^/HELPER /'
+PROBE
+}
+
+echo "=================================================================="
+echo " Do the deployed nodes agree?  [$NETWORK]"
+echo "=================================================================="
+
+# ---------------------------------------------------------------------------
+printf '\n%sreachable%s\n' "$BLD" "$OFF"
+
+LIVE=()
+declare -A FINGERPRINT HELPERS GENESIS HEIGHT
+
+# 60, not the 45 default: this reply carries five sha256sums as well as two
+# RPC calls, and a node mid-reindex can take its time over getblockcount.
+REMOTE_TIMEOUT=60
+
+for h in "${HOSTS[@]}"; do
+    remote_ask "$h" "$(probe "$CLI")"
+    reply="$REMOTE_OUT"
+
+    # Unreachable and "answered, but with nothing" are different, and the
+    # distinction is the whole reason lib/remote.sh exists. Both end the host
+    # here, but only one of them is about the network.
+    if [ "$REMOTE_RC" = "$REMOTE_UNREACHABLE" ]; then
+        unknown "$h -- ssh could not reach it; it was not compared"
+        continue
+    fi
+    if [ -z "$(remote_field HEIGHT "$reply")" ]; then
+        unknown "$h -- answered, but wam-cli gave no height; it was not compared"
+        continue
+    fi
+
+    ok "$h"
+    LIVE+=("$h")
+    HEIGHT[$h]="$(remote_field HEIGHT "$reply" | tr -d ' ')"
+    GENESIS[$h]="$(remote_field GENESIS "$reply" | tr -d ' ')"
+    FINGERPRINT[$h]="$(remote_field BIN "$reply")"
+    HELPERS[$h]="$(remote_field HELPER "$reply")"
 done
 
-# The helper scripts are still worth a word -- they differ for a reason, and a
-# reason someone should be able to state. Said as a note, never as a finding.
-declare -A HELPERS
-for h in "${LIVE[@]}"; do
-    HELPERS[$h]="$(rsh "$h" 'ls -1 /usr/local/bin/wam*.sh 2>/dev/null | xargs -r -n1 basename | LC_ALL=C sort' | tr -d '\r')"
-done
+if [ "${#LIVE[@]}" -lt 2 ]; then
+    # The line itself says nothing could be compared. Exit 2 says the same
+    # thing to the machine reading the exit code, instead of claiming a
+    # disagreement between nodes that were never asked.
+    printf '\n%sfewer than two nodes answered -- nothing can be compared%s\n' "$YLW" "$OFF"
+    exit 2
+fi
 
+# ---------------------------------------------------------------------------
+printf '\n%sthe same code%s\n' "$BLD" "$OFF"
+
+# The fingerprints and the helper list came back with the height and the
+# genesis hash, in the one reply above. See probe() for what was asked and
+# why it is asked once.
 REF="${LIVE[0]}"
 for h in "${LIVE[@]:1}"; do
     if [ "${FINGERPRINT[$h]}" = "${FINGERPRINT[$REF]}" ]; then
@@ -219,12 +266,7 @@ done
 # ---------------------------------------------------------------------------
 printf '\n%sthe same chain%s\n' "$BLD" "$OFF"
 
-declare -A GENESIS HEIGHT
-for h in "${LIVE[@]}"; do
-    GENESIS[$h]="$(rsh "$h" "$CLI getblockhash 0" | tr -d '\r\n ')"
-    HEIGHT[$h]="$(rsh "$h" "$CLI getblockcount" | tr -d '\r\n ')"
-done
-
+# Both came back with the fingerprints, in the one reply per host above.
 for h in "${LIVE[@]:1}"; do
     if [ -n "${GENESIS[$h]}" ] && [ "${GENESIS[$h]}" = "${GENESIS[$REF]}" ]; then
         ok "$h shares the genesis block of $REF"
@@ -247,9 +289,18 @@ if [ -z "$COMMON" ]; then
     unknown "no node reported a usable height -- no history was compared"
 else
     printf '  comparing at height %s, the lowest every node has reached\n' "$COMMON"
+    # The second and last round trip. It could not be folded into the first:
+    # this height is the lowest any node reached, so it is not known until
+    # all of them have answered.
     declare -A ATCOMMON
+    REMOTE_TIMEOUT=45
     for h in "${LIVE[@]}"; do
-        ATCOMMON[$h]="$(rsh "$h" "$CLI getblockhash $COMMON" | tr -d '\r\n ')"
+        remote_ask "$h" "$CLI getblockhash $COMMON"
+        if [ "$REMOTE_RC" = "$REMOTE_UNREACHABLE" ]; then
+            ATCOMMON[$h]=""
+        else
+            ATCOMMON[$h]="$(printf '%s' "$REMOTE_OUT" | tr -d '\r\n ')"
+        fi
         printf '    %-18s tip=%-6s block[%s]=%s\n' \
             "$h" "${HEIGHT[$h]}" "$COMMON" "${ATCOMMON[$h]:0:24}"
     done

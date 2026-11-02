@@ -91,11 +91,46 @@ command -v readelf >/dev/null 2>&1 || {
     exit 2
 }
 
-# Present wherever a C++ program runs at all. The glibc floor these imply is
-# a separate question, already asked by package_release.sh.
-BASE_ALLOWED='^(libc|libm|libdl|librt|libpthread)\.so\.[0-9]+$|^libstdc\+\+\.so\.6$|^libgcc_s\.so\.1$|^ld-linux-.*\.so\.[0-9]+$'
+# The list lives in lib/shared_deps.sh now, with the code that CARRIES
+# everything outside it. It was defined here alone, so the thing that judges a
+# release held the rule and the thing that builds one had no opinion at all --
+# and the two could never disagree out loud, because only one of them knew.
+. "$ROOT/scripts/lib/shared_deps.sh"
+BASE_ALLOWED="$SHARED_DEPS_BASE"
+
+# ASK THE QUESTION THE LOADER ASKS, NOT A QUESTION THAT RESEMBLES IT.
+#
+# The first version of "does the archive carry this?" searched the binary's
+# own directory. That is nearly right and fails on the one layout we ship:
+# wam-qt sits in bin/ and its seventeen libraries in lib/ beside it, so a
+# search rooted at bin/ finds none of them and the packaging step failed a
+# wallet that was correctly built -- on 2026-10-29, at the very last gate,
+# for the third time that afternoon.
+#
+# The honest question is whether the dynamic loader will find the file, and
+# the loader looks in RUNPATH/RPATH with $ORIGIN resolved to the directory
+# of the binary being loaded. So this reads that, exactly as ld.so does,
+# rather than guessing at a layout. A binary with no RPATH gets no answers
+# from it and falls through to the tree scan below, which is right for a
+# loose file with no archive around it.
+loader_finds() {
+    local f="$1" lib="$2" origin d
+    origin="$(cd "$(dirname "$f")" 2>/dev/null && pwd)" || return 1
+    while IFS= read -r d; do
+        [ -n "$d" ] || continue
+        d="${d//\$\{ORIGIN\}/$origin}"
+        d="${d//\$ORIGIN/$origin}"
+        [ -e "$d/$lib" ] && return 0
+    done < <(readelf -d "$f" 2>/dev/null \
+             | sed -n 's/.*R\(UN\)\?PATH.*\[\(.*\)\].*/\2/p' | tr ':' '\n')
+    return 1
+}
 
 # Only for wam-qt, only as a warning, and only these. See the header.
+#
+# This exists for a state that should no longer occur: Qt now comes out of
+# depends, so a wam-qt that names libQt5 was built against the system toolkit
+# by accident. The warning stays until a release has shipped without it.
 QT_ALLOWED='^libQt5[A-Za-z]+\.so\.[0-9]+$|^libqrencode\.so\.[0-9]+$'
 
 # ---------------------------------------------------------------------------
@@ -129,9 +164,12 @@ fi
 # Expand each target into a list of files.
 # ---------------------------------------------------------------------------
 FILES=()
+# Which unpacked tree each file came out of, so the loop below can ask whether
+# a library it names travels in the same archive.
+declare -A TREE_OF
 for t in "${TARGETS[@]}"; do
     if [ -d "$t" ]; then
-        while IFS= read -r f; do FILES+=("$f"); done \
+        while IFS= read -r f; do FILES+=("$f"); TREE_OF["$f"]="$t"; done \
             < <(find "$t" -type f -perm -u+x 2>/dev/null | sort)
     elif [[ "$t" == *.tar.gz || "$t" == *.tgz ]]; then
         sub="$WORK/$(basename "$t" .tar.gz)"
@@ -139,10 +177,11 @@ for t in "${TARGETS[@]}"; do
         tar xzf "$t" -C "$sub" 2>/dev/null || {
             printf '  %sFAIL%s  %s could not be unpacked\n' "$RED" "$OFF" "$t"
             FAIL=$((FAIL+1)); continue; }
-        while IFS= read -r f; do FILES+=("$f"); done \
+        while IFS= read -r f; do FILES+=("$f"); TREE_OF["$f"]="$sub"; done \
             < <(find "$sub" -type f -perm -u+x 2>/dev/null | sort)
     elif [ -f "$t" ]; then
         FILES+=("$t")
+        TREE_OF["$t"]="$(dirname "$t")"
     else
         printf '  %sFAIL%s  %s is not here\n' "$RED" "$OFF" "$t"
         FAIL=$((FAIL+1))
@@ -160,10 +199,32 @@ for f in "${FILES[@]}"; do
     needed="$(readelf -d "$f" 2>/dev/null \
               | sed -n 's/.*Shared library: \[\(.*\)\].*/\1/p' | sort -u)"
 
+    # A LIBRARY WE SHIP IS NOT ONE A STRANGER IS ASKED FOR.
+    #
+    # This file's own title is "what a shipped binary demands from a
+    # STRANGER'S machine", and it was answering a narrower question: what the
+    # binary names at all. The two are the same only while the archive carries
+    # nothing but executables.
+    #
+    # They stopped being the same on 2026-10-29. depends builds the X11 stack
+    # shared, by upstream's own --disable-static, so wam-qt names seventeen
+    # .so files it links correctly from depends. Carrying them in the archive
+    # and pointing the binary at them with an RPATH is the fix -- and this
+    # check would still have failed the result, because it never looked in the
+    # tarball it had just unpacked.
+    #
+    # So: anything the archive holds beside the binary is carried. Anything it
+    # does not hold, and that is not the base system, is still a failure. No
+    # library is allowed by name; the rule has no list to grow.
+    sibling_root="${TREE_OF[$f]:-$(dirname "$f")}"
     carried=""; extra=""; toolkit=""
     while IFS= read -r lib; do
         [ -n "$lib" ] || continue
         if printf '%s' "$lib" | grep -qE "$BASE_ALLOWED"; then
+            carried="$carried $lib"
+        elif loader_finds "$f" "$lib"; then
+            carried="$carried $lib"
+        elif [ -n "$(find -L "$sibling_root" -name "$lib" -type f 2>/dev/null | head -1)" ]; then
             carried="$carried $lib"
         elif [ "$name" = "wam-qt" ] && printf '%s' "$lib" | grep -qE "$QT_ALLOWED"; then
             toolkit="$toolkit $lib"

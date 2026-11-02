@@ -39,29 +39,21 @@
 #  404 for this repository -- a check that could never pass.
 # ===========================================================================
 
-import json
 import pathlib
-import re
 import sys
 import urllib.error
-import urllib.request
 
 RED = "\033[31m"; GRN = "\033[32m"; YEL = "\033[33m"; BLD = "\033[1m"; OFF = "\033[0m"
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
-# Where the downloads actually are.
-#
-# This asked api.github.com until 2026-09-24, when the account was suspended
-# and the check reported "the documented version still exists FAIL -- HTTP
-# 404" about documentation that was correct. It was asking the wrong question:
-# what matters is not whether a release exists on somebody's platform but
-# whether the URL the instructions give a reader answers when he fetches it.
-#
-# So it asks our own download directory, which is what the documents name.
-DOWNLOADS = "https://wamcoin.org/downloads/"
 
+# Where the downloads actually are, and why: scripts/lib/releases.py. The
+# constant and the history that chose it moved there on 2026-11-01, with the
+# function that uses them. json, re and urllib.request went with it; they had
+# nothing left to do here, and json had had nothing to do here for weeks.
 sys.path.insert(0, str(REPO / "scripts" / "lib"))
 import docversion  # noqa: E402  -- needs the path above
+import releases as releases_lib  # noqa: E402  -- needs the path above
 
 # Discovered, not listed -- and by the same rule set_version.py uses to decide
 # what to rewrite, from the same module, so the writer and the auditor cannot
@@ -92,33 +84,13 @@ def bad(m):  print(f"  {RED}FAIL{OFF}  {m}"); _fails.append(m)
 def warn(m): print(f"  {YEL}!!{OFF}    {m}")
 
 
-def releases():
-    """What versions can actually be downloaded, read from the index page.
-
-    The directory is served with autoindex, so its HTML lists one link per
-    version. Parsing that is cruder than an API and it has one large
-    advantage: it sees exactly what a reader's browser would see.
-    """
-    req = urllib.request.Request(DOWNLOADS, headers={"User-Agent": "wam-check-docs"})
-    with urllib.request.urlopen(req, timeout=25) as r:
-        html = r.read().decode("utf-8", "replace")
-
-    out = {}
-    for tag in sorted(set(re.findall(r'href="v([0-9.]+)/"', html))):
-        # A version directory is only real if it holds a signed list. A folder
-        # with archives and no SHA256SUMS.asc is a download nobody can check,
-        # which this project says it will not publish.
-        try:
-            req2 = urllib.request.Request(DOWNLOADS + "v" + tag + "/SHA256SUMS.asc",
-                                          headers={"User-Agent": "wam-check-docs"})
-            with urllib.request.urlopen(req2, timeout=25) as r2:
-                signed = bool(r2.read(1))
-        except Exception:
-            signed = False
-        out[tag] = {"title": "v" + tag, "has_binaries": signed}
-
-    newest = max(out, key=lambda t: [int(x) for x in t.split(".")]) if out else None
-    return out, newest
+# What can be downloaded, and which of those is newest: scripts/lib/releases.py.
+#
+# It used to be written out here. check_running_version.py needs the same
+# answer -- our machines must run the version our documents name -- and a
+# second copy of this function is how the auditor and the writer came apart
+# in docversion.py's own history. One definition, imported twice.
+releases = releases_lib.published
 
 
 def main():

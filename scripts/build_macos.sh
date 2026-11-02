@@ -63,6 +63,10 @@ BUILD_DIR="${BUILD_DIR:-$HERE/build}"
 CORE_DIR="$BUILD_DIR/wam-core"
 RANDOMX_DIR="$BUILD_DIR/randomx"
 JOBS="${JOBS:-$(sysctl -n hw.ncpu 2>/dev/null || echo 4)}"
+
+# What every release's node must be able to do, for all three platforms, in
+# one file. See its header for why it is not three lines in three scripts.
+. "$HERE/scripts/lib/release_capabilities.sh"
 OUT_DIR="${OUT_DIR:-$HERE/out/macos-$MACH}"
 
 echo
@@ -167,7 +171,7 @@ if [ "$WITH_GUI" = "1" ]; then
 fi
 
 make -C "$CORE_DIR/depends" \
-    "HOST=$HOST_TRIPLET" $QT_OPT NO_ZMQ=1 NO_UPNP=1 NO_NATPMP=1 NO_USDT=1 \
+    "HOST=$HOST_TRIPLET" $QT_OPT NO_UPNP=1 NO_NATPMP=1 NO_USDT=1 \
     -j"$JOBS" > "$BUILD_DIR/depends-macos.log" 2>&1 \
     || die "depends failed for $HOST_TRIPLET. The last 30 lines:
 $(tail -30 "$BUILD_DIR/depends-macos.log" | sed 's/^/          /')
@@ -184,7 +188,6 @@ GUI_FLAG="--without-gui"
 CONFIG_SITE="$CONFIG_SITE_PATH" ./configure \
     --prefix=/ \
     "$GUI_FLAG" \
-    --disable-zmq \
     --disable-tests-fuzz-binary \
     CPPFLAGS="$RANDOMX_CFLAGS" \
     LIBS="$RANDOMX_LIBS" \
@@ -194,6 +197,10 @@ $(tail -30 "$BUILD_DIR/configure-macos.log" | sed 's/^/          /')
           Full log: $BUILD_DIR/configure-macos.log
           Core's own: $CORE_DIR/config.log"
 ok "configured"
+
+# The same list every platform is held to. A release is Windows, Linux and
+# macOS together, so a capability proved on one of them is proved on none.
+assert_release_capabilities macos "$BUILD_DIR/configure-macos.log"
 
 log "compiling with $JOBS jobs"
 make -j"$JOBS" > "$BUILD_DIR/make-macos.log" 2>&1 \

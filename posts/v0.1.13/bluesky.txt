@@ -1,0 +1,22 @@
+BLUESKY — @wamcoin.org. 300 characters per post, counted.
+=========================================================
+
+POST 1
+
+WAM v0.1.13: ZMQ is on, on Linux, Windows and macOS. A node can say the moment it has a block instead of waiting to be asked, so anything watching the chain can stop polling it. Every archive now carries its own libraries, the wallet included.
+
+wamcoin.org/downloads/
+https://discord.gg/Gxvmrjy9Qb
+
+
+POST 2
+
+WAM's source is in three places, at three companies:
+
+gitlab.com/WAMCoin/wam-coin
+github.com/wamcoin-Project/wam-coin
+gitea.com/WAMCoin/wam-coin
+
+Site wamcoin.org — and wamcoin.net, written down empty before it is needed.
+
+Questions: https://discord.gg/Gxvmrjy9Qb

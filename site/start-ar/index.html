@@ -100,17 +100,17 @@ wam-qt-v0.1.11-arm64-apple-darwin.tar.gz</code></pre>
 <p><strong>وإن كنت تُشغّل <code>wamd</code> وتريد الانتقال إلى النافذة، فاقرأ <a href="/mine/#moving-from-the-terminal-node-to-the-graphical-wallet">الانتقال في docs/MINE.md</a> قبل أن تبدأ.</strong> ثلاثةٌ تُوقف الناس في الطريق، ولا واحدٌ منها يقول عن نفسه شيئاً في حينه: المحفظة لا تفتح منفذ الاتّصال الذي يفتحه <code>wamd</code> لنفسه، فيقف المعدّن الفرديّ بلا رسالة؛ وتثبيتٌ أقدمُ من v0.1.10 على ويندوز أو ماك يحفظ السلسلة والمحفظة في مجلّدٍ اسمه <code>Bitcoin</code>، فمحفظةٌ تُفتح بلا <code>-datadir</code> تفتح مجلّداً فارغاً، ومحفظةٌ سليمةٌ تماماً تبدو ضائعة؛ وزرّ <strong>Receive</strong> يُعطي عنواناً جديداً في كلّ ضغطة، وهي محفظةٌ واحدةٌ بعناوين كثيرة لا محفظةٌ جديدة. والصفحة فيها الانتقال كلّه في خمسة أوامر.</p>
 <p>وبقيّة هذه الصفحة بالطرفيّة، وكلّ ما فيها يبقى صحيحاً.</p>
 <h3 id="">التنزيل</h3>
-<pre><code>curl -LO https://wamcoin.org/downloads/v0.1.12/wam-coin-v0.1.12-x86_64-linux-gnu.tar.gz
-curl -LO https://wamcoin.org/downloads/v0.1.12/SHA256SUMS</code></pre>
+<pre><code>curl -LO https://wamcoin.org/downloads/v0.1.13/wam-coin-v0.1.13-x86_64-linux-gnu.tar.gz
+curl -LO https://wamcoin.org/downloads/v0.1.13/SHA256SUMS</code></pre>
 <h3 id="">تأكّد أنه ملفّنا فعلاً</h3>
-<pre><code>curl -LO https://wamcoin.org/downloads/v0.1.12/SHA256SUMS.asc
+<pre><code>curl -LO https://wamcoin.org/downloads/v0.1.13/SHA256SUMS.asc
 curl -LO https://wamcoin.org/verify_release.sh
 curl -LO https://wamcoin.org/SIGNING-KEY.asc
 bash verify_release.sh .</code></pre>
 <p>يجب أن ترى كلمة <code>OK</code>. وإن رأيت <code>FAILED</code> فالتنزيل تشوّه أو بُدِّل — احذفه ونزّله من جديد. <strong>لا تتخطَّ هذه الخطوة.</strong> تكلّف ثانية واحدة، وهي الشيء الوحيد الفاصل بينك وبين ملف وضعه غيرنا مكانه.</p>
 <h3 id="">الفكّ والتشغيل</h3>
-<pre><code>tar -xzf wam-coin-v0.1.12-x86_64-linux-gnu.tar.gz
-cd wam-coin-v0.1.12/bin
+<pre><code>tar -xzf wam-coin-v0.1.13-x86_64-linux-gnu.tar.gz
+cd wam-coin-v0.1.13/bin
 ./wamd -printtoconsole</code></pre>
 <p><strong>أو <code>-daemon</code> بدلاً من <code>-printtoconsole</code> إن أردتها أن تعمل في الخلفيّة.</strong> فـ<code>-printtoconsole</code> يُريك العقدةَ تعمل، وبه تلاحظ الخطأَ قبل أن يخبرك به فحصٌ — لكنّها تموت إذا أغلقتَ الطرفيّة. و<code>-daemon</code> ينجو من ذلك ولا يُريك شيئاً. وتستطيع الاثنين: شغّلها بـ<code>-daemon</code> ثمّ <code>tail -f ~/.wam/debug.log</code> في أيّ نافذة، فترى النصَّ نفسَه. وملفُّ السجلّ يُكتب في الحالات الثلاث.</p>
 <blockquote><p><strong>وإن لم تبدأ، فالسببُ هذا في الغالب.</strong> التنزيلُ يحتاج أربعةَ أشياء من نظامك، ولا شيء غيرها:</p>
@@ -173,10 +173,10 @@ cp /path/to/your/backup.dat ~/.wam/wallets/mine/wallet.dat
 <p>والحاسوب الواحد يفوز نادراً، فالمعدّنون ينضمّون إلى <strong>مجمّع</strong>: يعمل الجميع معاً ويُقسَّم العائد بقدر ما أسهم كلٌّ منهم. دفعات صغيرة منتظمة بدل يانصيب.</p>
 <h3 id="">أولاً: المعدّن تنزيلٌ منفصل</h3>
 <p><strong>المعدّن ليس داخل الأرشيف الذي فككته.</strong> العقدة والمعدّن ملفّان منفصلان، وحتى ١٠ سبتمبر كانت هذه الصفحة تقول لك <code>./wam-miner</code> ولا تقول لك من أين تجلبه. اكتشفها من يعدّن تحت WSL، بعد أن جرّب <code>./wam-cli</code> داخل مجلّد المعدّن فقيل له «لا يوجد ملف بهذا الاسم» — وهو نفس اللبس من الطرف الآخر.</p>
-<table><tr><th>الأرشيف</th><th>ما فيه</th></tr><tr><td><code>wam-coin-v0.1.12-…</code></td><td><code>wamd</code> و<code>wam-cli</code> — العقدة</td></tr><tr><td><code>wam-miner-v0.1.12-…</code></td><td><code>wam-miner</code> — المعدّن وحده</td></tr></table>
-<pre><code>curl -LO https://wamcoin.org/downloads/v0.1.12/wam-miner-v0.1.12-x86_64-linux-gnu.tar.gz
-tar -xzf wam-miner-v0.1.12-x86_64-linux-gnu.tar.gz
-cd wam-miner-v0.1.12
+<table><tr><th>الأرشيف</th><th>ما فيه</th></tr><tr><td><code>wam-coin-v0.1.13-…</code></td><td><code>wamd</code> و<code>wam-cli</code> — العقدة</td></tr><tr><td><code>wam-miner-v0.1.13-…</code></td><td><code>wam-miner</code> — المعدّن وحده</td></tr></table>
+<pre><code>curl -LO https://wamcoin.org/downloads/v0.1.13/wam-miner-v0.1.13-x86_64-linux-gnu.tar.gz
+tar -xzf wam-miner-v0.1.13-x86_64-linux-gnu.tar.gz
+cd wam-miner-v0.1.13
 chmod +x wam-miner</code></pre>
 <p>و<code>chmod</code> هنا لأنّ ملفاً يُفكّ على قرص ويندوز — <code>/mnt/c/...</code> تحت WSL — يفقد صلاحية التنفيذ، فيقول لك <code>bash</code> عندها <code>Permission denied</code>، وهي رسالة تُقرأ «تنزيل معطوب» لا «نظام ملفات مرّ به الملف».</p>
 <h3 id="">وجّه معدّنك إلى المجمّع</h3>

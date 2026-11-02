@@ -709,7 +709,7 @@ guard that is broken. The difference is whether you read it or silence it.
 ### And the box said v0.1.8 while the binaries said v0.1.7
 
 Found by running the finished artifact rather than by reading anything.
-`platform-build #11` produced `wam-coin-v0.1.12-x86_64-w64-mingw32.zip`, and
+`platform-build #11` produced `wam-coin-v0.1.13-x86_64-w64-mingw32.zip`, and
 the node inside it answered
 
 ```

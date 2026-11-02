@@ -1,0 +1,118 @@
+BITCOINTALK - the announcement thread, as a reply.
+==================================================
+The release notes as published, with the links block under them. A forum
+reader clicked into a technical thread, so nothing is cut for length.
+
+---------------------------------------------------------------
+
+WAM Coin v0.1.12 — the miner stops telling good machines to stop, and nothing we ship has an executable stack
+
+MANDATORY: a consensus field was assigned by no network, so which rule a node enforces was left to its compiler, and a node somebody built himself may already be on a different rule than the chain.
+
+If you mine solo, update. Until this release the miner read three of the
+node's answers as refusals when each of them means a race you lost, and then
+told you real money was at stake and not to leave it running. Two people shut
+down working machines on that advice in one day, and nothing was wrong with
+either of them. And everything here — the `wamd` node, the miner and the
+`wam-qt` wallet, on all three platforms — now has a non-executable stack,
+which v0.1.11's node did not: RandomX ships assembly with no stack note, so
+the linker assumed the worst and marked the whole binary. It was found with
+readelf by somebody who had to build Core from source to get around it.
+
+That is the short of it. The rest below is for whoever wants it: the miner
+and the node now agree with each other about every address, the pool stopped
+refusing one valid address in twenty, and there is an example configuration
+listing all 126 options the node accepts.
+
+WHAT ELSE IS IN IT
+------------------
+
+**The miner agrees with the node about addresses.** It gave regtest the
+version bytes 100 and 196 — Bitcoin's numbers — where this chain uses 65 and
+128, so every legacy regtest address a node hands out was refused. It also
+decided an address was bech32 from a prefix where the node requires only the
+first three characters, case-insensitively, and never tries base58 after
+them. A miner could have built a coinbase paying a script his own wallet
+could not match to his address: a valid block, the coins paid, and no error
+at any point.
+
+`scripts/check_address_agreement.py` is the part that will stop the next one.
+The same decision — which script pays this address — is written three times
+in this project: JavaScript in the pool, C++ in the miner, and the node,
+which is consensus. Nothing compared them until now. It generates addresses
+for every network and both script types, asks all three, and fails if any two
+disagree. Run against a mainnet node it agrees on 12,006 addresses.
+
+**The pool.** Address validation refused about one valid base58 address in
+twenty, including this project's own treasury address, because it guessed at
+the format before decoding it; that was found from outside and paid at the
+published rung. A matured block could lose every trace of who was owed what
+if the pool was interrupted in a sub-second window, which is now one Redis
+script that either happens or does not. The PPLNS window was 129 times the
+rule we publish. The same share in two hex cases counted twice. Anyone with a
+socket could park every thread the pool had.
+
+**An example configuration that cannot go stale.** `share/examples/wam.conf`
+lists all 126 options `wamd` accepts, generated from the binary rather than
+written by hand, with a header saying where the file goes and which settings
+are worth a decision. A check compares the committed list against the binary
+and fails when they drift.
+
+**A published way to list a pool.** Operators add their own entry by pull
+request, against a template that asks what a miner needs to know before
+pointing hardware at it — and every address on that page is dialled on every
+sweep, so a pool that stops answering is found here rather than by somebody
+losing a day.
+
+**The security policy carries a table with a price for each class of
+finding.** 21,250 WAM has been paid against it to four people, with every
+amount, the reasoning for it and its transaction id in the same file.
+
+**For anyone building from source:** a clean clone could not get past the
+RandomX step. A grep that found nothing — the normal case on a fresh
+checkout — killed the script through `pipefail` one line in, printing
+nothing. Fixed, and the workflow that found it now runs on every platform
+before a release.
+
+DOWNLOADS
+---------
+
+Node, miner and wallet, for Linux, Windows and macOS:
+
+    wam-coin-v0.1.12-x86_64-linux-gnu.tar.gz
+    wam-coin-v0.1.12-x86_64-w64-mingw32.zip
+    wam-coin-v0.1.12-arm64-apple-darwin.tar.gz
+
+    wam-miner-v0.1.12-x86_64-linux-gnu.tar.gz
+    wam-miner-v0.1.12-x86_64-w64-mingw32.zip
+    wam-miner-v0.1.12-arm64-apple-darwin.tar.gz
+
+    wam-qt-v0.1.12-x86_64-linux-gnu.tar.gz
+    wam-qt-v0.1.12-x86_64-w64-mingw32.zip
+    wam-qt-v0.1.12-arm64-apple-darwin.tar.gz
+
+The wallet is a separate download so that a node is not several times larger
+for the people who never open a window.
+
+Check what you downloaded before you run it:
+
+    bash verify_release.sh .
+
+It verifies the signature over SHA256SUMS against the published key and then
+every file against SHA256SUMS. A signature covers the files and never the
+place they are hosted, so where you fetched them from changes nothing about
+what you can check.
+
+All nine, with SHA256SUMS and SHA256SUMS.asc beside them:
+
+https://wamcoin.org/downloads/v0.1.12/
+
+Source, in three places, at three companies:
+https://gitlab.com/WAMCoin/wam-coin
+https://github.com/wamcoin-core-dev/wam-coin
+https://gitea.com/WAMCoin/wam-coin
+
+https://wamcoin.org
+https://wamcoin.net
+
+The technical discussion is on Discord: https://discord.gg/Gxvmrjy9Qb

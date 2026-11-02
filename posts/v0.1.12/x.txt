@@ -1,0 +1,81 @@
+X — a thread of two. X counts every URL as 23 characters whatever its length.
+=============================================================================
+Counted below, not estimated.
+
+Post 1 leads with the miner rather than the hardening, because a miner who
+shut a machine down on our advice is the person this release was for. The
+consensus line is in post 2: it is the part that needs the word MANDATORY and
+it is also the part a timeline reader will skim, so it gets its own post
+rather than a clause.
+
+SENT: 2026-10-16, posts 1 and 2. POST 3 was not.
+
+The first line of this file still says "a thread of two" and it is right.
+Post 3 was added the same day by 8130e0b, to both this file and bluesky.txt,
+and the public feed of @wamcoin.org -- read on 1 November 2026 -- has posts 1
+and 2 and not post 3. X cannot be read from here without an account, but the
+same post was appended to both files by one commit and is provably absent
+from the one that can be checked.
+
+So the v0.1.12 announcement carried no repository, no second domain and no
+Discord link. The commit that added them is titled "the release threads on X
+and Bluesky carry the Discord line", which was true of the file and not of
+the thread, and nothing checked the difference.
+
+Posts 1 and 2 are left as they went out: a record, not a draft. Post 3 never
+went out, so its bare Discord hostname was written out in full on 1 November,
+like any other draft's.
+
+---------------------------------------------------------------
+POST 1
+<!-- wam:quote-begin -->
+
+WAM v0.1.12.
+
+The solo miner used to read three of the node's answers as a refusal when
+each of them means a race you lost, and told you to stop. Two people shut
+down working machines on that advice in one day.
+
+Fixed. Update.
+
+wamcoin.org/downloads/
+
+---------------------------------------------------------------
+POST 2 - a reply to post 1
+
+Also in v0.1.12: nothing we ship has an executable stack any more.
+
+RandomX ships assembly with no stack note, so the linker marked the whole
+node RWE. Found with readelf by somebody who had to build Core from source
+to get around it.
+
+wamcoin.org/security
+<!-- wam:quote-end -->
+---------------------------------------------------------------
+POST 3 - a reply to post 2. The links, and where people actually talk.
+         DRAFTED, NEVER SENT.
+
+WAM's source lives in three places, at three companies:
+
+gitlab.com/WAMCoin/wam-coin
+github.com/wamcoin-core-dev/wam-coin
+gitea.com/WAMCoin/wam-coin
+
+wamcoin.org
+wamcoin.net
+
+Questions and the technical discussion are on Discord:
+https://discord.gg/Gxvmrjy9Qb
+
+---------------------------------------------------------------
+
+NOTES
+
+No block height and no hash rate. Both move, an X post does not, and a stale
+number is worse than no number on the one platform where a post outlives its
+own facts.
+
+The word MANDATORY is not used here. It is in the release notes and in the
+Discord and Telegram notices the bot sends, where it is one click from the
+explanation. On a timeline it would arrive without that, and a warning that
+cannot be read in full is a warning spent.

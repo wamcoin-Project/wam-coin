@@ -90,6 +90,14 @@ BUILD_DIR="${BUILD_DIR:-$HERE/build}"
 CORE_DIR="$BUILD_DIR/wam-core"
 RANDOMX_DIR="$BUILD_DIR/randomx"
 JOBS="${JOBS:-$(nproc 2>/dev/null || echo 4)}"
+
+# What every release's node must be able to do, for all three platforms, in
+# one file. See its header for why it is not three lines in three scripts.
+. "$HERE/scripts/lib/release_capabilities.sh"
+# What a stranger's machine may be assumed to have, and the code that carries
+# everything outside it into the build. Shared with check_shared_deps.sh and
+# package_release.sh so the rule has one home.
+. "$HERE/scripts/lib/shared_deps.sh"
 HOST_TRIPLET="x86_64-pc-linux-gnu"
 
 echo
@@ -98,12 +106,40 @@ echo " ${BLD}building the WAM node for Linux${OFF}  ($HOST_TRIPLET)"
 echo "=================================================================="
 echo
 
-for t in cmake autoconf automake libtool pkg-config make curl patch python3; do
+# libtoolize, and NOT libtool, and the difference is the whole of a failed
+# release build.
+#
+# This list said `libtool`, and the message under it said to run
+# `apt install ... libtool`. On Debian and Ubuntu that package installs
+# libtoolize and does not install /usr/bin/libtool -- that binary lives in a
+# separate package, libtool-bin. So the check demanded a program, named the
+# package that does not contain it, and a reader doing exactly what it said
+# would watch it fail again.
+#
+# It got as far as a release run: 2026-10-29, ubuntu-22.04, with release.yml
+# installing every package the message asks for. Forty-four seconds, and the
+# first thing this file has ever been asked to do, it refused.
+#
+# libtoolize is also the right question. autogen.sh runs `autoreconf
+# --install`, which invokes libtoolize; each depends package generates its
+# own libtool script rather than using a system one. Nothing here needs the
+# binary that is missing.
+#
+# build_macos.sh carries the same line with `libtool` and is correct there:
+# Homebrew's libtool formula does install the binary, and that path built
+# clean on a real Mac runner the same morning. The trap is Debian's packaging
+# alone, so the fix is here alone.
+# patchelf is in this list although nothing here uses it: package_release.sh
+# does, to give the wallet an RPATH for the libraries it carries. Checked at
+# second one rather than at minute thirty, because a build that compiles for
+# half an hour and then cannot be packaged has wasted the half hour.
+for t in cmake autoconf automake libtoolize pkg-config make curl patch python3 patchelf; do
     command -v "$t" >/dev/null || die "$t is not installed. On Debian/Ubuntu:
           sudo apt install build-essential cmake autoconf automake libtool \\
-                           pkg-config curl patch python3
-          (boost, libevent and sqlite come from depends, not apt -- that is
-           the entire point of this script, see the header)"
+                           pkg-config curl patch python3 patchelf
+          (libtoolize comes from the libtool package. boost, libevent and
+           sqlite come from depends, not apt -- that is the entire point of
+           this script, see the header)"
 done
 ok "build tools present"
 
@@ -158,7 +194,20 @@ log "boost, libevent, sqlite -- 20 to 60 minutes the first time"
 WITH_GUI="${WAM_WITH_GUI:-0}"
 
 # NO_BDB=1 is a decision, not a default. See the header.
-DEPENDS_COMMON=("HOST=$HOST_TRIPLET" NO_BDB=1 NO_ZMQ=1 NO_UPNP=1 NO_NATPMP=1 NO_USDT=1)
+#
+# ZMQ IS BUILT, AND THAT IS ALSO A DECISION.
+#
+# It was off in all three build scripts, inherited rather than chosen, and
+# it closes a door nobody noticed: an indexer takes block notifications over
+# ZMQ, and every bitcoin-type coin in Trezor's Blockbook carries a message
+# queue port -- checked against Litecoin, Dogecoin, Dash and Vertcoin. A node
+# built with /* #undef ENABLE_ZMQ */ cannot drive one, so submitting WAM
+# there would have been submitting a coin whose own node fails their backend.
+#
+# depends/packages/zeromq.mk is upstream's and already here. The cost is the
+# minutes depends spends building it; the gain is that the node can tell
+# other software a block arrived without being polled.
+DEPENDS_COMMON=("HOST=$HOST_TRIPLET" NO_BDB=1 NO_UPNP=1 NO_NATPMP=1 NO_USDT=1)
 
 build_depends() {  # $1 = extra make variables, "" for a Qt build
     make -C "$CORE_DIR/depends" "${DEPENDS_COMMON[@]}" $1 \
@@ -210,7 +259,6 @@ CONFIG_SITE="$CONFIG_SITE_PATH" ./configure \
     "$GUI_FLAG" \
     --without-bdb \
     --with-sqlite=yes \
-    --disable-zmq \
     --disable-tests-fuzz-binary \
     CPPFLAGS="$RANDOMX_CFLAGS" \
     LIBS="$RANDOMX_LIBS" \
@@ -220,6 +268,16 @@ $(tail -30 "$BUILD_DIR/configure-linux.log" | sed 's/^/          /')
           Full log: $BUILD_DIR/configure-linux.log
           Core's own: $CORE_DIR/config.log"
 ok "configured"
+
+# A CAPABILITY CAME AND WENT ONCE WITHOUT ANYBODY CHOOSING IT, SO THEY ARE
+# ASSERTED NOW -- AND FOR ALL THREE PLATFORMS, NOT THIS ONE.
+#
+# --disable-zmq sat in all three build scripts, inherited rather than
+# decided, and the cost only showed up when an indexer needed block
+# notifications the node could not send. The first repair put the assertion
+# here alone, which would have let a single release ship ZMQ on Linux and
+# not on Windows or macOS. The list lives in one file now and binds all three.
+assert_release_capabilities linux "$BUILD_DIR/configure-linux.log"
 
 log "compiling with $JOBS jobs"
 make -j"$JOBS" > "$BUILD_DIR/make-linux.log" 2>&1 \
@@ -263,6 +321,34 @@ done
 if [ "${#BUILT[@]}" -eq 0 ]; then
     die "no executable was produced and make reported success.
           Look in $CORE_DIR/src for what was actually built."
+fi
+
+# CARRY BEFORE JUDGING, OR THE GATE FAILS THE BUILD FOR A LACK THE NEXT STEP
+# WOULD HAVE FILLED.
+#
+# The node binaries need nothing: depends builds boost, libevent and sqlite
+# as static archives and they are swallowed whole. The wallet cannot, because
+# upstream's depends/packages/libxcb.mk sets --disable-static, so the X11
+# stack is shared by that project's decision and wam-qt names seventeen .so
+# files it linked from depends.
+#
+# They were carried at packaging time first. That is the right place for the
+# archive and the wrong place for this: the gate below runs here, minutes
+# after make, long before any archive exists -- so on 2026-10-29 it judged a
+# bare binary and killed a twenty-eight minute build for asking after
+# libraries that package_release.sh was about to hand it. Both steps carry
+# now, independently, and the RPATH names both layouts.
+if [ "$WITH_GUI" = "1" ] && [ -f src/qt/wam-qt ]; then
+    if carry_libs src/qt/wam-qt \
+                  "$CORE_DIR/depends/$HOST_TRIPLET/lib" \
+                  src/qt/lib; then
+        ok "wallet carries $(find src/qt/lib -name '*.so*' -type f 2>/dev/null | wc -l) library/libraries of its own"
+    else
+        die "wam-qt needs shared libraries that are not in
+          $CORE_DIR/depends/$HOST_TRIPLET/lib, so the wallet would ask a
+          stranger's machine for them -- which is the failure v0.1.12
+          shipped with. Nothing is kept. See scripts/lib/shared_deps.sh."
+    fi
 fi
 
 bash "$HERE/scripts/check_shared_deps.sh" "${BUILT[@]}" \

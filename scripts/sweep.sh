@@ -425,7 +425,8 @@ run "DNS seeds answer x9."    bash scripts/check_dns_seeds.sh
 # 2026 it was naming a third-party pool whose stratum port refuses the
 # connection from four different countries. The sentence "all three answered
 # when this page was last checked" is a claim with no checker behind it.
-run "published endpoints answer" "$PY" scripts/check_published_endpoints.py
+run "published endpoints answer, and will next month" \
+    "$PY" scripts/check_published_endpoints.py
 
 # Every page sends a reader to wamcoin.org/downloads/<newest>/. On
 # 2026-10-16 that directory answered 404 for four minutes after v0.1.12 was
@@ -502,6 +503,26 @@ else
         skip "ports reachable from outside" "--nodes needs two or more hosts"
     else
         run "nodes agree with each other" bash scripts/check_nodes_agree.sh $NODES
+
+        # AND AGREE WITH THE RELEASE, which is a different question.
+        #
+        # The check above compares the hosts to each other, so the one case it
+        # cannot see is a fleet that is uniformly wrong -- which is exactly what
+        # a deploy that silently did nothing produces, on every machine at once.
+        #
+        # On 1 November 2026 it called France and Singapore "byte-identical"
+        # while wam-tx, wam-util and wam-wallet on both were pinned at v0.1.7,
+        # six releases back, since 11 September. They agreed perfectly. The
+        # third host had COPIES of the same v0.1.7 tools, and a v0.1.9 wamd its
+        # testnet node had been running for seventeen days, through four
+        # releases -- while "deployed code is origin/main" said ok about the
+        # git checkout beside it, truthfully, because a checkout is not what
+        # systemd executes.
+        #
+        # So this one compares against something outside the fleet: the newest
+        # signed release in our own download directory, which is what a
+        # stranger gets when he follows our instructions.
+        run "machines run the version we publish"             "$PY" scripts/check_running_version.py $NODES
 
         # A node that cannot say who connected is not unhealthy -- it answers
         # every other question correctly. It simply stops being able to tell
@@ -604,6 +625,37 @@ else
         run "electrum servers answer and agree" \
             "$PY" scripts/check_electrum.py --node "$1" --network "$NETWORK" \
             electrum.wamcoin.org electrum2.wamcoin.org
+
+        # And one that is not ours, which is the whole point of it.
+        #
+        # Two servers run by one operator fail together. That is not a theory
+        # on this project: the version drift found on 2026-11-01 put the same
+        # wrong binaries on all three of our machines, and check_nodes_agree.sh
+        # -- which compares them to each other -- called them agreed, correctly
+        # and uselessly. Redundancy that shares an operator shares his
+        # mistakes. On 2026-11-02 a second operator stood one up in Seoul on a
+        # third provider, built from integration/electrumx/install.sh, and
+        # asked to be measured from outside rather than trusted.
+        #
+        # It gets its own row instead of joining the line above, because a
+        # reboot of a machine we do not own must not redden the row that judges
+        # the machines we do. It can still fail, and it has to: electrums/WAM
+        # advertises this endpoint, so a wallet told a wrong balance by it was
+        # sent there by us. The action on a red line here is to tell the
+        # operator, or to take the endpoint out of the entry -- not to log in,
+        # which we cannot do and should not be able to.
+        #
+        # --node still reads OUR node because we hold no ssh on his, and that
+        # is the question anyway: does his index agree with our chain. It is
+        # the one thing "I track your signed releases" cannot prove about
+        # itself, and he said so before we did.
+        if [ "$NETWORK" = mainnet ]; then
+            run "a server we do not own agrees" \
+                "$PY" scripts/check_electrum.py --node "$1" --network "$NETWORK" \
+                wam.zcd.lol
+        else
+            skip "a server we do not own agrees" "it serves mainnet only"
+        fi
 
         # The pool had found 150 blocks, owed 16,176 WAM to two miners and had
         # paid nothing since genesis -- every payout failing for the whole life

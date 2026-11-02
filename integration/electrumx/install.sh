@@ -182,6 +182,28 @@ chgrp -R ssl-cert /etc/letsencrypt/live /etc/letsencrypt/archive 2>/dev/null || 
 chmod -R g+rX /etc/letsencrypt/live /etc/letsencrypt/archive 2>/dev/null || true
 ok "certificate readable by $EX_USER, and by nobody else"
 
+# THAT WAS A ONE-TIME ACT, AND ONE-TIME TURNED OUT NOT TO BE ENOUGH.
+#
+# It survives renewals, because certbot preserves a private key's group and
+# mode when it renews a lineage it already knows. It does not survive a
+# lineage being created anew: the key is then written root:root 0600 and the
+# unprivileged user above cannot read it.
+#
+# And nothing here ever restarted ElectrumX when the files under it changed.
+# It reads the certificate once at startup, so a renewed one is served only
+# when something restarts the service for its own reasons.
+#
+# Both failures were paid for on seed3 on 1 November 2026, when
+# electrum2.wamcoin.org was issued a real certificate for the first time --
+# it had been running on one hand-copied from another host in August. The
+# hook closes both, after every renewal, on every host this installs on.
+install -m 0755 "$REPO/deploy/cert/wam-reload-electrumx" \
+        /usr/local/bin/wam-reload-electrumx
+install -d /etc/letsencrypt/renewal-hooks/deploy
+ln -sf /usr/local/bin/wam-reload-electrumx \
+       /etc/letsencrypt/renewal-hooks/deploy/wam-reload-electrumx
+ok "certbot reloads ElectrumX after every renewal"
+
 # ---------------------------------------------------------------------------
 step "5. configuration"
 

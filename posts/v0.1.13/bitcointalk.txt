@@ -1,0 +1,54 @@
+REPLY IN THE ANNOUNCEMENT THREAD
+https://bitcointalk.org/index.php?topic=5591218.0
+BBCode. Post as a reply, not a new topic.
+=================================================
+
+[b]WAM v0.1.13 — ZMQ on all three platforms, and every archive carries its own libraries[/b]
+
+[b]ZMQ is on.[/b] A node can now say the moment it has something — five
+publishers, [tt]-zmqpubhashblock[/tt] through [tt]-zmqpubsequence[/tt], each
+with its own high-water mark — instead of being asked every few seconds
+whether anything happened. An explorer, a pool, a wallet or something you
+write yourself can stop polling the chain. Built on Linux, Windows and macOS
+alike.
+
+[b]Every archive now carries the libraries it needs[/b], the [tt]wam-qt[/tt]
+wallet included. The wallet had been excused from the check that enforces
+that, and the excuse was the fault: unpacked on a machine that has never
+compiled anything it stopped on a missing shared object, which reads as a
+broken download rather than as a library you lack.
+
+The example configuration is generated from [tt]wamd -help[/tt] rather than
+written by hand, so it cannot drift from the binary. 761 lines and 152
+options, ten of them the ZMQ ones; the previous release's had 126 and named
+none of them.
+
+Nothing here touches consensus. A node on v0.1.12 is on the same chain and
+stays on it.
+
+Before it shipped, [tt]wam-miner --solo[/tt] was run against the signed
+archives themselves — not a local build — on all three platforms. Two blocks
+mined and accepted on each, the reward reaching the address given.
+
+[b]Downloads[/b]
+[code]
+https://wamcoin.org/downloads/
+https://wamcoin.net
+[/code]
+
+[b]Discussion and questions[/b]
+[code]
+https://discord.gg/Gxvmrjy9Qb
+[/code]
+
+[b]Source, in three places at three companies[/b]
+[code]
+https://gitlab.com/WAMCoin/wam-coin
+https://github.com/wamcoin-Project/wam-coin
+https://gitea.com/WAMCoin/wam-coin
+[/code]
+
+Verify before you run it. [tt]verify_release.sh[/tt] checks the signature over
+SHA256SUMS and then every file against SHA256SUMS. A signature covers the
+files and never the place they are hosted, so where you fetched them from
+changes nothing about what you can check.

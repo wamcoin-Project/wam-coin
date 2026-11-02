@@ -29,7 +29,14 @@
 > **The link is fixed.** The live entry's `links.github` pointed at
 > `wam-coin-official`, which is locked. It now reads
 > `wamcoin-Project/wam-coin`, checked against the raw file on 2026-10-01.
-> Nothing in the live entry is outstanding.
+>
+> **One thing is outstanding as of 2026-11-02:** the live `electrums/WAM` holds
+> our two servers only. A third, run by an operator who is not us, has been
+> verified and is in [`electrums-WAM.json`](electrums-WAM.json) awaiting a pull
+> request — see *Electrum servers* below. `scripts/check_listing_entry.py` now
+> reads the live `electrums/WAM` as well as the live `coins` entry, so this is
+> a red row rather than a silence: it stays red until the pull request is
+> merged, which is the expected state and whose action is to open it.
 
 **`KomodoPlatform/coins` is not a second platform, and nothing should be sent
 there.** It is a copy of `GLEECBTC/coins`, kept only so that older builds of
@@ -149,22 +156,64 @@ Komodo Wallet requires ElectrumX servers with valid SSL for a UTXO coin. Their
 repository has an `electrums/` directory and a UTXO coin without an entry there
 is not usable by the wallet — it has no way to read balances.
 
-**Both now run**, on deliberately different providers, and both were verified
-from outside the machines rather than on them — `scripts/check_electrum.py`
-speaks the protocol, compares the height each one claims against the node over
-ssh, and probes every A record behind a name separately:
+**Three now run, and the third is not ours** — which is the one property no
+number of our own machines could ever supply. All were verified from outside
+the machines rather than on them: `scripts/check_electrum.py` speaks the
+protocol, compares the genesis hash *and* the claimed height against the node
+over ssh, and probes every A record behind a name separately. Measured
+2026-11-02:
 
 ```
-electrum.wamcoin.org    169.58.159.165:50002 SSL   height 537, ElectrumX 2.0.0
-                        169.58.159.165:50001 TCP   height 537
-electrum2.wamcoin.org     5.223.52.200:50002 SSL   height 537, ElectrumX 2.0.0
-                          5.223.52.200:50001 TCP   height 537
+electrum.wamcoin.org    169.58.159.165:50002 SSL   height 33344, ElectrumX 2.0.0
+                        169.58.159.165:50001 TCP   height 33344
+electrum2.wamcoin.org    13.140.33.187:50002 SSL   height 33344, ElectrumX 2.0.0
+                         13.140.33.187:50001 TCP   height 33344
+wam.zcd.lol            158.247.220.175:50002 SSL   height 33344, ElectrumX 2.0.0
+                       158.247.220.175:50001 TCP   height 33344
 ```
 
-`electrum` is at Contabo and `electrum2` at Hetzner. Two servers on one
-provider are one outage, which is the failure Komodo's support desk absorbs.
+Genesis on all three reads
+`d8d3debea987b62a0934c3980d62bffbb6e16aa797d19891d4fcc9b9fb11d7e9`, identical
+to the assert in `src/wam/chainparams.cpp:483`. That field is the only one that
+proves a working server indexes *this* chain — every other call answers just as
+cheerfully on the wrong network.
+
+`electrum` is at Contabo, `electrum2` in the US. Until 2026-11-02 this file
+said `electrum2` was at Hetzner in Singapore, and it had moved: Singapore is
+one core and two gigabytes, and an ElectrumX index does not fit on it. That
+host runs nodes only and refuses 50001, 50002 and 50004 — measured, not
+assumed.
+
+**`wam.zcd.lol` is run by `cup`, who is not us**, in Seoul on Vultr: a third
+operator, a third provider, a third continent. He built it with this
+repository's own `integration/electrumx/install.sh --network mainnet`, runs
+`wamd` v0.1.13 from the signed release with SHA256SUMS checked, holds a
+Let's Encrypt certificate to 2027-01-31 with `wam-reload-electrumx` installed
+as the renewal hook, and publishes a status board at <https://wam.zcd.lol/>
+carrying tip, certificate expiry and per-server lag every two minutes. Until
+tonight every number anybody could quote about this chain's infrastructure came
+from us.
+
+Two servers under one operator fail together, and here that is measured rather
+than feared: the drift found on 2026-11-01 put the same wrong binaries on all
+three of our machines at once, and the check that compared them to each other
+called them agreed. An operator who is not us fails for different reasons than
+we do, and survives what happens to us — the way cipig's pull request survived
+our GitHub account being suspended on 2026-09-24 while all five of ours
+vanished.
+
+What was given up for it is narrow and gets named rather than glossed. We hold
+no ssh on his machine, so nothing here can read which binary it executes, and
+"I track your signed releases and stay current" is a promise rather than a
+measurement — the exact shape of what blinded us for seven weeks. What the
+protocol still shows from outside is what his index says *about the chain*: a
+stale daemon lags in height, a divergent one disagrees on genesis, and both are
+already compared. So what was lost is the early warning, not the sight — a
+version check says "he is behind" before anything splits, and genesis says "it
+split" afterwards. He asked for that outside row himself, before we offered it.
+
 50004 carries the Electrum protocol over WebSocket for Komodo's *web* wallet
-and is open on both; desktop and mobile use 50002 directly.
+and is open on all three; desktop and mobile use 50002 directly.
 
 ### 2026-08-29: those ports now hold nothing, on purpose
 

@@ -276,6 +276,64 @@ def main() -> int:
                         bad(f"{rel}:{i} states the {label} as {got:,}; the "
                             f"network enforces {want:,}")
 
+    # ---- 4. settings stated as though they were rules ----------------------
+    #
+    # Sections 1-3 all ask the same question: does the published number match
+    # the enforced one? That question has no answer for a number nothing
+    # enforces. The pool's operator fee, its payout threshold, its payment
+    # interval and its PPLNS window are SETTINGS -- an operator turns them with
+    # an edit and a restart, and no consensus rule objects. So there is no
+    # authority to compare them against, and a check built on comparison is
+    # blind to them by construction.
+    #
+    # It stayed blind. pool/config.mainnet.json said the fee was 0% with a
+    # paragraph beside it explaining why, MINE.md and the website said 1%, and
+    # the pool charged 1% on every block it found. Two published values, one of
+    # them false, for several weeks, found in October only because somebody
+    # read the config file for an unrelated reason.
+    #
+    # The founder's rule, 2026-10-29: a variable does not go on a page that
+    # cannot date itself. Consensus rules belong in the repository and on the
+    # website, because they are the only thing we can promise. A setting
+    # belongs in the running system that owns it -- the pool publishes its own
+    # fee, threshold, interval and window in its header, its reward split and
+    # /api/stats -- and any change to one is announced in a dated post that a
+    # later post supersedes. A reader meeting an old post can see it is old. A
+    # reader meeting a website cannot.
+    #
+    # So this check is not "is the number right". It is "is the number here at
+    # all", and the answer must be no.
+    #
+    # docs/POOL_OPERATOR.md and the page built from it are exempt, and only
+    # them: that document exists to teach somebody to run THEIR OWN pool, so
+    # the knobs and their defaults are its subject matter rather than a claim
+    # about ours.
+    SETTINGS_EXEMPT = ("docs/POOL_OPERATOR.md", "site/pool/index.html")
+    # wam:quote-begin
+    SETTINGS = [
+        (r"(?:operator|pool)[’']?s?\s+fee[^.\n]{0,40}?(\d+(?:\.\d+)?)\s*%",
+         "operator fee"),
+        (r"(\d+(?:\.\d+)?)\s*%\s+(?:operator|pool)\s+fee", "operator fee"),
+        (r"(?:pays? out at|payout threshold(?:\s+of)?|minimum payout(?:\s+of)?)"
+         r"[^.\n]{0,20}?([\d.,]+)\s*WAM", "payout threshold"),
+        (r"payment round every[^.\n]{0,12}?([\d,]+)\s*(?:minute|min\b)",
+         "payment interval"),
+        (r"PPLNS window[^.\n]{0,40}?(\d+)\s*(?:×|x)\s*network", "PPLNS window"),
+    ]
+    # wam:quote-end
+    for rel in files():
+        if rel in SETTINGS_EXEMPT:
+            continue
+        text = _read(ROOT / rel)
+        for i, line in enumerate(text.splitlines(), 1):
+            for pat, label in SETTINGS:
+                m = re.search(pat, line, re.I)
+                if m:
+                    bad(f"{rel}:{i} states the {label} as {m.group(1)}. That is "
+                        f"a pool setting, not a consensus rule -- nothing here "
+                        f"keeps it true. It belongs on the pool's own page and "
+                        f"in a dated post, not in a document.")
+
     # ---- report ------------------------------------------------------------
     scanned = files()
     pub = [f for f in scanned if public(f)]

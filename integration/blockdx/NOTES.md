@@ -46,7 +46,7 @@ otherwise would fail at the first swap rather than at submission.
 satoshis per byte is ten times the relay minimum a WAM node enforces, which
 leaves room without inventing a fee market.
 
-**`Confirmations=60`.** It was `0`, and it was the only value in that file
+**`Confirmations=15`.** It was `0`, and it was the only value in that file
 with no reason written beside it.
 
 The cost of reversing a confirmation is set by hashrate, not by block timing.
@@ -57,10 +57,13 @@ dollars of rented CPU. That is ordinary for a chain three weeks old and it is
 exactly why the number here matters: a swap settled at zero confirmations on
 such a chain is not settled at all.
 
-Sixty blocks is two hours at a 120-second target. It is deliberately slower
-than a DEX would like. It is the same number this project publishes for an
-exchange deposit, and asking for it here rather than discovering later why it
-was needed is the whole point.
+It was submitted as `60` -- two hours at a 120-second target, and the same
+depth this project publishes for an exchange deposit. It is `15` now, about
+thirty minutes, because the Komodo maintainer ran an actual swap on this
+chain and arrived at that number from the swap rather than from the deposit.
+A measured value from somebody who ran it beats a cautious one reasoned to
+from the outside, and 15 is still far more cautious than the other 246 files
+in that directory.
 
 ## The version in the filename
 
@@ -98,9 +101,14 @@ files and was superseded by `#199` on 28 September, after the first account
 closed; `#199` carried the v0.1.10 files and went down with the account that
 pushed it on 29 October. `#200` is `#199`'s own two commits, fetched back out of
 `refs/pull/199/head` and verified byte for byte against the conf files here,
-plus one commit naming v0.1.11 and v0.1.12 in `versions`. Both of those
-shipped after `#199` was opened and the downloads page serves them; v0.1.13 is
-built but not released, so it is not named.
+plus two commits extending `versions`: one naming v0.1.11 and v0.1.12 on 30
+October, and one naming v0.1.13 on 31 October, the day it was released.
+
+Each of those three shipped after `#199` was opened and each is served by the
+downloads page. None of them changes anything XBridge reads, so `ver_id` and
+both conf files stay on v0.1.10 and no `wam--v0.1.13.conf` is submitted. A new
+conf goes beside the old one when a release changes a field in it, and these
+did not.
 
 Measured the day it was reopened rather than recalled: 247 conf files in
 `xbridge-confs`, 245 of them `Confirmations=0`, one `1`, and ours the only

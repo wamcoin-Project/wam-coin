@@ -1,0 +1,81 @@
+WAM Coin v0.1.13 — the node can tell you about a block the moment it has one, and every archive carries its own libraries
+
+This release turns ZMQ on, and it is the reason the release exists. A node
+can now say the moment it has something — five publishers, `-zmqpubhashblock`
+through `-zmqpubsequence`, each with its own high-water mark — instead of
+being asked every few seconds whether anything happened. An explorer, a pool,
+a wallet or something you write yourself can stop polling this chain.
+
+And every archive now carries the libraries it needs — the `wam-coin` node,
+the `wam-miner` and the `wam-qt` wallet alike. The wallet had been excused
+from the check that enforces that, and the excuse was the fault: unpacked on
+a machine that has never compiled anything it stopped on a missing shared
+object, which reads as a broken download rather than as a library you lack.
+
+That is the short of it. Nothing here is urgent and nothing here touches
+consensus — a node on v0.1.12 is on the same chain and stays on it. The rest
+below is for whoever wants it.
+
+WHAT ELSE IS IN IT
+------------------
+
+**The example configuration lists every option the node accepts**, generated
+from `wamd -help` rather than written by hand, so it cannot drift from the
+binary. 761 lines and 152 options, ten of them the ZMQ ones this release is
+for. v0.1.12's had 126 and named none of them — an operator reading it to
+find the setting he needed would have concluded the node could not do it.
+
+**The check that says a binary carries its libraries now asks what the
+loader asks.** It resembled the question before rather than being it, which
+is how the wallet passed while being broken. It is also no longer confused by
+having nothing to report, and `DEPENDENCIES.txt` has stopped claiming a
+dependency list it did not have.
+
+**Packaging says where it died.** `set -e` ends a script without a word about
+which line ended it, and a release build that fails silently at two in the
+morning is a build nobody can fix before the morning. It now names the step,
+and the release build keeps its logs when it fails instead of discarding the
+one thing worth reading.
+
+**Packaging survives finding no system Qt**, which was the point of the
+change that broke it.
+
+**The pool states its own fee and payout rates, and the pages stop guessing
+at them.** Two places described the same numbers and only one of them was
+the pool.
+
+**The network hash rate total contains this pool** instead of being estimated
+alongside it, so the figure on the page is the figure the chain has.
+
+**`check_nodes_agree.sh` asks each server once** and reads every answer from
+that one connection, instead of opening a handshake per question. On three
+hosts that was dozens of logins a run.
+
+DOWNLOADS
+---------
+
+Node, miner and wallet, for Linux, Windows and macOS:
+
+    wam-coin-v0.1.13-x86_64-linux-gnu.tar.gz
+    wam-coin-v0.1.13-x86_64-w64-mingw32.zip
+    wam-coin-v0.1.13-arm64-apple-darwin.tar.gz
+
+    wam-miner-v0.1.13-x86_64-linux-gnu.tar.gz
+    wam-miner-v0.1.13-x86_64-w64-mingw32.zip
+    wam-miner-v0.1.13-arm64-apple-darwin.tar.gz
+
+    wam-qt-v0.1.13-x86_64-linux-gnu.tar.gz
+    wam-qt-v0.1.13-x86_64-w64-mingw32.zip
+    wam-qt-v0.1.13-arm64-apple-darwin.tar.gz
+
+The wallet is a separate download so that a node is not several times larger
+for the people who never open a window.
+
+Check what you downloaded before you run it:
+
+    bash verify_release.sh .
+
+It verifies the signature over SHA256SUMS against the published key and then
+every file against SHA256SUMS. A signature covers the files and never the
+place they are hosted, so where you fetched them from changes nothing about
+what you can check.

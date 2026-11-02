@@ -38,10 +38,30 @@
 
 set -euo pipefail
 
+# A SCRIPT THAT DIES UNDER set -e MUST SAY WHERE, OR IT SAYS NOTHING AT ALL.
+#
+# On 2026-10-29 this printed its way happily down to
+#
+#     ok    wallet        carries 17 library/libraries of its own
+#
+# and then exited 1 with not one further word, in a release job that had
+# already spent twenty-one minutes. `set -e` kills the shell on any
+# unchecked non-zero status and prints nothing by design, so the log ends
+# mid-sentence and the next move is to guess -- which is how the previous
+# hour went.
+#
+# Every die() in this file explains itself. This is for the failures that
+# are not a die(): a cp that found no directory, a test that came out false
+# at the end of a && chain, a tool that is not installed. It names the line
+# and the command, which is all anybody needs.
+trap 'rc=$?; printf "\n  \033[31mFAIL\033[0m  package_release.sh stopped at line %s\n        command: %s\n        exit:    %d\n\n" \
+      "$LINENO" "$BASH_COMMAND" "$rc" >&2' ERR
+
 # An interpreter that is actually Python: `python3` on Windows is a
 # Microsoft Store stub that runs nothing and exits 49.
 SCRIPTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 . "$SCRIPTS_DIR/lib/python.sh"
+. "$SCRIPTS_DIR/lib/shared_deps.sh"
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$HERE/.." && pwd)"
@@ -201,6 +221,41 @@ strip "$NODE_DIR"/* "$MINER_DIR"/wam-miner 2>/dev/null || true
 [ "$HAVE_GUI" = "1" ] && strip "$WALLET_DIR/bin/wam-qt" 2>/dev/null || true
 ok "stripped      symbols removed"
 
+# THE WALLET CARRIES ITS LIBRARIES, THE SAME WAY THE NODE DOES.
+#
+# The node swallows boost, libevent and sqlite whole, because depends builds
+# those as static archives. It cannot do that with the X11 stack: upstream's
+# depends/packages/libxcb.mk sets --disable-static, so libxcb, libxkbcommon,
+# fontconfig, freetype and the rest are shared objects by that project's own
+# decision, and wam-qt links them from depends and then sails without them.
+#
+# On 2026-10-29 the release build said so, at the last gate, after
+# twenty-eight minutes:
+#
+#     FAIL  wam-qt  asks for: libfontconfig.so.1 libfreetype.so.6
+#                   libxcb-icccm.so.4 ... libxkbcommon.so.0     (17 of them)
+#
+# Allowing those seventeen by name in check_shared_deps.sh was the short
+# answer and probably even defensible -- a machine with no libxcb cannot draw
+# a window for any program. It is still an exception, and an exception is a
+# hole that grows without anybody deciding, which is how --disable-zmq lived
+# in three build scripts for a year.
+#
+# So they travel in the archive, beside the binary, and wam-qt is given an
+# RPATH of $ORIGIN/../lib so it finds them wherever the user unpacks it. The
+# rule keeps no list of names: ask a stranger for nothing but glibc.
+if [ "$HAVE_GUI" = "1" ]; then
+    DEPENDS_LIB="$TREE/depends/${HOST_TRIPLET:-x86_64-pc-linux-gnu}/lib"
+    if carry_libs "$WALLET_DIR/bin/wam-qt" "$DEPENDS_LIB" "$WALLET_DIR/lib"; then
+        CARRIED_N="$(find "$WALLET_DIR/lib" -name '*.so*' -type f 2>/dev/null | wc -l)"
+        ok "wallet        carries $CARRIED_N library/libraries of its own"
+    else
+        die "wam-qt needs libraries that are not in $DEPENDS_LIB, so the
+          wallet would ask a stranger's machine for them. Nothing is kept.
+          This is the failure v0.1.12 shipped with; see scripts/lib/shared_deps.sh."
+    fi
+fi
+
 for f in COPYING README.md WHITEPAPER.md SECURITY.md; do
     [ -f "$REPO/$f" ] && cp "$REPO/$f" "$WORK/stage/wam-coin-$VERSION/"
 done
@@ -237,8 +292,18 @@ larger for people who never open a window:
     # The list is taken from the binary with ldd, so it cannot drift away from
     # what was actually built. If Qt is ever linked statically this produces
     # nothing and the sentence disappears with it.
+    #
+    # AND THAT DAY CAME, AND THIS LINE KILLED THE RELEASE ON IT.
+    #
+    # grep exits 1 when it matches nothing, pipefail carries that out of the
+    # pipeline, and set -e kills the shell. So on 2026-10-29, the first build
+    # in which Qt actually came out of depends and wam-qt named no libQt5 at
+    # all, packaging died here -- at the moment the sentence above came true.
+    # The intent was right and the exit status was never handled: the block
+    # below already treats an empty list as "nothing to warn about", which is
+    # the correct behaviour it could not reach.
     QT_SONAMES="$(ldd "$WALLET_DIR/bin/wam-qt" 2>/dev/null \
-                  | grep -oE 'libQt5[A-Za-z]+\.so\.[0-9]+' | sort -u | tr '\n' ' ')"
+                  | grep -oE 'libQt5[A-Za-z]+\.so\.[0-9]+' | sort -u | tr '\n' ' ' || true)"
     if [ -n "$QT_SONAMES" ]; then
         NEEDS="
 WHAT THIS NEEDS ON YOUR MACHINE
@@ -398,8 +463,15 @@ EOF
 step "4b. runtime dependencies"
 
 BASE_LIBS='linux-vdso|ld-linux|libc\.so|libm\.so|libgcc_s|libstdc\+\+|libpthread|libdl|librt|libanl|libresolv'
+# `|| true`, and this one is the clearest case of the three. An empty NEEDED
+# is the SUCCESS message four lines down -- "no dependencies beyond the C
+# library -- this runs anywhere" -- and grep exits 1 when it filters
+# everything away, so under pipefail the script died exactly when the answer
+# was the one this whole release exists to produce. Third time today: the Qt
+# sonames, the glibc symbol floor, and now this. One shape, three places, and
+# every one of them fired on good news.
 NEEDED="$(ldd "$WORK/stage/wam-coin-$VERSION/bin/wamd" 2>/dev/null \
-          | awk '/=>/ {print $1}' | grep -vE "$BASE_LIBS" | sort -u)"
+          | awk '/=>/ {print $1}' | grep -vE "$BASE_LIBS" | sort -u || true)"
 
 if [ -z "$NEEDED" ]; then
     ok "no dependencies beyond the C library -- this runs anywhere"
@@ -460,10 +532,17 @@ fi
 
 REQ_GLIBC=0; REQ_GLIBCXX=0
 for b in $PORT_BINS; do
+    # `|| true` on all three, for the same reason the Qt line above needed it:
+    # grep exits 1 on no match, pipefail carries it, set -e kills the shell.
+    # The `${bg:-0}` defaults say plainly that the author expected an empty
+    # answer to be possible -- a binary with no versioned GLIBCXX symbol is an
+    # ordinary thing -- and the script would have died before reaching them.
+    # Latent only because every binary here happens to be C++; the first C one
+    # would have found it the hard way, in a release.
     bsyms="$(objdump -T "$b" 2>/dev/null \
-             | grep -oE 'GLIBCXX_[0-9.]+|GLIBC_[0-9.]+' | sort -u)"
-    bg="$(printf '%s\n' "$bsyms" | grep '^GLIBC_'   | vermax)"; bg="${bg:-0}"
-    bx="$(printf '%s\n' "$bsyms" | grep '^GLIBCXX_' | vermax)"; bx="${bx:-0}"
+             | grep -oE 'GLIBCXX_[0-9.]+|GLIBC_[0-9.]+' | sort -u || true)"
+    bg="$(printf '%s\n' "$bsyms" | grep '^GLIBC_'   | vermax || true)"; bg="${bg:-0}"
+    bx="$(printf '%s\n' "$bsyms" | grep '^GLIBCXX_' | vermax || true)"; bx="${bx:-0}"
     printf '  %-14s glibc %-8s GLIBCXX %s\n' "$(basename "$b")" "$bg" "$bx"
     [ "$(printf '%s\n%s\n' "$bg" "$REQ_GLIBC"   | sort -V | tail -1)" = "$bg" ] && REQ_GLIBC="$bg"
     [ "$(printf '%s\n%s\n' "$bx" "$REQ_GLIBCXX" | sort -V | tail -1)" = "$bx" ] && REQ_GLIBCXX="$bx"
@@ -540,19 +619,30 @@ That is Ubuntu 22.04 LTS or newer, Debian 12 or newer, and anything of a
 similar age. If your system is older than that, build from source -- no flag
 on this binary will make it start.
 
-If the node exits with
+The node carries its own libraries. boost, libevent, sqlite and ZeroMQ are
+built from source into the binary, so there is nothing to install and no
+package name to look up: the list above is the whole of what it loads from
+your system, and it is the C library and its companions.
 
-    error while loading shared libraries: ...
-
-install the shared libraries it asks for:
+That changed in v0.1.13. Until v0.1.12 this file told you to run
 
     sudo apt-get install -y libevent-2.1-7t64 libsqlite3-0
 
-On Ubuntu 22.04 the libevent package is named libevent-2.1-7 instead.
+because the binary really did ask for them -- and on a clean Ubuntu the
+first of those two is not installed, so the node stopped with "error while
+loading shared libraries: libevent-2.1.so.7" and named a file rather than a
+package. That is the least helpful failure a program can have, and it is
+why this build is made differently.
 
-Nothing else is required. This build has ZMQ disabled, which is why it does
-not ask for libzmq, libsodium, libpgm, libnorm or Kerberos -- none of which
-this project uses.
+ZeroMQ is compiled in, not left out: a node can publish block and
+transaction notifications over it, which is how an indexer learns a block
+arrived without polling for it. It is linked statically, so it adds no
+library for you to find.
+
+If the node still exits with "error while loading shared libraries", the
+missing file is named in the message and something is wrong with this
+archive rather than with your machine -- please say so, with the line it
+printed.
 
 Verify what your copy actually wants:
 

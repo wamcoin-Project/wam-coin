@@ -559,6 +559,14 @@ CHECKS = [
                                        "--node", "169.58.159.165",
                                        "--network", "mainnet"], 600),
     ("nodes agree", ["bash", "scripts/check_nodes_agree.sh"] + ALL_IPS, 150),
+    # Added 2026-11-01, the day "nodes agree" went red and said less than it
+    # looked like it was saying. It compares the hosts to each other, so a
+    # fleet that is uniformly behind reads as perfect agreement -- and on that
+    # day it was: wam-tx, wam-util and wam-wallet were v0.1.7 on all three
+    # machines, six releases back since 11 September, byte-identical and
+    # therefore silent. This one asks a question from outside the fleet.
+    ("machines run the version we publish",
+     [sys.executable, "scripts/check_running_version.py"] + ALL_IPS, 300),
     # 300, not 150. Measured at 55 seconds for three hosts on a quiet link,
     # and it reads a git log from each of them over ssh -- so it is one slow
     # host away from the old limit. On 2026-09-27 it hit it, and the panel
@@ -566,6 +574,27 @@ CHECKS = [
     # not finish printing was three servers fourteen commits behind. A check
     # that times out reports nothing, and reporting nothing is the one thing
     # this panel exists to prevent.
+    # Until 2026-11-02 this panel had no Electrum row at all, though sweep.sh
+    # has had one since the 39-hour outage in August. A light wallet does not
+    # read the chain -- it asks one of these servers and believes the answer --
+    # so when they are down it shows nothing, and when they are behind it shows
+    # a wrong balance, which is worse. The panel is what gets looked at between
+    # sweeps, and this was the service it never looked at.
+    ("electrum servers answer and agree",
+     [sys.executable, "scripts/check_electrum.py",
+      "--node", "169.58.159.165", "--network", "mainnet",
+      "electrum.wamcoin.org", "electrum2.wamcoin.org"], 200),
+    # Its own row, because this one is not ours: cup runs it in Seoul, on a
+    # machine we hold no ssh on and should not. A reboot of his must not redden
+    # the row that judges ours -- a red line nobody can act on is how people
+    # learn to ignore red lines. It still has to be able to fail: electrums/WAM
+    # advertises this endpoint, so a wallet told a wrong balance by it was sent
+    # there by us. The action on this line is to tell the operator, or to take
+    # the endpoint out of the entry.
+    ("a server we do not own agrees",
+     [sys.executable, "scripts/check_electrum.py",
+      "--node", "169.58.159.165", "--network", "mainnet",
+      "wam.zcd.lol"], 150),
     ("deployed code is origin/main",
      ["bash", "scripts/check_deployed_code.sh"] + ALL_IPS, 300),
     ("the same keys get a shell everywhere",

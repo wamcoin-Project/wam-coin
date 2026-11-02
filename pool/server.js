@@ -153,7 +153,12 @@ async function main() {
     log.info(`network        : ${config.network}`);
     log.info(`pool address   : ${config.poolAddress}`);
     log.info(`reward mode    : ${(config.rewardMode || 'pplns').toUpperCase()}`);
-    log.info(`pool fee       : ${config.poolFeePercent || 1}%`);
+    // `?? 1`, not `|| 1`. A configured fee of 0 is falsy, so `||` printed "1%"
+    // on a pool that was charging nothing -- the same fault that made 0
+    // impossible to configure at all until 2026-09-15 (shareProcessor.js:63),
+    // fixed there and left here, where it survived as a startup banner that
+    // disagreed with the pool it was announcing.
+    log.info(`pool fee       : ${config.poolFeePercent ?? 1}%`);
     log.info('chain dev fee  : 5% (enforced by consensus, paid by the coinbase)');
 
     // ---- 1. pool payout address ------------------------------------------
