@@ -95,9 +95,7 @@ Once the Gradle sync completes without errors:
 
 ---
 
-```
-image-placeholder
-```
+<img src="images/config-screen.png" alt="Mining on Android" width="400">
 
 ---
 
