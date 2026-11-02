@@ -95,7 +95,7 @@ Once the Gradle sync completes without errors:
 
 ---
 
-<img src="images/config-screen.png" alt="Mining on Android" width="400">
+![Mining on Android](images/config-screen.png)
 
 ---
 
