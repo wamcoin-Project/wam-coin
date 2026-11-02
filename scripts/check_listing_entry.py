@@ -259,14 +259,61 @@ def main():
     # testnet set, a wallet would be pointed at the wrong chain -- which is
     # exactly the state that was corrected on 2026-08-29.
     el = json.loads((KOMODO / "electrums-WAM.json").read_text(encoding="utf-8"))
+    # Local, not `if not _fails`. That read the whole run's tally, so a field
+    # disagreeing two checks above silently swallowed this line -- and a line
+    # that disappears when something else is wrong is worst exactly when it is
+    # needed.
+    ports_ok = True
     for s in el:
         url = s.get("url", "")
         ws = s.get("ws_url", "")
         if ":50002" not in url or ":50004" not in ws:
+            ports_ok = False
             bad(f"electrum entry {url} / {ws} does not use the published "
                 f"mainnet ports 50002 and 50004")
-    if not _fails:
+    if ports_ok:
         ok(f"{len(el)} electrum server(s), all on the published mainnet ports")
+
+    # And what a wallet is actually handed, which is a different file.
+    #
+    # Everything above reads OUR copy. A wallet reads GLEECBTC/coins, and the
+    # two came apart the moment a third server was verified on 2026-11-02: ours
+    # held three, the live file held two, and nothing here said so. The coin
+    # entry forty lines up has been read from the live copy since September for
+    # exactly this reason. The electrum list never was -- and it is the half
+    # that decides whether a wallet can read a balance at all.
+    #
+    # The two directions do not mean the same thing. A server in ours and not
+    # theirs is work prepared and not yet merged: expected between verifying an
+    # operator and the pull request landing, and the action is to open it or
+    # chase it. A server in theirs and not ours is a wallet being sent to an
+    # endpoint nobody here has verified, which is not paperwork.
+    try:
+        import urllib.request as _u
+        _req = _u.Request("https://raw.githubusercontent.com/GLEECBTC/coins"
+                          "/master/electrums/WAM",
+                          headers={"User-Agent": "wam-listing-audit"})
+        with _u.urlopen(_req, timeout=25) as f:
+            live_el = json.load(f)
+    except Exception as e:
+        unmeasured(f"could not read electrums/WAM at GLEECBTC/coins, so the "
+                   f"servers a wallet is actually given were not compared: {e}")
+    else:
+        ours_urls = {s.get("url") for s in el}
+        live_urls = {s.get("url") for s in live_el}
+        only_ours = sorted(ours_urls - live_urls)
+        only_live = sorted(live_urls - ours_urls)
+        if only_live:
+            bad(f"electrums/WAM at GLEECBTC/coins names {', '.join(only_live)}, "
+                f"which is not in ours -- a wallet is being handed a server "
+                f"nobody here has verified against the node")
+        if only_ours:
+            bad(f"{', '.join(only_ours)} is verified here and absent from "
+                f"electrums/WAM at GLEECBTC/coins, so no wallet is being given "
+                f"it. If the pull request is open this is the expected state; "
+                f"if it is not, the work is sitting here serving nobody")
+        if not only_ours and not only_live:
+            ok(f"{'live electrums':<18} matches ours, {len(live_urls)} server(s)")
 
     check_blockdx(prefix, num, hdr)
 

@@ -33,9 +33,10 @@
 > **One thing is outstanding as of 2026-11-02:** the live `electrums/WAM` holds
 > our two servers only. A third, run by an operator who is not us, has been
 > verified and is in [`electrums-WAM.json`](electrums-WAM.json) awaiting a pull
-> request — see *Electrum servers* below. Its `contact` carries a Discord handle
-> and no email; the repository accepts that structurally, and every other entry
-> in it carries both.
+> request — see *Electrum servers* below. `scripts/check_listing_entry.py` now
+> reads the live `electrums/WAM` as well as the live `coins` entry, so this is
+> a red row rather than a silence: it stays red until the pull request is
+> merged, which is the expected state and whose action is to open it.
 
 **`KomodoPlatform/coins` is not a second platform, and nothing should be sent
 there.** It is a copy of `GLEECBTC/coins`, kept only so that older builds of
