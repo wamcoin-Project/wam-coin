@@ -254,14 +254,12 @@ public class ConfigActivity extends AppCompatActivity {
 
                     } catch (Exception e) {
                         e.printStackTrace();
-                        uiHandler.post(() -> Toast.makeText(ConfigActivity.this, "SSL/Network error occurred while processing transaction details.", Toast.LENGTH_SHORT).show());
+                        uiHandler.post(() -> Toast.makeText(ConfigActivity.this, "Network error occurred! Recheck Internet and try again.", Toast.LENGTH_SHORT).show());
                     }
                 });
-
-            } catch (NumberFormatException nfe) {
-                Toast.makeText(ConfigActivity.this, "Please enter correct numeric values for port configurations and core values.", Toast.LENGTH_SHORT).show();
             } catch (Exception e) {
                 e.printStackTrace();
+                uiHandler.post(() -> Toast.makeText(ConfigActivity.this, "Unable to save config! Recheck Internet and try again.", Toast.LENGTH_SHORT).show());
             }
         });
 
