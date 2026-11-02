@@ -7,10 +7,12 @@ import android.os.Looper;
 import android.provider.Settings;
 import android.view.View;
 import android.widget.Button;
+import android.widget.ImageButton;
 import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.content.pm.PackageInfoCompat;
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
@@ -106,6 +108,16 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
+        // Find the top-right information shortcut icon
+        android.widget.ImageButton aboutButton = findViewById(R.id.aboutBtn);
+        aboutButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                showAboutDialog();
+            }
+        });
+
+
         ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main), (v, insets) -> {
             Insets systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars());
             v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom);
@@ -200,4 +212,66 @@ public class MainActivity extends AppCompatActivity {
             executorService.shutdown();
         }
     }
+
+    private void showAboutDialog() {
+        android.view.LayoutInflater inflater = android.view.LayoutInflater.from(this);
+        android.view.View dialogView = inflater.inflate(R.layout.dialog_about, null);
+
+        // Bind layouts fields from the XML template
+        android.widget.ImageButton btnCore = (ImageButton) dialogView.findViewById(R.id.btn_dialog_core);
+        android.widget.ImageButton btnGithub = (ImageButton) dialogView.findViewById(R.id.btn_dialog_dev);
+        //gvstodo TextView
+        android.widget.TextView txtVersion = (TextView) dialogView.findViewById(R.id.txt_dialog_version);
+        android.widget.TextView txtBuild = (TextView) dialogView.findViewById(R.id.txt_dialog_build);
+
+        // Link Core System redirect logic
+        btnCore.setOnClickListener(new android.view.View.OnClickListener() {
+            @Override
+            public void onClick(android.view.View v) {
+                startActivity(new android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://wamcoin.org/"))); // Points to your vslabs server node URL
+            }
+        });
+
+        // Link GitHub repository redirection logic
+        btnGithub.setOnClickListener(new android.view.View.OnClickListener() {
+            @Override
+            public void onClick(android.view.View v) {
+                startActivity(new android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://github.com/gvsa/wam-coin/tree/wam-miner-android")));
+            }
+        });
+
+        // Read app package details dynamically from the manifest build settings
+        try {
+            android.content.pm.PackageInfo packageInfo = getPackageManager().getPackageInfo(getPackageName(), 0);
+            txtVersion.setText(String.valueOf("Version: " + packageInfo.versionCode));
+
+            long code = PackageInfoCompat.getLongVersionCode(packageInfo);
+
+            // Fetch running ABI runtime architecture profile
+            String primaryCpuArchitecture = "Unknown";
+            if (android.os.Build.SUPPORTED_ABIS != null && android.os.Build.SUPPORTED_ABIS.length > 0) {
+                primaryCpuArchitecture = android.os.Build.SUPPORTED_ABIS[0];
+            }
+
+            // Combines both parameters into your target "Build Info: --" TextView field
+            if (txtBuild != null) {
+                String build = "Build Info: " + packageInfo.versionName + " (" + primaryCpuArchitecture + ")";
+                txtBuild.setText(build);
+            }
+        } catch (Exception e) {
+            // Explicitly print the error to Logcat under a searchable tag
+            android.util.Log.e("WAM_MINER_ERROR", "Failed to load package info", e);
+        }
+
+        // Build and display the alert dialog popup overlay
+        androidx.appcompat.app.AlertDialog dialog = new androidx.appcompat.app.AlertDialog.Builder(this).setTitle("About WAM Miner").setView(dialogView).setPositiveButton("Close", null).create();
+
+        dialog.show();
+
+        // Forces the window context system overlay layer to lock into the exact physical center
+        if (dialog.getWindow() != null) {
+            dialog.getWindow().setGravity(android.view.Gravity.CENTER);
+        }
+    }
+
 }
