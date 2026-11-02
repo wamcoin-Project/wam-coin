@@ -1,7 +1,5 @@
 package org.vslabs.model;
 
-import com.google.gson.Gson;
-
 import java.io.Serializable;
 
 public class PoolObject implements Serializable {

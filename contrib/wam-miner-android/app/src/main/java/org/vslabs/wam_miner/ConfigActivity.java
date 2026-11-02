@@ -95,16 +95,10 @@ public class ConfigActivity extends AppCompatActivity {
 
                 if (selectedPool != null && selectedPool.ports != null) {
                     // 2. Convert primitive int[] to a List<Integer> using Java Streams
-                    List<Integer> portList = Arrays.stream(selectedPool.ports)
-                            .boxed()
-                            .collect(Collectors.toList());
+                    List<Integer> portList = Arrays.stream(selectedPool.ports).boxed().collect(Collectors.toList());
 
                     // 3. Create a fresh adapter for the ports dropdown list
-                    ArrayAdapter<Integer> portAdapter = new ArrayAdapter<>(
-                            ConfigActivity.this,
-                            android.R.layout.simple_spinner_item,
-                            portList
-                    );
+                    ArrayAdapter<Integer> portAdapter = new ArrayAdapter<>(ConfigActivity.this, android.R.layout.simple_spinner_item, portList);
                     portAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
 
                     // 4. Update the port spinner layout on the fly
