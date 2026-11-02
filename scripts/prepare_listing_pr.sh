@@ -75,6 +75,12 @@ step() { printf '\n%s%s%s\n' "$BLD" "$*" "$OFF"; }
 # repository gets a new branch, and an empty column is honest about a pull
 # request that does not exist yet -- verify_target says so and continues,
 # rather than checking a number that describes something else.
+#
+# It was opened the same day as GLEECBTC/coins#2085, so the column is filled
+# again and verify_target has something true to check: that #2085 really reads
+# wamcoin-Project/coins:add-third-electrum before anything is pushed there. A
+# corrected file reaches the review by running this script again, which is the
+# whole reason it exists.
 venues() {
     cat <<'V'
 slips          satoshilabs/slips                          slips                           add-wam-coin  2051
@@ -82,7 +88,7 @@ bisq           bisq-network/bisq                          bisq                  
 haveno         haveno-dex/haveno                          haveno                          add-wam-coin  2528
 blockdx        blocknetdx/blockchain-configuration-files   blockchain-configuration-files  add-wam-coin  200
 basicswap      basicswap/basicswap                        basicswap                       add-wam-coin  701
-komodo         GLEECBTC/coins                             coins                           add-third-electrum
+komodo         GLEECBTC/coins                             coins                           add-third-electrum  2085
 komodo-mirror  KomodoPlatform/coins                       coins                           add-wam-coin  23
 V
 }
