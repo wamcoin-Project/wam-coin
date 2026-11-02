@@ -574,6 +574,27 @@ CHECKS = [
     # not finish printing was three servers fourteen commits behind. A check
     # that times out reports nothing, and reporting nothing is the one thing
     # this panel exists to prevent.
+    # Until 2026-11-02 this panel had no Electrum row at all, though sweep.sh
+    # has had one since the 39-hour outage in August. A light wallet does not
+    # read the chain -- it asks one of these servers and believes the answer --
+    # so when they are down it shows nothing, and when they are behind it shows
+    # a wrong balance, which is worse. The panel is what gets looked at between
+    # sweeps, and this was the service it never looked at.
+    ("electrum servers answer and agree",
+     [sys.executable, "scripts/check_electrum.py",
+      "--node", "169.58.159.165", "--network", "mainnet",
+      "electrum.wamcoin.org", "electrum2.wamcoin.org"], 200),
+    # Its own row, because this one is not ours: cup runs it in Seoul, on a
+    # machine we hold no ssh on and should not. A reboot of his must not redden
+    # the row that judges ours -- a red line nobody can act on is how people
+    # learn to ignore red lines. It still has to be able to fail: electrums/WAM
+    # advertises this endpoint, so a wallet told a wrong balance by it was sent
+    # there by us. The action on this line is to tell the operator, or to take
+    # the endpoint out of the entry.
+    ("a server we do not own agrees",
+     [sys.executable, "scripts/check_electrum.py",
+      "--node", "169.58.159.165", "--network", "mainnet",
+      "wam.zcd.lol"], 150),
     ("deployed code is origin/main",
      ["bash", "scripts/check_deployed_code.sh"] + ALL_IPS, 300),
     ("the same keys get a shell everywhere",
