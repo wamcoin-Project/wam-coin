@@ -27,20 +27,13 @@ import java.io.OutputStream;
 import java.lang.reflect.Type;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
-import java.security.SecureRandom;
-import java.security.cert.X509Certificate;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
 
-import javax.net.ssl.HostnameVerifier;
 import javax.net.ssl.HttpsURLConnection;
-import javax.net.ssl.SSLContext;
-import javax.net.ssl.SSLSession;
-import javax.net.ssl.TrustManager;
-import javax.net.ssl.X509TrustManager;
 
 public class ConfigActivity extends AppCompatActivity {
 
@@ -219,30 +212,6 @@ public class ConfigActivity extends AppCompatActivity {
                 // 2. Offload network processing layers completely to the background thread pool
                 executor.execute(() -> {
                     try {
-                        // ==========================================
-                        // WORKAROUND: Setup SSL trust overrides matching your test server environment
-                        // ==========================================
-                        TrustManager[] trustAllCerts = new TrustManager[]{new X509TrustManager() {
-                            public X509Certificate[] getAcceptedIssuers() {
-                                return null;
-                            }
-
-                            public void checkClientTrusted(X509Certificate[] certs, String authType) {
-                            }
-
-                            public void checkServerTrusted(X509Certificate[] certs, String authType) {
-                            }
-                        }};
-
-                        SSLContext sc = SSLContext.getInstance("SSL");
-                        sc.init(null, trustAllCerts, new SecureRandom());
-
-                        HostnameVerifier allHostsValid = new HostnameVerifier() {
-                            public boolean verify(String hostname, SSLSession session) {
-                                return true;
-                            }
-                        };
-
                         // 3. Map values to your data object layout structure
                         MinerConfigModel pendingConfig = new MinerConfigModel();
                         pendingConfig.stratum = inputStratum;
@@ -257,10 +226,7 @@ public class ConfigActivity extends AppCompatActivity {
 
                         // 4. Initialize connection targeting the profile preservation endpoint
                         URL url = new URL("https://wamnode.vslabs.co.in/api/saveminerconfig");
-                        // Explicitly cast to HttpsURLConnection to accept custom certificate socket configurations
                         HttpsURLConnection configCon = (HttpsURLConnection) url.openConnection();
-                        configCon.setSSLSocketFactory(sc.getSocketFactory());
-                        configCon.setHostnameVerifier(allHostsValid);
 
                         configCon.setRequestMethod("POST");
                         configCon.setRequestProperty("Accept", "application/json");

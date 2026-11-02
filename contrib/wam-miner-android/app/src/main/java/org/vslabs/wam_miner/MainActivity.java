@@ -25,17 +25,11 @@ import java.io.InputStreamReader;
 import java.lang.reflect.Type;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
-import java.security.cert.X509Certificate;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-import javax.net.ssl.HostnameVerifier;
 import javax.net.ssl.HttpsURLConnection;
-import javax.net.ssl.SSLContext;
-import javax.net.ssl.SSLSession;
-import javax.net.ssl.TrustManager;
-import javax.net.ssl.X509TrustManager;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -135,41 +129,10 @@ public class MainActivity extends AppCompatActivity {
         Gson gson = new Gson();
         try {
             // ==========================================
-            // WORKAROUND: Create an all-trusting trust manager
-            // ==========================================
-            TrustManager[] trustAllCerts = new TrustManager[]{
-                    new X509TrustManager() {
-                        public X509Certificate[] getAcceptedIssuers() {
-                            return null;
-                        }
-
-                        public void checkClientTrusted(X509Certificate[] certs, String authType) {
-                        }
-
-                        public void checkServerTrusted(X509Certificate[] certs, String authType) {
-                        }
-                    }
-            };
-
-            // Install the all-trusting trust manager
-            SSLContext sc = SSLContext.getInstance("SSL");
-            sc.init(null, trustAllCerts, new java.security.SecureRandom());
-
-            // Create an all-trusting hostname verifier
-            HostnameVerifier allHostsValid = new HostnameVerifier() {
-                public boolean verify(String hostname, SSLSession session) {
-                    return true;
-                }
-            };
-
-            // ==========================================
             // REQUEST 1: GET POOLS
             // ==========================================
             URL url1 = new URL("https://wamnode.vslabs.co.in/api/getpools");
-            // Cast explicitly to HttpsURLConnection to pass our SSL settings
             HttpsURLConnection poolCon = (HttpsURLConnection) url1.openConnection();
-            poolCon.setSSLSocketFactory(sc.getSocketFactory());
-            poolCon.setHostnameVerifier(allHostsValid);
 
             poolCon.setRequestMethod("GET");
             poolCon.setRequestProperty("Accept", "application/json");
@@ -201,8 +164,6 @@ public class MainActivity extends AppCompatActivity {
             // ==========================================
             URL url2 = new URL("https://wamnode.vslabs.co.in/api/getminerconfig");
             HttpsURLConnection configCon = (HttpsURLConnection) url2.openConnection();
-            configCon.setSSLSocketFactory(sc.getSocketFactory());
-            configCon.setHostnameVerifier(allHostsValid);
 
             configCon.setRequestMethod("POST");
             configCon.setRequestProperty("Accept", "application/json");
