@@ -64,6 +64,17 @@ step() { printf '\n%s%s%s\n' "$BLD" "$*" "$OFF"; }
 #
 # So `komodo` now means the repository that is actually reviewing us, and the
 # mirror is a separate target that has to be named.
+#
+# 2026-11-02: the komodo branch is `add-third-electrum` and its pull request
+# column is empty, on purpose. The coin entry is merged -- cipig did it himself
+# in GLEECBTC/coins#2034 -- and #1975 is closed. This script updates a branch
+# that already exists rather than replacing it, so leaving `add-wam-coin-gleec`
+# here would have pushed a new commit onto the head of a closed pull request:
+# GitHub shows it there, the dead conversation wakes up, and the change nobody
+# is reviewing is the one that matters. A new submission to the same
+# repository gets a new branch, and an empty column is honest about a pull
+# request that does not exist yet -- verify_target says so and continues,
+# rather than checking a number that describes something else.
 venues() {
     cat <<'V'
 slips          satoshilabs/slips                          slips                           add-wam-coin  2051
@@ -71,7 +82,7 @@ bisq           bisq-network/bisq                          bisq                  
 haveno         haveno-dex/haveno                          haveno                          add-wam-coin  2528
 blockdx        blocknetdx/blockchain-configuration-files   blockchain-configuration-files  add-wam-coin  200
 basicswap      basicswap/basicswap                        basicswap                       add-wam-coin  701
-komodo         GLEECBTC/coins                             coins                           add-wam-coin-gleec  1975
+komodo         GLEECBTC/coins                             coins                           add-third-electrum
 komodo-mirror  KomodoPlatform/coins                       coins                           add-wam-coin  23
 V
 }
