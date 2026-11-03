@@ -11,7 +11,7 @@
 //  The network panel used to count seeds among this node's peers, which can
 //  never include the machine it runs on. Served from the France seed it saw
 //  Singapore and nothing else, and the page said "WAM seed nodes: 1" -- read
-//  by a visitor as a network with a single point of failure, when there are
+//  by a visitor as a network with a single point of failure, when there were
 //  two.
 //
 //  Relabelling it "other WAM seeds reached" made the number honest, and left
@@ -24,11 +24,17 @@
 //
 //  WHY THE ADDRESSES ARE COUNTED AND NOT THE NAMES
 //
-//  seed1, seed2 and seed3 all resolve to the same two machines today. Three
-//  names on two hosts is not three seeds, and a page about decentralisation
-//  that counted names would be flattering itself. Distinct addresses that
-//  answer is the number that means something, and it becomes 3 on its own
-//  the day a third machine exists -- no code changes.
+//  seed1, seed2 and seed3 all resolve to every machine we run. Three names
+//  on two hosts is not three seeds, and a page about decentralisation that
+//  counted names would be flattering itself. Distinct addresses that answer
+//  is the number that means something, and this paragraph promised it would
+//  become 3 on its own the day a third machine existed, with no code change.
+//
+//  Half of that was true. US-east arrived and the count did move to 3 by
+//  itself -- and the page then read "3 WAM seed nodes / France · Singapore",
+//  because PLACES below is a hand-written map and nobody added the row. The
+//  count measures the network; the names are copied from ops/ops.py by hand,
+//  and the copy drifted. The founder found it by reading his own panel.
 //
 //  NO ADDRESS IS EVER RETURNED. Only counts and, for our own seeds, the
 //  country. A list of who runs a node is a list of who to attack.
@@ -50,7 +56,8 @@ const P2P_PORT = { main: 9555, test: 19555, regtest: 29555 };
 // unnamed: this is a public page.
 const PLACES = {
     '169.58.159.165': 'France',
-    '5.223.52.200': 'Singapore'
+    '5.223.52.200': 'Singapore',
+    '13.140.33.187': 'US'
 };
 
 function reachable(host, port, timeoutMs) {
