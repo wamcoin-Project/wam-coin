@@ -16,16 +16,16 @@
         android:layout_marginEnd="16dp"
         android:background="?android:attr/selectableItemBackgroundBorderless"
         android:src="@android:drawable/ic_menu_info_details"
-        android:contentDescription="About App Info"
+        android:contentDescription="@string/aboutBtn_desc"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
 
     <!-- Top Label -->
     <TextView
-        android:id="@+id/text_label"
+        android:id="@+id/app_title"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="WAM Miner Android v1.0.0\n built from wam-miner-v1.0.0"
+        android:text="@string/app_title"
         android:textAlignment="center"
         app:layout_constraintBottom_toTopOf="@+id/hwinfo"
         app:layout_constraintEnd_toEndOf="parent"
@@ -44,7 +44,7 @@
         app:layout_constraintBottom_toTopOf="@+id/getStartedBtn"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@+id/text_label" />
+        app:layout_constraintTop_toBottomOf="@+id/app_title" />
 
     <!-- Bottom Button -->
     <Button
@@ -52,7 +52,7 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginTop="32dp"
-        android:text="Get started"
+        android:text="@string/getStartedBtn_text"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"

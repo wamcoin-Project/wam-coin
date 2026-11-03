@@ -27,7 +27,7 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginBottom="55dp"
-        android:text="Initializing app..."
+        android:text="@string/tvStatus_text"
         android:textColor="@color/white"
         android:textSize="16sp"
         android:textStyle="bold"
