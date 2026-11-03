@@ -148,8 +148,8 @@ running, which comes first, because a chain with no nodes has nothing worth
 securing.
 
 **This programme's share of it is one eighth: 93,750 WAM, for the whole life
-of the programme.** 22,000 of that is committed to the findings below. One of
-every class in the table above comes to 91,250, so the table is
+of the programme.** 21,250 of that has been paid against the findings below.
+One of every class in the table above comes to 91,250, so the table is
 payable even if every class is found — which is the test a promise has to
 pass before it is made.
 
