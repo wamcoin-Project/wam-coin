@@ -31,21 +31,13 @@ public class SplashActivity extends AppCompatActivity {
     }
 
     private void initializeApp() {
-        // 1. Initial status update on Main Thread
-        tvStatus.setText("Connecting to server...");
 
-        // 2. Offload network/parsing work to the background executor
+        // Offload network/parsing work to the background executor
         executorService.execute(() -> {
 
             // Detect specifications
             String hardwareSpecs = DeviceHardwareUtil.getDeviceHardwareSpecs(SplashActivity.this);
 
-            // Switch to Main thread to update the UI
-            mainHandler.post(() -> {
-                tvStatus.setText(hardwareSpecs);
-            });
-
-            // 3. Jump back to the Main Thread to update UI and navigate
             mainHandler.post(() -> {
                 // Small delay so the user can read the success message
                 mainHandler.postDelayed(() -> {
