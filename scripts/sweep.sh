@@ -257,6 +257,15 @@ run "no alert looks like a link" "$PY" scripts/test/test_alert_text.py
 # release was correct throughout; check_release_signed.sh read an nginx error
 # page, found no SHA256SUMS link in it, and said SHA256SUMS is not published.
 run "a check that cannot ask stays quiet" bash scripts/test/test_release_check_silence.sh
+# The same confusion, on the ops panel rather than in the channels. On
+# 2026-11-04 two rows read FAILING -- "electrum servers answer and agree" and
+# "a server we do not own agrees" -- while all four of our endpoints and cup's
+# were answering at the right height. One slow ssh to the France node had
+# raised TimeoutExpired out of check_electrum.py's own private copy of the ssh
+# call, past the caller's graceful path, and the panel printed the traceback
+# under those two names. wamssh.py exists so this is written once; this holds
+# the panel to using it.
+run "a hung ssh is not a failing service" "$PY" scripts/test/test_panel_ssh_silence.py
 # The release note inside a platform archive was wrong four times in one
 # evening, each time found by downloading the finished artifact. The root was
 # that the packaging is parameterised by platform and only one branch was ever

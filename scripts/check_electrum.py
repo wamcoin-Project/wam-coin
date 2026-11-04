@@ -57,7 +57,6 @@ import argparse
 import json
 import socket
 import ssl
-import subprocess
 import sys
 
 # Addressing a chain with wam-cli lives in one place. Each of these files
@@ -66,6 +65,11 @@ import sys
 # to check mainnet, they all quietly checked testnet.
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from wamcli import flags as _wamcli_flags   # noqa: E402
+# Asking a server a question also lives in one place, for the reason written
+# at the top of wamssh.py: it never raises, and it tells the caller the
+# difference between "the answer is no" and "I could not ask". This file was
+# the last check that still had its own copy of that call. See node_state.
+from wamssh import run as _ssh, UNREACHABLE   # noqa: E402
 
 RED = "\033[31m"; GRN = "\033[32m"; YEL = "\033[33m"; OFF = "\033[0m"
 
@@ -156,14 +160,55 @@ def probe(ip, port, use_tls, sni, timeout=15):
 
 
 def node_state(host, network):
-    """Height and genesis from the node itself, over ssh."""
+    """Height and genesis from the node itself. Returns (height, genesis, why).
+
+    WHY THIS GOES THROUGH wamssh
+
+    Until 2026-11-04 this was a private copy of subprocess.run(..., timeout=60),
+    and subprocess.run RAISES TimeoutExpired rather than returning a non-zero
+    status. So the caller's graceful path -- warn, and carry on with heights
+    unverified -- only ever ran when ssh FAILED quickly. When ssh HUNG, the
+    exception went straight past it and killed the script.
+
+    That morning one slow ssh to the France node did exactly that, twice in
+    sixty seconds, and the ops panel printed a Python traceback under two rows
+    named "electrum servers answer and agree" and "a server we do not own
+    agrees". All four of our endpoints were answering at the correct height at
+    that moment, and so was cup's. The second row exists precisely so that an
+    outage of HIS cannot redden a row that judges OURS -- and an ssh hiccup of
+    ours reddened it.
+
+    wamssh.run never raises, and retries once after three seconds, which is
+    what this failure needed: it was intermittent, not an outage.
+
+    BOTH QUESTIONS, ONE CONNECTION
+
+    Two calls meant two timeout windows, and the second was put to a host the
+    first had just shown to be unreachable. One connection answers both.
+    """
     flag = _wamcli_flags(network)
-    def run(cmd):
-        p = subprocess.run(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=15",
-                            f"root@{host}", f"wam-cli {flag} {cmd}"],
-                           capture_output=True, text=True, timeout=60)
-        return p.stdout.strip() if p.returncode == 0 else None
-    return run("getblockcount"), run("getblockhash 0")
+    # 25s x 2 tries, 3s apart, is 53s at worst -- inside the 150s that ops.py
+    # allows this check for cup's host, with the endpoint probes still to come.
+    # A healthy answer measures under three seconds.
+    rc, out = _ssh(host, f"wam-cli {flag} getblockcount\n"
+                         f"wam-cli {flag} getblockhash 0\n", timeout=25)
+    if rc == UNREACHABLE:
+        return None, None, out
+
+    # Validated by shape, not by exit status: with two commands on one stdin,
+    # the status belongs to the last of them, so a height that arrived after a
+    # genesis that did not would still be usable.
+    lines = [ln.strip() for ln in out.splitlines() if ln.strip()]
+    height = lines[0] if lines and lines[0].isdigit() else None
+    genesis = None
+    if len(lines) > 1 and len(lines[1]) == 64:
+        try:
+            int(lines[1], 16)
+            genesis = lines[1]
+        except ValueError:
+            genesis = None
+    why = None if height else f"wam-cli exited {rc} without a height"
+    return height, genesis, why
 
 
 def main():
@@ -187,12 +232,18 @@ def main():
 
     true_height = true_genesis = None
     if args.node:
-        h, g = node_state(args.node, args.network)
-        if h and h.isdigit():
+        h, g, why = node_state(args.node, args.network)
+        if h:
             true_height, true_genesis = int(h), g
             ok(f"node {args.node}: height {true_height}")
         else:
-            warn(f"could not read the node at {args.node}; heights are unverified")
+            # Not a finding about Electrum, and this must not read like one.
+            # Everything below is still measured -- each address answers, over
+            # a certificate that verifies, speaking the protocol, on our
+            # genesis. The one thing that cannot be measured without the node
+            # is how far behind the servers are, and that is what is said.
+            warn(f"could not read the node at {args.node}: {why}")
+            warn("heights below are UNVERIFIED -- a stuck server would pass")
 
     checked = 0
     failed = 0
