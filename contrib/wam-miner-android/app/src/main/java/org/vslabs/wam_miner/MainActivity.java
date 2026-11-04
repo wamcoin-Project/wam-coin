@@ -4,11 +4,11 @@ import android.content.Intent;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
-import android.provider.Settings;
 import android.view.View;
 import android.widget.Button;
 import android.widget.ImageButton;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.pm.PackageInfoCompat;
@@ -31,7 +31,6 @@ import java.util.concurrent.Executors;
 public class MainActivity extends AppCompatActivity {
 
     MinerConfigModel configObject = null;
-    String device_id = null;
     List<PoolObject> poolsObject = null;
     String poolString = null, hwinfo = null;
     boolean pool = false, config = false;
@@ -47,13 +46,10 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        device_id = Settings.Secure.getString(this.getContentResolver(), Settings.Secure.ANDROID_ID);
-
         findViewById(R.id.getStartedBtn).setEnabled(false);
 
         hwinfo = getIntent().getStringExtra("HWINFO");
-        ((TextView) findViewById(R.id.hwinfo)).setText(device_id + "\n" + hwinfo);
-//        Toast.makeText(MainActivity.this, "hwinfo loaded", Toast.LENGTH_LONG).show();
+        ((TextView) findViewById(R.id.hwinfo)).setText(hwinfo);
 
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
             getWindow().setDecorFitsSystemWindows(false);
@@ -88,7 +84,6 @@ public class MainActivity extends AppCompatActivity {
                 // Create an Intent targeting FormActivity
                 Intent intent = new Intent(MainActivity.this, ConfigActivity.class);
                 if (configObject != null) intent.putExtra("CONFIG", configObject);
-                intent.putExtra("DEVICE_ID", device_id);
                 intent.putExtra("HWINFO", hwinfo);
                 finish();
                 startActivity(intent);

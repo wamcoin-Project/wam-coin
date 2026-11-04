@@ -4,7 +4,6 @@ import java.io.Serializable;
 
 public class MinerConfigModel implements Serializable {
     private static final long serialVersionUID = 1L;
-    public String id;
     public String stratum;
     public int port;
     public String address;

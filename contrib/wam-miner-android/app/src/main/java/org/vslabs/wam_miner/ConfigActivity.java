@@ -27,7 +27,6 @@ public class ConfigActivity extends AppCompatActivity {
 
     MinerConfigModel configObject = null;
     private final int coreMax = Runtime.getRuntime().availableProcessors();
-    String device_id = null;
     private EditText input_stratum = null, input_port = null, input_address = null, input_worker = null;
     TextView input_cores = null;
     private TextView errorAddress, errorStratum, errorPort, errorWorker;
@@ -54,11 +53,7 @@ public class ConfigActivity extends AppCompatActivity {
         setupErrorClearer(input_address, errorAddress);
         setupErrorClearer(input_worker, errorWorker);
 
-        device_id = this.getIntent().getStringExtra("DEVICE_ID");
         String hwinfo = this.getIntent().getStringExtra("HWINFO");
-//        String jsonString = this.getIntent().getStringExtra("POOLS");
-
-//        Log.d("gvsdebug", "poolstring received in config=\n" + jsonString);
 
         ((TextView) findViewById(R.id.config_hwinfo)).setText("Current Hardware Information:\n" + hwinfo);
 
@@ -70,8 +65,6 @@ public class ConfigActivity extends AppCompatActivity {
             input_worker.setText(configObject.name);
             input_cores.setText(String.valueOf(configObject.cores));
         }
-
-//        txt = findViewById(R.id.input_cores);
 
         // Add the text change listener
         input_cores.addTextChangedListener(new TextWatcher() {
@@ -156,7 +149,6 @@ public class ConfigActivity extends AppCompatActivity {
                     pendingConfig.address = inputAddress;
                     pendingConfig.name = inputWorker;
                     pendingConfig.cores = inputCores;
-                    pendingConfig.id = device_id;
 
                     Gson gson = new Gson();
 
@@ -187,9 +179,7 @@ public class ConfigActivity extends AppCompatActivity {
         });
 
         findViewById(R.id.startnativemining).
-
                 setOnClickListener(view ->
-
                 {
                     if (configObject == null) return;
 
