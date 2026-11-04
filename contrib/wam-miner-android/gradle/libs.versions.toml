@@ -1,34 +1,15 @@
-#[versions]
-#agp = "8.7.3"
-#junit = "4.13.2"
-#junitVersion = "1.3.0"
-#espressoCore = "3.7.0"
-#appcompat = "1.8.0"
-#material = "1.14.0"
-#activityKtx = "1.13.0"
-#constraintlayout = "2.2.2"
-#[versions]
-#agp = "8.7.3"       # Keep your current working AGP version
-#junit = "4.13.2"
-#junitVersion = "1.1.5"        # Downgraded from 1.3.0
-#espressoCore = "3.5.1"        # Downgraded from 3.7.0
-#appcompat = "1.4.2"           # Downgraded from 1.8.0 (Supports SDK 30)
-#material = "1.6.1"            # Downgraded from 1.14.0 (Supports SDK 30)
-#activityKtx = "1.4.0"         # Downgraded from 1.13.0 (Supports SDK 30)
-#constraintlayout = "2.1.4"    # Downgraded from 2.2.2 (Supports SDK 30)
-
 [versions]
 agp = "7.2.2"
 junit = "4.13.2"
-junitVersion = "1.1.3"         # Downgraded further
-espressoCore = "3.4.0"         # Downgraded further
-appcompat = "1.3.1"            # Downgraded from 1.4.2 (Strictly supports SDK 30)
-material = "1.4.0"             # Downgraded from 1.6.1 (Strictly supports SDK 30)
-activityKtx = "1.3.1"          # Downgraded from 1.4.0 (Strictly supports SDK 30)
-constraintlayout = "2.1.1"
+junitVersion = "1.1.3"
+espressoCore = "3.4.0"
+appcompat = "1.4.2"
+material = "1.6.1"
+activityKtx = "1.4.0"
+constraintlayout = "2.1.4"
 ndkVersionTarget = "23.1.7779620"
 cardview = "1.0.0"
-#constraintlayoutVersion = "2.2.2"     # Downgraded from 2.1.4 (Strictly supports SDK 30)
+gson = "2.10.1"
 
 [libraries]
 junit = { group = "junit", name = "junit", version.ref = "junit" }
@@ -40,8 +21,7 @@ activity-ktx = { group = "androidx.activity", name = "activity-ktx", version.ref
 constraintlayout = { group = "androidx.constraintlayout", name = "constraintlayout", version.ref = "constraintlayout" }
 androidx-constraintlayout = { group = "androidx.constraintlayout", name = "constraintlayout", version.ref = "constraintlayout" }
 cardview = { group = "androidx.cardview", name = "cardview", version.ref = "cardview" }
-
+gson = { group = "com.google.code.gson", name = "gson", version.ref = "gson" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
-

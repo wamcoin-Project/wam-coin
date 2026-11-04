@@ -9,7 +9,6 @@ import android.view.View;
 import android.widget.Button;
 import android.widget.ImageButton;
 import android.widget.TextView;
-import android.widget.Toast;
 
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.pm.PackageInfoCompat;
@@ -18,20 +17,16 @@ import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
 
 import com.google.gson.Gson;
-import com.google.gson.reflect.TypeToken;
 
 import org.vslabs.model.MinerConfigModel;
 import org.vslabs.model.PoolObject;
 
-import java.io.InputStreamReader;
-import java.lang.reflect.Type;
-import java.net.URL;
-import java.nio.charset.StandardCharsets;
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileReader;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-
-import javax.net.ssl.HttpsURLConnection;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -66,26 +61,19 @@ public class MainActivity extends AppCompatActivity {
             getWindow().getDecorView().setSystemUiVisibility(android.view.View.SYSTEM_UI_FLAG_LAYOUT_STABLE | android.view.View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN);
         }
 
-        // 2. Push the network call to a background thread
         executorService.execute(new Runnable() {
             @Override
             public void run() {
                 // This runs safely in the background (Fixes the NetworkOnMainThreadException)
-                final boolean isSuccess = getPoolAndConfig();
+                final boolean configFound = getConfig();
 
-                // 3. Jump back to the Main/UI thread to update the app interface
                 mainHandler.post(new Runnable() {
                     @Override
                     public void run() {
-                        if (isSuccess) {
-                            // SUCCESS: Update your UI components or launch the main app screen
-                            // Example: updateMinerStatusText("Connected to pool!");
-                            findViewById(R.id.getStartedBtn).setEnabled(true);
+                        if (configFound) {
                         } else {
-                            // FAILURE: Show an error message to the user
-                            // Example: Toast.makeText(MainActivity.this, "Network error", Toast.LENGTH_LONG).show();
-                            Toast.makeText(MainActivity.this, "Network error! Recheck Internet and start the app again!", Toast.LENGTH_LONG).show();
                         }
+                        findViewById(R.id.getStartedBtn).setEnabled(true);
                     }
                 });
             }
@@ -100,7 +88,6 @@ public class MainActivity extends AppCompatActivity {
                 // Create an Intent targeting FormActivity
                 Intent intent = new Intent(MainActivity.this, ConfigActivity.class);
                 if (configObject != null) intent.putExtra("CONFIG", configObject);
-                if (poolString != null) intent.putExtra("POOLS", poolString);
                 intent.putExtra("DEVICE_ID", device_id);
                 intent.putExtra("HWINFO", hwinfo);
                 finish();
@@ -134,75 +121,28 @@ public class MainActivity extends AppCompatActivity {
 
     }
 
-    private boolean getPoolAndConfig() {
+    private boolean getConfig() {
+        boolean result = false;
         Gson gson = new Gson();
-        try {
-            // ==========================================
-            // REQUEST 1: GET POOLS
-            // ==========================================
-            URL url1 = new URL("https://wamnode.vslabs.co.in/api/getpools");
-            HttpsURLConnection poolCon = (HttpsURLConnection) url1.openConnection();
+        File configFile = new File(this.getFilesDir(), "miner_config.json");
 
-            poolCon.setRequestMethod("GET");
-            poolCon.setRequestProperty("Accept", "application/json");
-
-            if (poolCon.getResponseCode() == 200) {
-                try (InputStreamReader in = new InputStreamReader(poolCon.getInputStream(), StandardCharsets.UTF_8)) {
-
-                    Type type = new TypeToken<List<PoolObject>>() {
-                    }.getType();
-
-                    // 2. Parse the network input stream directly into a List
-                    poolsObject = gson.fromJson(in, type);
-
-                    if (poolsObject != null && !poolsObject.isEmpty()) {
-                        // 3. Convert the List cleanly into a JSON string
-                        poolString = gson.toJson(poolsObject, type);
-                    }
-                    pool = true;
+        // ATTEMPT TO LOAD LOCAL CACHE FIRST
+        if (configFile.exists()) {
+            try (BufferedReader reader = new BufferedReader(new FileReader(configFile))) {
+                configObject = gson.fromJson(reader, MinerConfigModel.class);
+                if (configObject != null) {
+                    result = true;
+//                    config = true;
+                    // If local config exists, mark setup as partially validated
+                    // We will still attempt to refresh pool lists via network
                 }
-            } else {
-                System.out.println("Pools API Failed: " + poolCon.getResponseCode());
-                poolCon.disconnect();
-                pool = false;
+            } catch (Exception e) {
+                e.printStackTrace();
+                System.out.println("Failed to parse local config cache.");
             }
-            poolCon.disconnect();
-
-            // ==========================================
-            // REQUEST 2: GET MINER CONFIG
-            // ==========================================
-            URL url2 = new URL("https://wamnode.vslabs.co.in/api/getminerconfig");
-            HttpsURLConnection configCon = (HttpsURLConnection) url2.openConnection();
-
-            configCon.setRequestMethod("POST");
-            configCon.setRequestProperty("Accept", "application/json");
-            configCon.setRequestProperty("Content-Type", "application/json; utf-8");
-            configCon.setDoOutput(true);
-
-            String jsonPayload = "{\"id\":\"" + device_id + "\"}";
-            try (java.io.OutputStream os = configCon.getOutputStream()) {
-                byte[] input = jsonPayload.getBytes(StandardCharsets.UTF_8);
-                os.write(input, 0, input.length);
-            }
-
-            if (configCon.getResponseCode() == 200) {
-                try (InputStreamReader in = new InputStreamReader(configCon.getInputStream(), StandardCharsets.UTF_8)) {
-                    configObject = gson.fromJson(in, MinerConfigModel.class);
-                    config = (configObject != null);
-                }
-            } else {
-                System.out.println("Miner Config API Failed: " + configCon.getResponseCode());
-                config = false;
-            }
-            configCon.disconnect();
-
-        } catch (Exception e) {
-            e.printStackTrace();
-            config = false;
         }
-        return (pool);
+        return result;
     }
-
 
     @Override
     protected void onDestroy() {

@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical">
@@ -30,97 +31,18 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:padding="16dp"
-        android:stretchColumns="*"
         tools:context=".ConfigActivity">
+
 
         <!-- Header Row -->
         <TableRow
             android:background="#DDDDDD"
+            android:gravity="center_vertical"
             android:padding="8dp">
 
             <TextView
                 android:text="@string/config_text"
                 android:textStyle="bold" />
-        </TableRow>
-
-        <!-- Data Row 1 -->
-        <TableRow android:padding="8dp">
-
-            <TextView
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:paddingEnd="16dp"
-                android:text="@string/config_stratum_url_text" />
-
-            <Spinner
-                android:id="@+id/poolChoices"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:dropDownWidth="wrap_content" />
-        </TableRow>
-
-        <TableRow android:padding="8dp">
-
-            <TextView
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:paddingEnd="16dp"
-                android:text="@string/config_port_text" />
-
-            <Spinner
-                android:id="@+id/portChoices"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content" />
-        </TableRow>
-
-        <!-- Divider Line using a plain View -->
-        <View
-            android:layout_height="2dp"
-            android:layout_marginVertical="8dp"
-            android:background="#CCCCCC" />
-
-        <TableRow android:padding="8dp">
-
-            <TextView
-                android:paddingEnd="16dp"
-                android:text="@string/config_wallet_address_text" />
-        </TableRow>
-
-        <!-- Dynamic One-Tap Autofill Prompt Container -->
-        <TableRow android:paddingHorizontal="8dp">
-
-            <Button
-                android:id="@+id/btn_clipboard_autofill"
-                style="?android:attr/borderlessButtonStyle"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="📋 Autofill Wallet from Clipboard"
-                android:textColor="#2196F3"
-                android:textSize="12sp"
-                android:visibility="gone" />
-        </TableRow>
-
-        <EditText
-            android:id="@+id/input_address"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:hint="@string/config_address_hint_text"
-            android:importantForAutofill="no"
-            android:inputType="textMultiLine"
-            android:scrollHorizontally="false" />
-
-        <TableRow android:padding="8dp">
-
-            <TextView
-                android:paddingEnd="16dp"
-                android:text="@string/config_worker_name_text" />
-
-            <EditText
-                android:id="@+id/input_worker"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:hint="@string/config_worker_name_hint_text"
-                android:inputType="text" />
         </TableRow>
 
         <TableRow
@@ -129,10 +51,156 @@
 
             <TextView
                 android:paddingEnd="16dp"
-                android:text="@string/config_cores_text" />
+                android:text="@string/config_wallet_address_text"
+                android:textStyle="bold" />
+        </TableRow>
+
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <EditText
+                android:id="@+id/input_address"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="@string/config_address_hint_text"
+                android:importantForAutofill="no"
+                android:inputType="textMultiLine"
+                android:scrollHorizontally="false" />
+
+            <TextView
+                android:id="@+id/error_address"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:paddingStart="4dp"
+                android:text=""
+                android:textColor="#FF2C2C"
+                android:textSize="12sp"
+                android:visibility="gone" />
+        </LinearLayout>
+
+        <!-- Data Row 1 -->
+        <TableRow
+            android:gravity="center_vertical"
+            android:padding="8dp">
+
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:paddingEnd="16dp"
+                android:text="@string/config_stratum_url_text"
+                android:textStyle="bold" />
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="2"
+                android:orientation="vertical">
+
+                <EditText
+                    android:id="@+id/input_stratum"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:dropDownWidth="wrap_content" />
+
+                <TextView
+                    android:id="@+id/error_stratum"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:paddingStart="4dp"
+                    android:textColor="#FF2C2C"
+                    android:textSize="12sp"
+                    android:visibility="gone" />
+            </LinearLayout>
+        </TableRow>
+
+        <TableRow
+            android:gravity="center_vertical"
+            android:padding="8dp">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:paddingEnd="16dp"
+                android:text="@string/config_port_text"
+                android:textStyle="bold" />
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="2"
+                android:orientation="vertical">
+
+                <EditText
+                    android:id="@+id/input_port"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:inputType="number" />
+
+                <TextView
+                    android:id="@+id/error_port"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:paddingStart="4dp"
+                    android:textColor="#FF2C2C"
+                    android:textSize="12sp"
+                    android:visibility="gone" />
+            </LinearLayout>
+        </TableRow>
+
+
+        <TableRow
+            android:gravity="center_vertical"
+            android:padding="8dp">
+
+            <TextView
+                android:layout_weight="1"
+                android:paddingEnd="16dp"
+                android:text="@string/config_worker_name_text"
+                android:textStyle="bold" />
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="2"
+                android:orientation="vertical">
+
+                <EditText
+                    android:id="@+id/input_worker"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:hint="@string/config_worker_name_hint_text"
+                    android:inputType="text" />
+
+                <TextView
+                    android:id="@+id/error_worker"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:paddingStart="4dp"
+                    android:textColor="#FF2C2C"
+                    android:textSize="12sp"
+                    android:visibility="gone" />
+            </LinearLayout>
+        </TableRow>
+
+        <TableRow
+            android:gravity="center_vertical"
+            android:padding="8dp">
+
+            <TextView
+                android:layout_weight="1"
+                android:paddingEnd="16dp"
+                android:text="@string/config_cores_text"
+                android:textStyle="bold" />
 
             <LinearLayout
                 android:layout_width="10dp"
+                android:layout_weight="1"
                 android:gravity="fill_horizontal"
                 android:orientation="horizontal">
 
@@ -172,6 +240,7 @@
         <TableRow
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:gravity="center_vertical"
             android:padding="10dp">
 
             <Button

@@ -78,7 +78,6 @@ dependencies {
     implementation libs.appcompat
     implementation libs.constraintlayout
     implementation libs.cardview
-
-    // Core Gson serialization engine
-    implementation 'com.google.code.gson:gson:2.14.0'
+    implementation libs.material
+    implementation libs.gson
 }
