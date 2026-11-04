@@ -37,8 +37,8 @@ binary ever disagree, that script fails.
 > **This coin may be worth nothing.** The overwhelming majority of new
 > cryptocurrencies fail, and there is no reason to assume this one is different.
 > **Nobody will buy it back from you** — the founder does not sell WAM and does
-> not buy it. Treat anything you acquire as money you can afford to lose
-> entirely. Section 9 says the rest.
+> not support its price. Treat anything you acquire as money you can afford to
+> lose entirely. Section 9 says the rest.
 
 ---
 
@@ -517,9 +517,9 @@ person who ends up holding WAM.
 no guarantee that anyone will want to buy WAM, use it, or list it anywhere. Nothing in this
 document is a prediction, and no figure in it is a price.
 
-**Nobody will buy it back.** The founder does not sell WAM and does not buy it. There is no
-buyback, no market maker, no price floor and no reserve standing behind it. If a price exists
-it is whatever two strangers agree on, and it can be zero.
+**Nobody will buy it back.** The founder does not sell WAM and does not support its price.
+There is no buyback, no market maker, no price floor and no reserve standing behind it. If a
+price exists it is whatever two strangers agree on, and it can be zero.
 
 **A secondary market is outside anyone's control.** If you buy WAM from a miner or another
 holder and the price then falls, the loss is yours. The project makes no representation about

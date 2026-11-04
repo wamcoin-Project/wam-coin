@@ -81,7 +81,7 @@ hr{border:0;border-top:1px solid var(--rule);margin:2.2rem 0}
 <p>Both founder allocations are time-constrained by consensus, not by promise. The reserve is locked behind <code>OP_CHECKLOCKTIMEVERIFY</code> in the genesis block itself, releasing 20% per year across five tranches. The operating fee expires permanently at height 400,000 — roughly eighteen months after launch — after which miners receive <strong>100%</strong> of every block subsidy.</p>
 <p>Every number in this document is checkable. <code>scripts/verify_supply.py</code> reads the constants directly out of the consensus header and replays the entire emission schedule with exact integer arithmetic. If the arithmetic in this whitepaper and the arithmetic in the shipped binary ever disagree, that script fails.</p>
 <blockquote><h3 id="before-you-read-further">Before you read further</h3>
-<p><strong>This coin may be worth nothing.</strong> The overwhelming majority of new cryptocurrencies fail, and there is no reason to assume this one is different. <strong>Nobody will buy it back from you</strong> — the founder does not sell WAM and does not buy it. Treat anything you acquire as money you can afford to lose entirely. Section 9 says the rest.</p></blockquote>
+<p><strong>This coin may be worth nothing.</strong> The overwhelming majority of new cryptocurrencies fail, and there is no reason to assume this one is different. <strong>Nobody will buy it back from you</strong> — the founder does not sell WAM and does not support its price. Treat anything you acquire as money you can afford to lose entirely. Section 9 says the rest.</p></blockquote>
 <hr>
 <h2 id="1-motivation">1. Motivation</h2>
 <p>Two failure modes dominate small proof-of-work launches.</p>
@@ -205,7 +205,7 @@ key         = block_hash(seed_height)</code></pre>
 <h2 id="9-what-can-go-wrong-for-you">9. What can go wrong for you</h2>
 <p>Section 8 is about what can go wrong with the chain. This is about what can go wrong for a person who ends up holding WAM.</p>
 <p><strong>It may be worth nothing.</strong> The overwhelming majority of new cryptocurrencies fail. There is no guarantee that anyone will want to buy WAM, use it, or list it anywhere. Nothing in this document is a prediction, and no figure in it is a price.</p>
-<p><strong>Nobody will buy it back.</strong> The founder does not sell WAM and does not buy it. There is no buyback, no market maker, no price floor and no reserve standing behind it. If a price exists it is whatever two strangers agree on, and it can be zero.</p>
+<p><strong>Nobody will buy it back.</strong> The founder does not sell WAM and does not support its price. There is no buyback, no market maker, no price floor and no reserve standing behind it. If a price exists it is whatever two strangers agree on, and it can be zero.</p>
 <p><strong>A secondary market is outside anyone's control.</strong> If you buy WAM from a miner or another holder and the price then falls, the loss is yours. The project makes no representation about price, at any time, to anyone.</p>
 <p><strong>Mining costs electricity and may never repay it.</strong> A block reward is worth whatever WAM is worth, which may be nothing at all. Do not mine with power you cannot afford to spend for its own sake.</p>
 <p><strong>Lose your key and the coins are gone.</strong> There is no recovery, no reset and no support desk. This is true of every chain built this way, Bitcoin included, and it is not a defect — it is the same property that means nobody can take your coins either.</p>
