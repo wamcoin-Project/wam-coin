@@ -5,6 +5,7 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.text.Editable;
+import android.text.Html;
 import android.text.TextWatcher;
 import android.util.Log;
 import android.view.View;
@@ -122,7 +123,10 @@ public class ConfigActivity extends AppCompatActivity {
             //validate configs and show error info
             if (input_address.getText().toString().isBlank()) {
 //                Toast.makeText(ConfigActivity.this, "Please provide valid wallet address!", Toast.LENGTH_LONG).show();
-                errorAddress.setText("Please provide valid wallet address!");
+                errorAddress.setText("Wallet address cannot be blank!");
+                errorAddress.setVisibility(TextView.VISIBLE);
+            } else if (!input_address.getText().toString().trim().matches("wam1[a-z0-9]{39}")) {
+                errorAddress.setText("Please provide a valid WAM wallet address starting with wam1..");
                 errorAddress.setVisibility(TextView.VISIBLE);
             } else if (input_stratum.getText().toString().isBlank()) {
 //                Toast.makeText(ConfigActivity.this, "Stratum URL cannot be blank", Toast.LENGTH_LONG).show();
@@ -132,6 +136,13 @@ public class ConfigActivity extends AppCompatActivity {
 //                Toast.makeText(ConfigActivity.this, "port cannot be blank", Toast.LENGTH_LONG).show();
                 errorPort.setText("port cannot be blank!");
                 errorPort.setVisibility(TextView.VISIBLE);
+            } else if (!input_worker.getText().toString().isBlank() && !input_worker.getText().toString().trim().matches("[a-zA-Z0-9_-]+")) {
+//
+                errorWorker.setText(Html.fromHtml(
+                        "Only letters, numbers and hyphen<span style='color:#E53935;'><b>(-)</b></span>, underscore<span style='color:#E53935;'><b>( _ )</b></span> are allowed in worker name",
+                        Html.FROM_HTML_MODE_LEGACY
+                ));
+                errorWorker.setVisibility(View.VISIBLE);
             } else {
                 // 1. Gather all data inputs securely on the Main UI Thread first
                 String inputStratum = String.valueOf(((EditText) findViewById(R.id.input_stratum)).getText());
