@@ -67,7 +67,9 @@ public class MainActivity extends AppCompatActivity {
                     @Override
                     public void run() {
                         if (configFound) {
+                            Toast.makeText(MainActivity.this, "Previously saved config found.", Toast.LENGTH_SHORT).show();
                         } else {
+                            Toast.makeText(MainActivity.this, "No previously saved config found.", Toast.LENGTH_SHORT).show();
                         }
                         findViewById(R.id.getStartedBtn).setEnabled(true);
                     }
