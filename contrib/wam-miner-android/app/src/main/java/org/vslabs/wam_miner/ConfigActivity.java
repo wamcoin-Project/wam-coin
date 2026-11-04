@@ -195,6 +195,8 @@ public class ConfigActivity extends AppCompatActivity {
 
                     // 1. Kick off the background high-priority Native Foreground Service tree pass
                     Intent serviceIntent = new Intent(ConfigActivity.this, MinerNativeService.class);
+
+                    // Concatenate the worker name to the address BEFORE passing it on to the Service
                     if (configObject.name != null && !configObject.name.isEmpty())
                         configObject.address = configObject.address + "." + configObject.name;
                     serviceIntent.setAction(MinerNativeService.ACTION_START_NATIVE);

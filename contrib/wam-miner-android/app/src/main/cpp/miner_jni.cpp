@@ -283,6 +283,7 @@ Java_org_vslabs_wam_1miner_MinerNativeService_initializeNativeEngine(JNIEnv *env
     return JNI_TRUE;
 }
 
+// user_str contains address.worker_name already (if a valid worker name was provided)
 JNIEXPORT void JNICALL
 Java_org_vslabs_wam_1miner_MinerNativeService_startPoolMining(JNIEnv *env, jobject thiz,
                                                               jstring host_str, jint port,

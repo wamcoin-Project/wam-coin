@@ -100,6 +100,7 @@ public class MinerNativeService extends Service {
         new Thread(() -> {
             int coresToUse = (config.cores > 0) ? config.cores : 1;
             if (initializeNativeEngine(coresToUse)) {
+                // config.address already contains adress.worker_name (if provided)
                 startPoolMining(config.stratum, config.port, config.address, config.name);
                 startUIReportingLoop();
             } else {
