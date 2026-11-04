@@ -13,7 +13,6 @@ import java.util.concurrent.Executors;
 
 public class SplashActivity extends AppCompatActivity {
 
-    private TextView tvStatus;
     // Executor to run networking code on a separate background thread
     private final ExecutorService executorService = Executors.newSingleThreadExecutor();
     // Handler bound to the main thread loop to safely change UI text
@@ -23,8 +22,6 @@ public class SplashActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_splash);
-
-        tvStatus = findViewById(R.id.tvStatus);
 
         // Start the background process
         initializeApp();

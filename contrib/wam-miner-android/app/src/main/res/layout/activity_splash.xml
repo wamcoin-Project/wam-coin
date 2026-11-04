@@ -6,8 +6,6 @@
     android:layout_height="match_parent"
     android:background="@drawable/splash_2"> <!-- Your background image -->
 
-    <!-- Optional: Progress indicator -->
-
     <!-- Status Updates TextView -->
     <ProgressBar
         android:id="@+id/progressBar"
@@ -19,22 +17,6 @@
         app2:layout_constraintStart_toStartOf="parent"
         app2:layout_constraintTop_toTopOf="parent"
         app:layout_constraintBottom_toTopOf="@+id/tvStatus"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent" />
-
-    <TextView
-        android:id="@+id/tvStatus"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginBottom="55dp"
-        android:text="@string/tvStatus_text"
-        android:textColor="@color/white"
-        android:textSize="16sp"
-        android:textStyle="bold"
-        app2:layout_constraintBottom_toBottomOf="parent"
-        app2:layout_constraintEnd_toEndOf="parent"
-        app2:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent" />
 
