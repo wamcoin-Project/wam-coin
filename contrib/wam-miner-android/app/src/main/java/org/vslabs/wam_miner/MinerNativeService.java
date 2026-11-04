@@ -6,7 +6,6 @@ import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Intent;
-import android.os.Build;
 import android.os.IBinder;
 import android.util.Log;
 
@@ -146,9 +145,6 @@ public class MinerNativeService extends Service {
         notificationIntent.setFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
 
         int pendingIntentFlags = PendingIntent.FLAG_UPDATE_CURRENT;
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            pendingIntentFlags |= PendingIntent.FLAG_IMMUTABLE;
-        }
 
         PendingIntent contentPendingIntent = PendingIntent.getActivity(this, 0, notificationIntent, pendingIntentFlags);
 
@@ -168,13 +164,11 @@ public class MinerNativeService extends Service {
     }
 
     private void createNotificationChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             NotificationChannel serviceChannel = new NotificationChannel(
                     CHANNEL_ID, "WAM Native Miner Processing Channel", NotificationManager.IMPORTANCE_LOW
             );
             NotificationManager manager = getSystemService(NotificationManager.class);
             if (manager != null) manager.createNotificationChannel(serviceChannel);
-        }
     }
 
     @Override

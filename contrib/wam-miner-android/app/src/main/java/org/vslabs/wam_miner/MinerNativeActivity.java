@@ -24,8 +24,6 @@ public class MinerNativeActivity extends NativeActivity {
         System.loadLibrary("wam-miner");
     }
 
-    private native void passMinerConfigToNative(String stratum, int port, String address, String workerName, int cores);
-
     private native void destroyNativeMinerEngine();
 
     private TextView logTextView;
@@ -66,9 +64,6 @@ public class MinerNativeActivity extends NativeActivity {
         Intent intent = getIntent();
         if (intent != null && intent.hasExtra("CONFIG")) {
             MinerConfigModel config = (MinerConfigModel) intent.getSerializableExtra("CONFIG");
-            if (config != null) {
-                passMinerConfigToNative(config.stratum, config.port, config.address, config.name, config.cores);
-            }
         }
     }
 
@@ -122,7 +117,7 @@ public class MinerNativeActivity extends NativeActivity {
             filter.addAction(MinerNativeService.ACTION_NATIVE_LOG_BROADCAST); // Catch logs
             filter.addAction(MinerNativeService.ACTION_STOP_NATIVE);         // Catch quit click
 
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 registerReceiver(nativeLogReceiver, filter, Context.RECEIVER_EXPORTED); //
             } else {
                 registerReceiver(nativeLogReceiver, filter); //

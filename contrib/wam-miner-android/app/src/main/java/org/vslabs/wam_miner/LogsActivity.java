@@ -115,7 +115,7 @@ public class LogsActivity extends AppCompatActivity {
             filter.addAction(MinerNativeService.ACTION_NATIVE_LOG_BROADCAST);
             filter.addAction(MinerNativeService.ACTION_STOP_NATIVE);
 
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 registerReceiver(syncLogAndQuitReceiver, filter, Context.RECEIVER_EXPORTED);
             } else {
                 registerReceiver(syncLogAndQuitReceiver, filter);

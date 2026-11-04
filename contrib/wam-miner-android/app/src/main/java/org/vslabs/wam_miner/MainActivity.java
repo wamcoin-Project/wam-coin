@@ -107,15 +107,6 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
-    private void doinit() {
-        mainHandler.post(new Runnable() {
-            @Override
-            public void run() {
-            }
-        });
-
-    }
-
     private boolean getConfig() {
         boolean result = false;
         Gson gson = new Gson();

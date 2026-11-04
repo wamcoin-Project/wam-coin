@@ -493,16 +493,6 @@ Java_org_vslabs_wam_1miner_MinerNativeService_getNativeRejectedShares(JNIEnv *en
     return (jlong) globalSharedState.rejected.load(std::memory_order_relaxed);
 }
 
-// Passthroughs for MinerNativeActivity
-JNIEXPORT void JNICALL
-Java_org_vslabs_wam_1miner_MinerNativeActivity_passMinerConfigToNative(JNIEnv *env, jobject thiz,
-                                                                       jstring stratum, jint port,
-                                                                       jstring address,
-                                                                       jstring worker_name,
-                                                                       jint cores) {
-    LOGI("Config passed down to NativeActivity context.");
-}
-
 JNIEXPORT void JNICALL
 Java_org_vslabs_wam_1miner_MinerNativeActivity_destroyNativeMinerEngine(JNIEnv *env, jobject thiz) {
     LOGI("NativeActivity destroy engine request processed.");

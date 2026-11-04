@@ -120,7 +120,6 @@ public class ConfigActivity extends AppCompatActivity {
         findViewById(R.id.saveConfigBtn).setOnClickListener(view -> {
 
             //validate configs and show error info
-            // validateConfig();
             if (input_address.getText().toString().isBlank()) {
 //                Toast.makeText(ConfigActivity.this, "Please provide valid wallet address!", Toast.LENGTH_LONG).show();
                 errorAddress.setText("Please provide valid wallet address!");
