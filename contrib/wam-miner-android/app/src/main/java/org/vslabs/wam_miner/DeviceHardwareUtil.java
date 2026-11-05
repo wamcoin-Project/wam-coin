@@ -3,7 +3,6 @@ package org.vslabs.wam_miner;
 import android.app.ActivityManager;
 import android.content.Context;
 import android.os.Build;
-import android.provider.Settings;
 
 import java.io.BufferedReader;
 import java.io.FileReader;
@@ -78,10 +77,4 @@ public class DeviceHardwareUtil {
         return (Build.BOARD != null) ? Build.BOARD : Build.HARDWARE;
     }
 
-    public static String getDeviceID(Context context) {
-        return Settings.Secure.getString(
-                context.getContentResolver(),
-                Settings.Secure.ANDROID_ID
-        );
-    }
 }
