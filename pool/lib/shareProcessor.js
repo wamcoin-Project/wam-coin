@@ -1042,6 +1042,32 @@ class ShareProcessor extends EventEmitter {
     }
 
     async getPoolStats() {
+        // Same shape as getHashrateStats above, and for the same reason.
+        //
+        // This reads up to five thousand confirmed blocks and JSON.parses
+        // every one of them to show twenty-five and to sum the treasury
+        // line. That is affordable once every few seconds and ruinous once
+        // per request.
+        //
+        // api.js does cache it -- but only after a reply completes. On
+        // 2026-11-05 no reply completed: the main thread was saturated, every
+        // request timed out at nginx's thirty seconds, so nothing was ever
+        // cached and every one of ~220 clients started its own full read.
+        // A cache that fills on success cannot break a stampede that never
+        // succeeds. This one dedupes the work itself, which holds whether or
+        // not anybody gets an answer.
+        const ttl = this.config.apiCacheMs ?? 3000;
+        const memo = this._poolStatsMemo || (this._poolStatsMemo = {});
+        if (memo.value && Date.now() - memo.at < ttl) return memo.value;
+        if (memo.inFlight) return memo.inFlight;
+
+        memo.inFlight = this._computePoolStats()
+            .then((v) => { memo.value = v; memo.at = Date.now(); return v; })
+            .finally(() => { memo.inFlight = null; });
+        return memo.inFlight;
+    }
+
+    async _computePoolStats() {
         // A COUNT IS NOT THE LENGTH OF A WINDOW.
         //
         // This read lrange(blocks:confirmed, 0, 49) and reported
