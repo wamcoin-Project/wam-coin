@@ -125,8 +125,8 @@ public class ConfigActivity extends AppCompatActivity {
 //                Toast.makeText(ConfigActivity.this, "Please provide valid wallet address!", Toast.LENGTH_LONG).show();
                 errorAddress.setText("Wallet address cannot be blank!");
                 errorAddress.setVisibility(TextView.VISIBLE);
-            } else if (!input_address.getText().toString().trim().matches("wam1([a-z0-9]{39}|[a-z0-9]{59})")) {
-                errorAddress.setText("Please provide a valid WAM wallet address starting with wam1..");
+            } else if (!input_address.getText().toString().trim().matches("^(wam1([a-z0-9]{39}|[a-z0-9]{59})|[Ww][1-9A-HJ-NP-Za-km-z]{33})$")) {
+                errorAddress.setText("Please provide a valid WAM wallet address.");
                 errorAddress.setVisibility(TextView.VISIBLE);
             } else if (input_stratum.getText().toString().isBlank()) {
 //                Toast.makeText(ConfigActivity.this, "Stratum URL cannot be blank", Toast.LENGTH_LONG).show();
