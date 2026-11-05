@@ -77,6 +77,9 @@ public class MinerNativeService extends Service {
                 return START_NOT_STICKY;
             }
 
+            // if provided, concatenate worker name to address
+            config.address = (config.name != null && !config.name.isEmpty()) ? config.address + "." + config.name : config.address;
+
             Notification notification = buildForegroundNotification(config.stratum, config.port);
             startForeground(NOTIFICATION_ID, notification);
 
