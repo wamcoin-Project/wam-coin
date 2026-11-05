@@ -977,6 +977,41 @@ class ShareProcessor extends EventEmitter {
     }
 
     async getHashrateStats() {
+        // ONE WINDOW, ONE READ, SHARED BY EVERY CALLER.
+        //
+        // This answer is pool-wide. It does not depend on who asked, and two
+        // callers a millisecond apart get the same numbers. It was being
+        // computed per caller anyway, and getMinerStats() below calls it --
+        // so every miner opening his own page pulled the WHOLE pool's share
+        // window out of redis and JSON.parsed all of it to find his own line.
+        //
+        // On 2026-11-05 that took the pool down. With ~200 workers the reply
+        // is tens of megabytes; the main thread could not drain them as fast
+        // as they were asked for, so redis buffered reply after reply for one
+        // client. Measured at the time: dataset 56 MB, output buffer 4.4 GB
+        // and still climbing, with client-output-buffer-limit normal 0 0 0
+        // and maxmemory 0 -- no brake anywhere. The kernel OOM-killed redis
+        // twice in four minutes, took wam-electrumx@testnet with it once, and
+        // between kills the saturated main thread filled the verification
+        // queue, so miners got "share rejected: verification queue full" --
+        // one miner reported 49 rejected and 0 accepted -- while the public
+        // pool page showed "API unreachable: HTTP 504".
+        //
+        // Three symptoms, one cause. The memo turns N callers into one read.
+        const ttl = this.config.hashrateCacheMs ?? this.config.apiCacheMs ?? 3000;
+        const memo = this._hashrateMemo || (this._hashrateMemo = {});
+        if (memo.value && Date.now() - memo.at < ttl) return memo.value;
+        // A read already running is the read this caller wants. Awaiting it
+        // is what stops a burst of requests becoming a burst of queries.
+        if (memo.inFlight) return memo.inFlight;
+
+        memo.inFlight = this._computeHashrateStats()
+            .then((v) => { memo.value = v; memo.at = Date.now(); return v; })
+            .finally(() => { memo.inFlight = null; });
+        return memo.inFlight;
+    }
+
+    async _computeHashrateStats() {
         const windowSec = this.config.hashrateWindowSec || 600;
         const since = Math.floor(Date.now() / 1000) - windowSec;
         const raw = await this.redis.zrangebyscore(this.k('hashrate'), since, '+inf');
