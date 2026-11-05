@@ -125,7 +125,7 @@ public class ConfigActivity extends AppCompatActivity {
 //                Toast.makeText(ConfigActivity.this, "Please provide valid wallet address!", Toast.LENGTH_LONG).show();
                 errorAddress.setText("Wallet address cannot be blank!");
                 errorAddress.setVisibility(TextView.VISIBLE);
-            } else if (!input_address.getText().toString().trim().matches("wam1[a-z0-9]{39}")) {
+            } else if (!input_address.getText().toString().trim().matches("wam1([a-z0-9]{39}|[a-z0-9]{59})")) {
                 errorAddress.setText("Please provide a valid WAM wallet address starting with wam1..");
                 errorAddress.setVisibility(TextView.VISIBLE);
             } else if (input_stratum.getText().toString().isBlank()) {
