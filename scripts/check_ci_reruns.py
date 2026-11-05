@@ -64,12 +64,39 @@ GRN, RED, YLW, BLD, OFF = "\033[32m", "\033[31m", "\033[33m", "\033[1m", "\033[0
 
 
 def runs():
-    """Every workflow run GitHub still holds, or None if it cannot be asked."""
-    p = subprocess.run(
-        ["gh", "api", "--paginate",
-         f"repos/{REPO}/actions/runs?per_page=100",
-         "--jq", ".workflow_runs[] | {name, head_sha, conclusion, created_at}"],
-        capture_output=True, text=True)
+    """Every workflow run GitHub still holds, or None if it cannot be asked.
+
+    subprocess.run RAISES when the binary is not there. It does not come back
+    with a non-zero status, so "gh is missing" -- which the message in main()
+    has named since this check was written -- was never reached by the thing
+    it describes.
+
+    On 2026-11-05 the sweep was run on US-east, where gh is not installed. The
+    traceback killed the script, the sweep read exit 1, and the row printed
+
+        a failure is read, not repeated    FAIL
+
+    which says a failing workflow is being started over and over. That is the
+    pattern that cost an account on 29 October. Nothing had been measured.
+    A false alarm on this row in particular is how the true one gets ignored.
+
+    The timeout is the same lesson one step further on: `gh api --paginate`
+    walks every run GitHub still holds, and on a slow link it had no bound at
+    all. TimeoutExpired is a SubprocessError, so both ways of failing to ask
+    arrive here as None, and main() turns None into exit 2 -- "could not
+    run", which the sweep reports as such instead of counting it a failure.
+
+    check_components.py, one file away, has asked gh this way all along.
+    """
+    try:
+        p = subprocess.run(
+            ["gh", "api", "--paginate",
+             f"repos/{REPO}/actions/runs?per_page=100",
+             "--jq", ".workflow_runs[] | {name, head_sha, conclusion, created_at}"],
+            capture_output=True, text=True, timeout=120,
+            encoding="utf-8", errors="replace")
+    except (OSError, subprocess.SubprocessError):
+        return None
     if p.returncode != 0:
         return None
     out = []
