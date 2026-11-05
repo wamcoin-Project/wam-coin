@@ -1,0 +1,16 @@
+// Top-level build file where you can add configuration options common to all sub-projects/modules.
+plugins {
+    alias(libs.plugins.android.application) apply false
+}
+
+subprojects {
+    project.configurations.configureEach { configuration ->
+        configuration.resolutionStrategy.eachDependency { DependencyResolveDetails details ->
+            if (details.requested.group == 'com.google.errorprone' && details.requested.name == 'error_prone_annotations') {
+                // Force a legacy version compatible with your older D8 dexer
+                details.useVersion '2.11.0'
+                details.because 'Fixes NullPointerException in older D8 dexing tools'
+            }
+        }
+    }
+}

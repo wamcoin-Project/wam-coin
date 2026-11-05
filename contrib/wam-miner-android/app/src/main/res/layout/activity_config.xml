@@ -1,0 +1,301 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical">
+    <!-- ========================================== -->
+    <!-- TOP BAR HEADLINE                           -->
+    <!-- ========================================== -->
+    <TextView
+        android:id="@+id/topBarTitle"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="#2196F3"
+        android:gravity="center"
+        android:padding="16dp"
+        android:text="@string/config_title_text"
+        android:textColor="#FFFFFF"
+        android:textSize="20sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/config_hwinfo"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/config_hwinfo_text" />
+
+    <TableLayout xmlns:tools="http://android.com"
+        android:id="@+id/form"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:padding="16dp"
+        tools:context=".ConfigActivity">
+
+
+        <!-- Header Row -->
+        <TableRow
+            android:background="#DDDDDD"
+            android:gravity="center_vertical"
+            android:padding="8dp">
+
+            <TextView
+                android:text="@string/config_text"
+                android:textStyle="bold" />
+        </TableRow>
+
+        <TableRow
+            android:gravity="center_vertical"
+            android:padding="8dp">
+
+            <TextView
+                android:paddingEnd="16dp"
+                android:text="@string/config_wallet_address_text"
+                android:textStyle="bold" />
+        </TableRow>
+
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <EditText
+                android:id="@+id/input_address"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="@string/config_address_hint_text"
+                android:importantForAutofill="no"
+                android:inputType="textMultiLine"
+                android:scrollHorizontally="false" />
+
+            <TextView
+                android:id="@+id/error_address"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:paddingStart="4dp"
+                android:text=""
+                android:textColor="#FF2C2C"
+                android:textSize="12sp"
+                android:visibility="gone" />
+        </LinearLayout>
+
+        <!-- Data Row 1 -->
+        <TableRow
+            android:gravity="center_vertical"
+            android:padding="8dp">
+
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:paddingEnd="16dp"
+                android:text="@string/config_stratum_url_text"
+                android:textStyle="bold" />
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="2"
+                android:orientation="vertical">
+
+                <EditText
+                    android:id="@+id/input_stratum"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:dropDownWidth="wrap_content" />
+
+                <TextView
+                    android:id="@+id/error_stratum"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:paddingStart="4dp"
+                    android:textColor="#FF2C2C"
+                    android:textSize="12sp"
+                    android:visibility="gone" />
+            </LinearLayout>
+        </TableRow>
+
+        <TableRow
+            android:gravity="center_vertical"
+            android:padding="8dp">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:paddingEnd="16dp"
+                android:text="@string/config_port_text"
+                android:textStyle="bold" />
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="2"
+                android:orientation="vertical">
+
+                <EditText
+                    android:id="@+id/input_port"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:inputType="number" />
+
+                <TextView
+                    android:id="@+id/error_port"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:paddingStart="4dp"
+                    android:textColor="#FF2C2C"
+                    android:textSize="12sp"
+                    android:visibility="gone" />
+            </LinearLayout>
+        </TableRow>
+
+
+        <TableRow
+            android:gravity="center_vertical"
+            android:padding="8dp">
+
+            <TextView
+                android:layout_weight="1"
+                android:paddingEnd="16dp"
+                android:text="@string/config_worker_name_text"
+                android:textStyle="bold" />
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="3"
+                android:orientation="vertical"
+                >
+
+                <EditText
+                    android:id="@+id/input_worker"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:hint="@string/config_worker_name_hint_text"
+                    android:inputType="text" />
+
+                <TextView
+                    android:id="@+id/error_worker"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:paddingStart="4dp"
+                    android:textColor="#FF2C2C"
+                    android:textSize="12sp"
+                    android:visibility="gone" />
+            </LinearLayout>
+        </TableRow>
+
+        <TableRow
+            android:gravity="center_vertical"
+            android:padding="8dp">
+
+            <TextView
+                android:layout_weight="1"
+                android:paddingEnd="16dp"
+                android:text="@string/config_cores_text"
+                android:textStyle="bold"
+                />
+
+            <LinearLayout
+                android:layout_width="10dp"
+                android:layout_weight="3"
+                android:gravity="fill_horizontal"
+                android:orientation="horizontal">
+
+                <Button
+                    android:id="@+id/coreminus"
+                    android:layout_width="50dp"
+                    android:layout_height="wrap_content"
+                    android:text="-" />
+
+                <!-- Counter Display Box -->
+                <TextView
+                    android:id="@+id/input_cores"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:background="#EEEEEE"
+                    android:padding="10dp"
+                    android:text="1"
+                    android:textStyle="bold" />
+
+                <!-- Increment Button -->
+                <Button
+                    android:id="@+id/coreplus"
+                    android:layout_width="50dp"
+                    android:layout_height="wrap_content"
+                    android:text="+" />
+
+            </LinearLayout>
+        </TableRow>
+
+        <!-- Divider Line using a plain View -->
+        <View
+            android:layout_height="2dp"
+            android:layout_marginVertical="8dp"
+            android:background="#CCCCCC" />
+
+        <!-- Summary Row (Spanning Columns) -->
+        <TableRow
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:padding="10dp">
+
+            <Button
+                android:id="@+id/saveConfigBtn"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="10dp"
+                android:layout_weight="1"
+                android:text="@string/config_save_config_text"
+                android:textAlignment="center" />
+
+            <Button
+                android:id="@+id/startnativemining"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="10dp"
+                android:layout_weight="1"
+                android:text="@string/config_start_mining_text"
+                android:textAlignment="center" />
+        </TableRow>
+    </TableLayout>
+
+    <androidx.cardview.widget.CardView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_margin="16dp"
+        app:cardBackgroundColor="#F4F6F9"
+        app:cardCornerRadius="8dp"
+        app:cardElevation="0dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:padding="16dp">
+
+            <ImageView
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:contentDescription="@string/config_info_icon_text"
+                android:src="@android:drawable/ic_dialog_info"
+                app:tint="#2196F3" />
+
+            <TextView
+                android:id="@+id/infoTextView"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="12dp"
+                android:layout_weight="1"
+                android:text="@string/config_save_info_text"
+                android:textColor="#333333"
+                android:textSize="14sp" />
+        </LinearLayout>
+    </androidx.cardview.widget.CardView>
+</LinearLayout>

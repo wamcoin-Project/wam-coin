@@ -1,0 +1,22 @@
+<resources>
+    <string name="app_name">WAM-Miner-Android</string>
+    <string name="HWINFO"> </string>
+    <string name="tvStatus_text">Initializing app...</string>
+    <string name="aboutBtn_desc">About App Info</string>
+    <string name="app_title">WAM Miner Android v1.0.0\n built from wam-miner-v1.0.0</string>
+    <string name="getStartedBtn_text">Get started</string>
+    <string name="config_hwinfo_text">HWINFO here</string>
+    <string name="config_stratum_url_text">Stratum URL</string>
+    <string name="config_port_text">Port</string>
+    <string name="config_wallet_address_text">Wallet address</string>
+    <string name="config_address_hint_text">wam1...</string>
+    <string name="config_worker_name_text">Worker Name/Alias</string>
+    <string name="config_worker_name_hint_text">(optional)</string>
+    <string name="config_cores_text">No. of Cores</string>
+    <string name="config_save_config_text">Save Config</string>
+    <string name="config_start_mining_text">Start Mining</string>
+    <string name="config_save_info_text">Save config BEFORE mining</string>
+    <string name="config_info_icon_text">Info Icon</string>
+    <string name="config_title_text">MINER CONFIG</string>
+    <string name="config_text">Config</string>
+</resources>
