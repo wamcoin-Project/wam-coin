@@ -143,7 +143,29 @@ QUIET_PORTS = {50001, 51001}
 CERT_FAIL_DAYS = 21
 CERT_WARN_DAYS = 30
 
-ENDPOINT = re.compile(r"\b([a-z0-9][a-z0-9.-]*\.[a-z]{2,})[:\s]*:(\d{2,5})\b")
+# A reference to a line of source has the same shape as an endpoint. A name,
+# a dot, letters, a colon, digits: chainparams.cpp:483 is indistinguishable
+# from wam.zcd.lol:50002 by shape alone.
+#
+# On 2026-11-02 the Komodo submission notes began citing
+# `src/wam/chainparams.cpp:483` as the line that asserts our genesis. For the
+# three days after, this check resolved the host "chainparams.cpp", got
+# gaierror, and reported "1 published endpoint(s) a stranger cannot use" --
+# about a file in our own tree. A red line nobody can act on is how people
+# learn to ignore red lines, and this one was on the sweep.
+#
+# What separates them is the slash. A published endpoint is written bare --
+# wam.zcd.lol:50002 -- or inside a URL after "//". A source reference is
+# written after a single path separator. So a match preceded by one slash is
+# refused and a match preceded by two is kept, which drops every
+# dir/file.ext:line in the tree while keeping stratum+tcp://host:port.
+#
+# Deliberately NOT a list of file extensions. .in, .sh, .md and .py are all
+# real country domains, and wampool.vslabs.co.in:3333 is an endpoint we
+# publish -- a list would have had to carry that exception from the start,
+# and the next one would be found by a stranger rather than by us.
+ENDPOINT = re.compile(
+    r"(?<![^/]/)\b([a-z0-9][a-z0-9.-]*\.[a-z]{2,})[:\s]*:(\d{2,5})\b")
 
 # Names reserved by RFC 2606 and RFC 6761 exist so documentation can show a
 # host that is guaranteed never to resolve. README.md uses pool.example.org
