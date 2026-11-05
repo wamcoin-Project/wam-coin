@@ -149,6 +149,7 @@ public class MinerNativeService extends Service {
         notificationIntent.setFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
 
         int pendingIntentFlags = PendingIntent.FLAG_UPDATE_CURRENT;
+        pendingIntentFlags |= PendingIntent.FLAG_IMMUTABLE;
 
         PendingIntent contentPendingIntent = PendingIntent.getActivity(this, 0, notificationIntent, pendingIntentFlags);
 
