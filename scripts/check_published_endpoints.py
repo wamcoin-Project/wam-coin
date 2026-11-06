@@ -167,6 +167,38 @@ CERT_WARN_DAYS = 30
 ENDPOINT = re.compile(
     r"(?<![^/]/)\b([a-z0-9][a-z0-9.-]*\.[a-z]{2,})[:\s]*:(\d{2,5})\b")
 
+# A SECOND port for the same host, written bare after the first. Two of the
+# four pools on docs/MINE.md are published this way, because an operator with
+# one address and two difficulty tiers has no second host to name:
+#
+#     veinpool.fr:3310                  and :3311 for servers, a higher start
+#     wampool.vslabs.co.in:3333         and :3334 for servers and farms
+#
+# That same page promises, in as many words, that "a check in this repository
+# dials every address on this page on every sweep". It did not. A bare :port
+# carries no host, so veinpool.fr:3311 had never been dialled once -- in the
+# whole corpus the rule above reaches ten endpoints and the page shows twelve.
+# The miner it was published for is the one running a farm, which is the one
+# whose hashrate we would most notice losing and least quickly explain.
+#
+# The host is the last one named earlier on the SAME line, which is the only
+# reason published() now reads a page a line at a time. That narrowing was
+# measured before it was made: scanning line by line finds the same ten
+# endpoints as scanning the whole text, none lost, none gained -- so nothing
+# in the tree depends on ENDPOINT's [:\s]* reaching across a newline.
+#
+# Four or five digits, AND a colon that starts a token -- preceded by a space,
+# a backtick or an opening bracket. Both halves are load-bearing:
+#
+#   a colon preceded by a digit is a clock or a source line. 12:30 and
+#   src/wam/chainparams.cpp:483 both have this shape, and the second one is
+#   the three days of red described above.
+#
+#   two or three digits would turn the 30 in "12:30" into a port the first
+#   time somebody writes a time on a line that also names a server. Every
+#   port this project publishes is four or five: 3310-3336, 6040, 50002-51004.
+ALSO = re.compile(r"(?<=[\s`(\[]):(\d{4,5})\b")
+
 # Names reserved by RFC 2606 and RFC 6761 exist so documentation can show a
 # host that is guaranteed never to resolve. README.md uses pool.example.org
 # in the line that tells an operator what to put in his own config, and a
@@ -176,9 +208,40 @@ EXAMPLE = re.compile(r"(^|\.)(example\.(com|org|net)|invalid|test|localhost)$")
 TIMEOUT = 12
 
 
+def endpoints_in(text):
+    """[(host, port)] a page names, in the order they are written.
+
+    Separate from published() so it can be tested without a filesystem and
+    without a network: the extraction is where both of this check's false
+    answers came from -- a source line read as a host, and a second port
+    never read at all -- and neither needed a socket to find.
+
+    The caller strips quotations first; this does not know about them.
+    """
+    out = []
+    for line in text.splitlines():
+        named = list(ENDPOINT.finditer(line))
+        for m in named:
+            out.append((m.group(1), m.group(2)))
+        for m in ALSO.finditer(line):
+            before = [n for n in named if n.end() <= m.start()]
+            if before:
+                out.append((before[-1].group(1), m.group(1)))
+    return out
+
+
 def published():
     """{(host, port): [where it is published]}, quotations excluded."""
     found = {}
+
+    def record(host, port, rel):
+        key = (host.rstrip("."), int(port))
+        if EXAMPLE.search(key[0]):
+            return
+        found.setdefault(key, [])
+        if rel not in found[key]:
+            found[key].append(rel)
+
     for pattern in TARGETS:
         for path in sorted(ROOT.glob(pattern)):
             if not path.is_file():
@@ -186,22 +249,13 @@ def published():
             rel = path.relative_to(ROOT).as_posix()
             text = quoted.strip_quoted(
                 path.read_text(encoding="utf-8", errors="replace"))
-            for host, port in ENDPOINT.findall(text):
-                host = host.rstrip(".")
-                if EXAMPLE.search(host):
-                    continue
-                key = (host, int(port))
-                found.setdefault(key, [])
-                if rel not in found[key]:
-                    found[key].append(rel)
+            for host, port in endpoints_in(text):
+                record(host, port, rel)
             for host in HTTPS.findall(text):
                 host = host.rstrip(".").lower()
-                if EXAMPLE.search(host) or not OURS.search(host):
+                if not OURS.search(host):
                     continue
-                key = (host, 443)
-                found.setdefault(key, [])
-                if rel not in found[key]:
-                    found[key].append(rel)
+                record(host, 443, rel)
     return found
 
 

@@ -434,9 +434,9 @@ consensus, not the pool.
 There is more than one, and they are not run by us:
 
 ```
-pool.wamcoin.org:3333             run by this project
+pool.wamcoin.org:3333             run by this project, and :3334 :3335 higher
 stratum.cryptopickaxe.co.uk:6040
-wampool.vslabs.co.in:3333
+wampool.vslabs.co.in:3333         and :3334 for servers and farms
 veinpool.fr:3310                  and :3311 for servers, a higher start
 ```
 
