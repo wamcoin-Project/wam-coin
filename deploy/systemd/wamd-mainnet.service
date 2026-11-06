@@ -79,7 +79,42 @@ StandardError=journal
 # and ProtectHome would break /root/.wam-mainnet.
 NoNewPrivileges=true
 ProtectSystem=full
-MemoryMax=2G
+
+# CEILINGS, AND WHY THESE NUMBERS AND NOT THE OLD ONES.
+#
+# Both of these were set for a network that did not exist yet. MemoryMax=2G
+# arrived on 2026-08-29, seventeen days before mainnet opened, inside a commit
+# about ElectrumX -- a figure written during setup rather than measured. There
+# was no LimitNOFILE at all, which leaves the node on the inherited soft limit
+# of 1024 descriptors; Core reserves 150 of those for itself, so the real
+# ceiling on connections was about 860 whatever maxconnections said.
+#
+# On 2026-11-06 the three seeds held 107, 106 and 39 connections against hand
+# -set caps of 110, 110 and 39 -- seven free slots between them, on the day
+# the hash rate rose 70% and new miners arrived. A node that cannot accept a
+# connection is a closed door at the one moment a stranger knocks.
+#
+# What they are now, derived rather than chosen:
+#
+#   LimitNOFILE=65536   A connection costs one descriptor. 65536 carries far
+#                       more than any plausible maxconnections, costs nothing
+#                       when unused, and matches what wam-electrumx.service
+#                       has had since the day that lesson was learned there.
+#
+#   MemoryMax=4G        Measured: the node holds 430 MB on the France host
+#                       and 675 MB on US-east at ~110 connections, of which
+#                       dbcache=200 and maxmempool=300 are fixed. The marginal
+#                       cost of a peer is small; 4G leaves room for six times
+#                       today's connection count and for the UTXO set to grow,
+#                       on hosts of 8 and 12 GB. It is above physical RAM on
+#                       the 2 GB Singapore host, where it simply never binds.
+#
+# A ceiling that kills is worse than one that slows. redis had no limit at all
+# and the kernel killed it twice in four minutes hours before this was written;
+# the lesson is not "no limits", it is limits set from what the machine can
+# carry, revisited when the machine changes and not when something dies.
+LimitNOFILE=65536
+MemoryMax=4G
 
 [Install]
 WantedBy=multi-user.target
