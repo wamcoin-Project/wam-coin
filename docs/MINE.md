@@ -436,9 +436,17 @@ There is more than one, and they are not run by us:
 ```
 pool.wamcoin.org:3333             run by this project
 stratum.cryptopickaxe.co.uk:6040
-wampool.vslabs.co.in:3333
 veinpool.fr:3310                  and :3311 for servers, a higher start
 ```
+
+| Pool #              |                             |
+|:--------------------|:----------------------------|
+| **host:port**       | `wampool.vslabs.co.in:3333` |
+| **additonal ports** | `3334` for servers/farms    |
+| **where it runs**   | India region                |
+| **own node**        | Own node, no proxies        |
+| **reward scheme**   | PROP                        |
+| **fee**             | 0%                          |
 
 Ask their operators about their fees and their payout rules — those are
 theirs to state, not ours to state for them. A check in this repository
