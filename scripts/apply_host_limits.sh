@@ -162,8 +162,30 @@ echo reloaded
     # So the caps are sized to the host as well, and the smallest host
     # takes the fewest strangers while the roomy ones take more. The DNS
     # seed rotation spreads the arrivals across all three either way.
-    conn=$((MEM / 48));   [ "$conn" -lt 24  ] && conn=24
-                          [ "$conn" -gt 110 ] && conn=110
+    # THE UPPER CLAMP USED TO BE 110, AND IT THREW THE DERIVATION AWAY.
+    #
+    # MEM/48 gives 249 on the France host, 165 on US-east and 39 on
+    # Singapore. The 39 is this formula working: the small host takes the
+    # fewest strangers, exactly as the paragraph above says it should. The
+    # other two were then flattened to 110 by a fixed number, so the two
+    # machines with room to grow were the two that could not use it.
+    #
+    # On 2026-11-06 that bill came due. The three seeds held 107, 106 and 39
+    # connections against 110, 110 and 39 -- seven free slots between the
+    # three doors a new node knocks on -- on the morning the hash rate rose
+    # 70% and new miners arrived. Nothing was broken. The doors were simply
+    # full, and a formula that already knew the answer had been overruled.
+    #
+    # The clamp that remains is derived rather than chosen. A connection
+    # costs one file descriptor; wamd-mainnet.service now sets
+    # LimitNOFILE=65536 and Core keeps about 150 for itself, so descriptors
+    # stop mattering long before this does. 2000 peers at MEM/48 implies a
+    # 96 GB machine, which is not a host this project has -- so the clamp is
+    # a guard against an absurd MemTotal reading, not a policy about size.
+    # When a bigger seed is bought, the number follows the machine without
+    # anyone editing this file.
+    conn=$((MEM / 48));   [ "$conn" -lt 24   ] && conn=24
+                          [ "$conn" -gt 2000 ] && conn=2000
     mpool=$((MEM / 20));  [ "$mpool" -lt 50  ] && mpool=50
                           [ "$mpool" -gt 300 ] && mpool=300
     mpool=$(( (mpool + 25) / 50 * 50 ))

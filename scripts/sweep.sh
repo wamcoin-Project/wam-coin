@@ -429,6 +429,14 @@ printf '\n%sthe network as strangers meet it%s\n' "$BLD" "$OFF"
 # machine the sweep is run from.
 run "DNS seeds answer x9."    bash scripts/check_dns_seeds.sh
 
+# Which strings on a page are an address at all. The check below has been
+# wrong in both directions -- it read a line of our own source as a host for
+# three days, and it never once dialled the bare second port two pools
+# publish for farms. Both were in the extraction, which needs no network, so
+# it is held here rather than discovered by a stranger.
+run "every address on the page, and nothing that only looks like one" \
+    "$PY" scripts/test/test_endpoint_extraction.py
+
 # Every host:port on a page a stranger reads. The mining guide sent miners to
 # a testnet port that had stopped existing on launch day, and on 8 October
 # 2026 it was naming a third-party pool whose stratum port refuses the

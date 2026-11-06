@@ -58,6 +58,35 @@ import html
 import pathlib
 import re
 import subprocess
+
+# ===========================================================================
+#  THE ONE PLACE THE SITE NAMES ITSELF
+# ===========================================================================
+#
+#  This project publishes two domains in every post, and the second one is
+#  not decoration: it is the way back if the first is ever lost. wamcoin.net
+#  is meant to stand on its own rather than bounce visitors to wamcoin.org --
+#  a redirect dies with the thing it points at, and is no insurance at all.
+#
+#  The pages were already built for that without anyone planning it: every
+#  link a reader clicks is relative, 106 of them, so a visitor who arrives on
+#  one domain stays on it. What was NOT ready was this file, which wrote
+#  "wamcoin.org" into eight separate places. Changing the site's name meant
+#  finding all eight and hoping.
+#
+#  canonical, og:url and the sitemap must name ONE domain -- that is what
+#  those tags are for, and two names for one page is the thing they exist to
+#  prevent. So this is not a list of domains. It is the single name they all
+#  read, so that the day it has to change, it changes once.
+#
+#  Not in the download commands, which are a separate decision: a reader on
+#  wamcoin.net who copies `curl https://wamcoin.org/...` is downloading from
+#  the other domain, and if that one is gone he has a live page describing a
+#  dead download. Serving /downloads/ from both names is the honest fix and
+#  it is not made here.
+# ===========================================================================
+CANONICAL_ORIGIN = "https://wamcoin.org"
+CANONICAL_HOST = CANONICAL_ORIGIN.split("//", 1)[1]
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent / "lib"))
@@ -419,7 +448,7 @@ def convert(md, src, marked=()):
 
 def nav_links(current, lang):
     """The same handful of destinations on every page, current one omitted."""
-    items = [("/", "wamcoin.org" if lang == "en" else "الرئيسية")]
+    items = [("/", CANONICAL_HOST if lang == "en" else "الرئيسية")]
     for src, outdir, plang, *_rest in PAGES:
         path = "/" + outdir.split("/", 1)[1] + "/"
         if path == current:
@@ -496,16 +525,16 @@ def build(src, outdir, lang, direction, title, desc, og_desc):
 <title>{esc(title)}</title>
 <link rel="icon" href="/favicon.png" type="image/png">
 <meta name="description" content="{esc(desc)}">
-<link rel="canonical" href="https://wamcoin.org{path}">
+<link rel="canonical" href="{CANONICAL_ORIGIN}{path}">
 <meta property="og:type" content="article">
 <meta property="og:site_name" content="WAM Coin">
 <meta property="og:title" content="{esc(title)}">
 <meta property="og:description" content="{esc(og_desc)}">
-<meta property="og:image" content="https://wamcoin.org/og-card.png">
-<meta property="og:url" content="https://wamcoin.org{path}">
+<meta property="og:image" content="{CANONICAL_ORIGIN}/og-card.png">
+<meta property="og:url" content="{CANONICAL_ORIGIN}{path}">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:site" content="@WAMCoinCore">
-<meta name="twitter:image" content="https://wamcoin.org/og-card.png">
+<meta name="twitter:image" content="{CANONICAL_ORIGIN}/og-card.png">
 <style>{CSS}</style>
 </head>
 <body>
@@ -597,11 +626,11 @@ def write_sitemap(built):
     """
     from datetime import date
     today = date.today().isoformat()
-    entries = [("https://wamcoin.org/", "1.0", "weekly", "site/index.html"),
-               ("https://wamcoin.org/CHANNELS.txt", "0.5", "monthly",
+    entries = [(CANONICAL_ORIGIN + "/", "1.0", "weekly", "site/index.html"),
+               (CANONICAL_ORIGIN + "/CHANNELS.txt", "0.5", "monthly",
                 "site/CHANNELS.txt")]
     for _src, outdir, *_r in PAGES:
-        entries.append(("https://wamcoin.org/" + outdir.split("/", 1)[1] + "/",
+        entries.append((CANONICAL_ORIGIN + "/" + outdir.split("/", 1)[1] + "/",
                         "0.8", "monthly", outdir + "/index.html"))
     xml = ['<?xml version="1.0" encoding="UTF-8"?>',
            "<!--",

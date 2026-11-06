@@ -79,7 +79,30 @@ StandardError=journal
 # and ProtectHome would break /root/.wam-mainnet.
 NoNewPrivileges=true
 ProtectSystem=full
-MemoryMax=2G
+
+# MemoryMax is NOT set here, deliberately.
+#
+# It was, at 2G, from 2026-08-29 -- seventeen days before mainnet opened,
+# inside a commit about ElectrumX. A fixed figure in a shared unit is wrong in
+# both directions: 2G is a third of the France host and above the whole of the
+# 1914 MB Singapore one, where a ceiling over physical memory bounds nothing.
+# scripts/apply_host_limits.sh writes MemoryHigh and MemoryMax per host from
+# that host's own MemTotal, into a 20-memory.conf drop-in that overrides
+# whatever is written here. A number in this file would be dead text that a
+# reader would believe: `systemctl show` reports the drop-in's value, not this
+# one. So the policy lives in one place and this file does not pretend to it.
+#
+# LimitNOFILE is different, and belongs here.
+#
+# There was none at all, which leaves the node on the inherited soft limit of
+# 1024 descriptors. A connection costs one; Core reserves about 150 for
+# itself, so the real ceiling was roughly 860 peers whatever maxconnections
+# said -- and nothing in the tree mentioned it. It does not vary with the size
+# of the machine the way memory does: 65536 is beyond any maxconnections this
+# project will derive, costs nothing when unused, and is the same line
+# wam-electrumx.service has carried since that lesson was learned there and
+# not carried across to the node.
+LimitNOFILE=65536
 
 [Install]
 WantedBy=multi-user.target
