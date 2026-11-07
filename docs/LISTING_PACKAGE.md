@@ -3,8 +3,8 @@
 Everything an exchange, wallet or explorer needs in order to integrate WAM,
 on one page. Send this link rather than answering a form field at a time.
 
-**Status:** mainnet launches **2026-09-15 00:00 UTC**. Until that date the
-mainnet chain does not exist, and only testnet is live. Nothing below is a
+**Status:** mainnet launched **2026-09-15 00:00 UTC** and is live. The testnet
+also runs, for development; its coins are worth nothing. Nothing below is a
 projection — the parameters are final and already committed to source.
 
 ---

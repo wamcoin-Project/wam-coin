@@ -83,7 +83,7 @@ curl -fs localhost:8081/api/health || echo "WAM node is down"
 
 ## Project status
 
-**Testnet is live. Mainnet launches 2026-09-15 00:00 UTC.**
+**Mainnet is live since 2026-09-15 00:00 UTC. The testnet still runs.**
 
 | | |
 |---|---|
