@@ -441,6 +441,11 @@ wampool.vslabs.co.in:3333         and :3334 for servers and farms
 veinpool.fr:3310                  and :3311 for servers, a higher start
 ```
 
+
+| host:port | additonal ports | fee (reward scheme) |
+|---|---|---|
+| `wampool.vslabs.co.in:3333` | `3334` for servers/farms<br>`3335` for smartphones | 1% (PROP) |
+
 A check in this repository dials every address on this page on every sweep,
 so if one stops answering we find out rather than hearing it from a miner.
 If one does not answer for you, try another. For what this page does not
