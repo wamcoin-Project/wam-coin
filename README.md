@@ -87,7 +87,7 @@ curl -fs localhost:8081/api/health || echo "WAM node is down"
 
 | | |
 |---|---|
-| Consensus code | compiles; 29 Boost tests pass |
+| Consensus code | compiles; 35 Boost tests pass |
 | Testnet | running, seed nodes in France and Singapore, found by DNS |
 | Mainnet genesis | mined and committed — `d8d3debe…` |
 | Founder key | generated offline, on paper, never on a networked machine |
