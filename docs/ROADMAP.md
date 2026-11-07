@@ -22,7 +22,7 @@ compiler.**
 | 0.2 | `./install.sh --network regtest` | binaries exist |
 | 0.3 | **Fix the patch anchors** (expect 2–5 misses of 12) | patcher runs clean |
 | 0.4 | Link librandomx, resolve compile errors in `src/wam/` | `make` succeeds |
-| 0.5 | `test_bitcoin --run_test=wam_monetary_tests,wam_devfee_tests` | all green |
+| 0.5 | `test_bitcoin --run_test='wam_*'` | all green |
 | 0.6 | `wamd -regtest` starts, `getsupplyinfo` answers | node alive |
 
 **Exit gate:** a regtest node that mines blocks and reports a correct supply.
