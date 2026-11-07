@@ -98,10 +98,20 @@ Bitcoin does not have this rule. It is not an oversight.
 
 ## Status
 
-Nothing to checkpoint yet: mainnet opens 2026-09-15 and the chain is one
-block long. The first checkpoint becomes possible about 33 hours after
-launch, and should not be rushed to that hour — the first release after
-launch is busy enough.
+Mainnet opened on 2026-09-15. Measured on 2026-11-07 it was 36,672 blocks
+high, so the 1,000-block burial rule has been satisfied since 16 September
+and a checkpoint could be cut at any time.
+
+**None has been cut.** `checkpointData` in `src/wam/chainparams.cpp` still
+holds one entry on every network: the genesis block, which has to be there
+because `GetHeight()` calls `rbegin()`. Said plainly rather than left in the
+conditional, because a reader deciding what to trust needs to know which
+release carries a checkpoint, and today the answer is none of them.
+
+The decision is the one above: a checkpoint is protection and authority at
+once, and the second half is why nobody should cut one because the chain is
+old enough. What it needs is two agreeing nodes, the command below, and a
+release whose notes say `MANDATORY:`.
 
 Confirmation guidance, which is the lever that works from the first block
 and needs nobody's cooperation, is in `docs/LISTING_PACKAGE.md` section 9.
