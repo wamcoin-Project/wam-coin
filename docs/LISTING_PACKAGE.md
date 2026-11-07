@@ -361,13 +361,15 @@ halves each refuse to return to the other, and a temporary split becomes a
 permanent one. Several chains have been broken exactly that way. Bitcoin
 does not do it, and neither will we.
 
-**What we will do after launch.** Releases will carry checkpoints — the hash
-of a real block at a known height, compiled in, so that no node running that
-release can be walked onto a chain that lacks it. This is a real defence and
-it is also a real centralisation: it means trusting whoever cuts the
-release. We would rather say that plainly than describe it as security.
-`scripts/make_checkpoint.py` generates the entry from a node, and the policy
-is in `docs/CHECKPOINTS.md`.
+**Checkpoints.** The policy is to carry them: the hash of a real block at a
+known height, compiled in, so that no node running that release can be walked
+onto a chain that lacks it. This is a real defence and it is also a real
+centralisation — it means trusting whoever cuts the release — and we would
+rather say that plainly than describe it as security. **No checkpoint has
+shipped yet.** The chain passed the 1,000-block burial rule in September; the
+decision, the tool (`scripts/make_checkpoint.py`) and the policy are in
+`docs/CHECKPOINTS.md`. Until one ships, confirmation depth in section 9 is
+the protection this chain actually has.
 
 ---
 
