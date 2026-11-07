@@ -104,7 +104,7 @@ ls ~/.wam/wallets/              # what exists on disk
 <p>That needs the node you just started to be running, with <code>server=1</code> in <code>wam.conf</code>. <a href="#mining-alone-which-works-here">Mining alone</a> has the detail, including <code>--check</code>, which asks your node whether your block would be valid before you spend a second hashing.</p>
 <p><strong>In a pool</strong>, if you would rather be paid a little every few hours than the whole reward rarely:</p>
 <pre><code>./wam-miner -o stratum+tcp://pool.wamcoin.org:3333 -u YOUR_ADDRESS -t 4</code></pre>
-<p>There is more than one pool. <a href="#which-pool">Which pool</a> lists them. Each one states its own fee and its own payout rules on its own page, ours included — they are settings an operator can change, so this page does not carry numbers it has no way of keeping true.</p>
+<p>There is more than one pool. <a href="#which-pool">Which pool</a> lists them. That list carries what this repository can check and keep checking: the sweep dials every address on it, every run. What nothing here checks stays on the operator's own page — a number nobody verifies goes stale without anyone noticing, and then it is this page that is wrong.</p>
 <p><strong>COPY the address, do not retype it.</strong> The checksum catches a single wrong character, which is what it is for. If your miner's log says "bech32 checksum failed" or "invalid address", the pool has refused it and you are hashing for nothing until you fix it.</p>
 <p>An address beginning <code>twam1</code> is a <strong>test</strong> address and will be refused. If you have one, you followed an older version of this page or a testnet guide: make a new address with the commands above. The pool is 3333-3336; 13333 was the test pool before 15 September and answers nothing now.</p>
 <p><code>-t 4</code> is how many processor cores to use. Without it the miner takes every core but one, which makes the rest of the machine unpleasant to use.</p>
@@ -216,7 +216,7 @@ bash verify_release.sh .</code></pre>
 stratum.cryptopickaxe.co.uk:6040
 wampool.vslabs.co.in:3333         and :3334 for servers and farms
 veinpool.fr:3310                  and :3311 for servers, a higher start</code></pre>
-<p>Ask their operators about their fees and their payout rules — those are theirs to state, not ours to state for them. A check in this repository dials every address on this page on every sweep, so if one stops answering we find out rather than hearing it from a miner. If one does not answer for you, try another.</p>
+<p>A check in this repository dials every address on this page on every sweep, so if one stops answering we find out rather than hearing it from a miner. If one does not answer for you, try another. For what this page does not carry — fees, payout rules, minimums — read the operator's own page, or ask them.</p>
 <p><strong>One is not answering, and it is listed here anyway so that nobody wonders where it went.</strong></p>
 <pre><code>wam.ariabrain.com:3333</code></pre> <!-- wam:quote-line -->
 <p>On 2026-10-08 it refused the connection, measured from this laptop and from all three seeds, in three countries, so it was not a block on one address. On 2026-10-18 it had become worse: the name does not resolve at all. Its website is up and the pool is still listed there, which is why nobody noticed — the page a reader sees is not the port a miner dials.</p>

@@ -102,10 +102,11 @@ whole reward rarely:
 ./wam-miner -o stratum+tcp://pool.wamcoin.org:3333 -u YOUR_ADDRESS -t 4
 ```
 
-There is more than one pool. [Which pool](#which-pool) lists them. Each one
-states its own fee and its own payout rules on its own page, ours included —
-they are settings an operator can change, so this page does not carry numbers
-it has no way of keeping true.
+There is more than one pool. [Which pool](#which-pool) lists them. That list
+carries what this repository can check and keep checking: the sweep dials
+every address on it, every run. What nothing here checks stays on the
+operator's own page — a number nobody verifies goes stale without anyone
+noticing, and then it is this page that is wrong.
 
 **COPY the address, do not retype it.** The checksum catches a single wrong
 character, which is what it is for. If your miner's log says "bech32 checksum
@@ -440,11 +441,11 @@ wampool.vslabs.co.in:3333         and :3334 for servers and farms
 veinpool.fr:3310                  and :3311 for servers, a higher start
 ```
 
-Ask their operators about their fees and their payout rules — those are
-theirs to state, not ours to state for them. A check in this repository
-dials every address on this page on every sweep, so if one stops answering
-we find out rather than hearing it from a miner. If one does not answer for
-you, try another.
+A check in this repository dials every address on this page on every sweep,
+so if one stops answering we find out rather than hearing it from a miner.
+If one does not answer for you, try another. For what this page does not
+carry — fees, payout rules, minimums — read the operator's own page, or ask
+them.
 
 **One is not answering, and it is listed here anyway so that nobody wonders
 where it went.**
