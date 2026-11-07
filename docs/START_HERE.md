@@ -558,10 +558,10 @@ Subscribe to releases on the repository:
 **[gitlab.com/WAMCoin/wam-coin](https://gitlab.com/WAMCoin/wam-coin)**
 → **Watch ▾** → **Custom** → **Releases** ✓
 
-This matters more than it sounds. WAM is pre-launch, and some releases change
-a consensus rule — v0.1.5 moved the mainnet treasury address, and a node left
-on v0.1.4 will reject every valid block on launch day and fork itself off the
-network at height 1.
+This matters more than it sounds. Some releases change a consensus rule —
+v0.1.5 moved the mainnet treasury address before launch, and a node left on
+v0.1.4 would have rejected every valid block from height 1 and forked itself
+off the network. The next such release can arrive at any time.
 
 Your node does eventually notice. Core raises a warning once the chain it is
 rejecting is about six blocks of work ahead — roughly twelve minutes, at
@@ -572,9 +572,8 @@ Warning: We do not appear to fully agree with our peers!
 You may need to upgrade, or other nodes may need to upgrade.
 ```
 
-But that lives in the log and in `getnetworkinfo`, this release ships without
-a graphical interface, and nobody watches a node that has been quietly working
-for a week. A release notification arrives where you got the software, before
+But that lives in the log and in `getnetworkinfo`, and nobody watches a node
+that has been quietly working for a week. A release notification arrives where you got the software, before
 any of that happens.
 
 You can also read it from the node itself at any time:

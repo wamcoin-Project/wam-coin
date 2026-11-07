@@ -215,11 +215,11 @@ chmod +x wam-miner</code></pre>
 <hr>
 <h2 id="">ابقَ على علمٍ بالإصدارات</h2>
 <p>اشترك في إشعارات الإصدارات على المستودع: <strong><a href="https://gitlab.com/WAMCoin/wam-coin">gitlab.com/WAMCoin/wam-coin</a></strong> ← <strong>Watch ▾</strong> ← <strong>Custom</strong> ← <strong>Releases</strong> ✓</p>
-<p>وهذا أهمّ ممّا يبدو. WAM قبل الإطلاق، وبعض الإصدارات تُغيّر <strong>قاعدة إجماع</strong> — فـ<code>v0.1.5</code> نقلت عنوان خزينة الشبكة الرئيسية، وعقدةٌ تبقى على <code>v0.1.4</code> سترفض كل كتلةٍ صحيحة يوم الإطلاق وتنفصل عن الشبكة عند الكتلة الأولى.</p>
+<p>وهذا أهمّ ممّا يبدو. بعض الإصدارات تُغيّر <strong>قاعدة إجماع</strong> — فـ<code>v0.1.5</code> نقلت عنوان خزينة الشبكة الرئيسية قبل الإطلاق، وعقدةٌ تبقى على <code>v0.1.4</code> كانت سترفض كل كتلةٍ صحيحة من الكتلة الأولى وتنفصل عن الشبكة. وقد يأتي إصدارٌ كهذا في أيّ وقت.</p>
 <p>وعقدتك تنتبه في النهاية. يُطلق Core تحذيراً حين يتجاوز عملُ السلسلة التي ترفضها عملَ قمّتها بستّ كتل — نحو اثنتي عشرة دقيقة عند كتلةٍ كل دقيقتين — فيقول:</p>
 <pre><code>Warning: We do not appear to fully agree with our peers!
 You may need to upgrade, or other nodes may need to upgrade.</code></pre>
-<p>لكنه في السجلّ وفي <code>getnetworkinfo</code>، وهذا الإصدار بلا واجهة رسومية، ولا أحد يراقب عقدةً تعمل بهدوء منذ أسبوع. أمّا إشعار الإصدار فيصلك <strong>في المكان الذي أخذت منه البرنامج</strong>، قبل أن يحدث أيٌّ من ذلك.</p>
+<p>لكنه في السجلّ وفي <code>getnetworkinfo</code>، ولا أحد يراقب عقدةً تعمل بهدوء منذ أسبوع. أمّا إشعار الإصدار فيصلك <strong>في المكان الذي أخذت منه البرنامج</strong>، قبل أن يحدث أيٌّ من ذلك.</p>
 <p>وتستطيع قراءته من عقدتك في أي وقت:</p>
 <pre><code>wam-cli getnetworkinfo | grep -A3 warnings</code></pre>
 <hr>
