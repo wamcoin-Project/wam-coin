@@ -91,15 +91,14 @@ empty is not a commitment; it is a number waiting to be withdrawn. This one
 can be paid in full seven times over from what is left.
 
 *Two. A bounty is not only a cost. It is a distribution of coin that was
-never mined, and we have watched what that does.* An amount paid under this
-table has already been offered to the market all at once. Nothing in
-that broke any rule — a bounty is the finder's coin and his to sell on the
-day he likes — but the effect on everyone else is not neutral. 10,250 WAM is
-seven hours of the entire network's output arriving in one wallet at one
-moment. The question miners ask before they point a CPU at a new chain is
-whether anything was handed out before they arrived; a lump that size,
-landing and then moving, has the same shape as the thing they are asking
-about, whatever its reason.
+never mined, and that is not a reading — we have watched it.* An earlier
+bounty was offered to the market in full, not long after it was paid.
+Nothing in that broke a rule: a bounty is the finder's coin and his to sell
+on whatever day he chooses. But the effect on everyone else is not neutral.
+A sum of that size is hours of the whole network's output landing in one
+wallet and then moving, and the question miners ask before they point a CPU
+at a new chain is whether anything was handed out before they arrived. A
+lump arriving and leaving has that shape whatever the reason behind it.
 
 *Three. The amounts had drifted away from what this coin costs to make.*
 Miners take 47.5 WAM a block and the chain makes thirty blocks an hour, so
