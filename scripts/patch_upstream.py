@@ -713,23 +713,50 @@ def build_changes() -> list[Change]:
             ),
             Edit(
                 file="src/validation.cpp",
-                description="verify RandomX PoW in ContextualCheckBlockHeader",
+                description="verify RandomX PoW at the END of ContextualCheckBlockHeader",
                 marker="WAM_RANDOMX_POW_VERIFIED",
                 anchor=(
-                    "    if (block.nBits != GetNextWorkRequired(pindexPrev, &block, consensusParams))\n"
-                    "        return state.Invalid(BlockValidationResult::BLOCK_INVALID_HEADER, \"bad-diffbits\", \"incorrect proof of work\");"),
+                    "            return state.Invalid(BlockValidationResult::BLOCK_INVALID_HEADER, strprintf(\"bad-version(0x%08x)\", block.nVersion),\n"
+                    "                                 strprintf(\"rejected nVersion=0x%08x block\", block.nVersion));\n"
+                    "    }\n"
+                    "\n"
+                    "    return true;\n"
+                    "}"),
                 replacement=(
-                    "    if (block.nBits != GetNextWorkRequired(pindexPrev, &block, consensusParams))\n"
-                    "        return state.Invalid(BlockValidationResult::BLOCK_INVALID_HEADER, \"bad-diffbits\", \"incorrect proof of work\");\n"
+                    "            return state.Invalid(BlockValidationResult::BLOCK_INVALID_HEADER, strprintf(\"bad-version(0x%08x)\", block.nVersion),\n"
+                    "                                 strprintf(\"rejected nVersion=0x%08x block\", block.nVersion));\n"
+                    "    }\n"
                     "\n"
                     "    // WAM_RANDOMX_POW_VERIFIED\n"
                     "    //\n"
-                    "    // This is THE proof-of-work check for WAM. The line above only\n"
-                    "    // confirms the claimed difficulty is the one DarkGravityWave demands;\n"
-                    "    // this one confirms the miner actually did the work.\n"
+                    "    // This is THE proof-of-work check for WAM. The nBits line near the top\n"
+                    "    // of this function only confirms the claimed difficulty is the one\n"
+                    "    // DarkGravityWave demands; this one confirms the miner did the work.\n"
                     "    //\n"
-                    "    // The seed comes from pindexPrev, so it is the seed the network\n"
-                    "    // agrees on for this height -- not one the submitter chose.\n"
+                    "    // The seed comes from pindexPrev, so it is the seed the network agrees\n"
+                    "    // on for this height -- not one the submitter chose.\n"
+                    "    //\n"
+                    "    // IT IS LAST IN THIS FUNCTION, AND THAT IS THE POINT.\n"
+                    "    //\n"
+                    "    // Upstream can afford to check proof of work first, in\n"
+                    "    // CheckBlockHeader, because a double-SHA256 costs about a\n"
+                    "    // microsecond. RandomX in light mode costs about twenty\n"
+                    "    // milliseconds -- twenty thousand times more -- and it runs with\n"
+                    "    // cs_main held, so every millisecond of it is a millisecond the rest\n"
+                    "    // of the node is stopped.\n"
+                    "    //\n"
+                    "    // Written here in its first form, it ran BEFORE the checkpoint test,\n"
+                    "    // the two timestamp tests, the timewarp test and the version test --\n"
+                    "    // five comparisons that cost nothing and that a header has to pass\n"
+                    "    // anyway. Every one of them is now a filter in front of the\n"
+                    "    // expensive check instead of behind it. A header that is going to be\n"
+                    "    // rejected for its timestamp is rejected for its timestamp, without\n"
+                    "    // twenty milliseconds being spent first.\n"
+                    "    //\n"
+                    "    // Nothing about WHICH headers are accepted changes: a header has to\n"
+                    "    // pass all of these in any order. What changes is what a header that\n"
+                    "    // fails more than one of them costs us, and which failure is\n"
+                    "    // reported first.\n"
                     "    {\n"
                     "        const uint256 seed = wam::GetRandomXSeedHash(pindexPrev, consensusParams);\n"
                     "        const uint256 pow_hash = wam::GetRandomXPoWHash(block, seed);\n"
@@ -737,7 +764,10 @@ def build_changes() -> list[Change]:
                     "            return state.Invalid(BlockValidationResult::BLOCK_INVALID_HEADER,\n"
                     "                                 \"high-hash\", \"RandomX proof of work failed\");\n"
                     "        }\n"
-                    "    }"),
+                    "    }\n"
+                    "\n"
+                    "    return true;\n"
+                    "}"),
             ),
             Edit(
                 file="src/node/blockstorage.cpp",
@@ -1765,6 +1795,97 @@ def build_changes() -> list[Change]:
                 marker="WAM: the example address must be this chain's",
                 anchor=ANCHOR_WAM026,
                 replacement=REPLACEMENT_WAM026,
+            ),
+        ],
+    ))
+
+    # -----------------------------------------------------------------------
+    changes.append(Change(
+        id="WAM-027",
+        title="Do no proof-of-work work for an address we have already punished",
+        rationale=(2 * chr(10)).join([
+            "Verifying one header costs this chain about twenty milliseconds "
+            "of RandomX against the microsecond a double-SHA256 costs "
+            "Bitcoin, and WAM-010 put that cost on the headers path with "
+            "cs_main held. Everything upstream does about header flooding is "
+            "priced for the microsecond.",
+
+            "A peer that sends a bad header is already discouraged. The hole "
+            "is that CConnman accepts a discouraged address's next "
+            "connection anyway unless the inbound slots are nearly full -- "
+            "'Only accept connections from discouraged peers if our inbound "
+            "slots aren't (almost) full'. Upstream means that leniency: the "
+            "discouragement set is a rolling bloom filter and can answer yes "
+            "for an address that never misbehaved, and accepting it again "
+            "costs upstream nothing. It costs us the entire defence. One "
+            "address sends a 90-byte header built on our own tip, is "
+            "discouraged, reconnects, and buys another twenty milliseconds, "
+            "without limit.",
+
+            "So the connection policy is left exactly as upstream wrote it, "
+            "and what changes is what we are willing to SPEND on a "
+            "discouraged address: no proof-of-work verification. A false "
+            "positive in the filter costs that peer a header announcement we "
+            "take from somebody else, rather than costing it the connection "
+            "-- which keeps upstream's reason for the leniency intact.",
+
+            "Initial sync is untouched: a syncing node chooses its own "
+            "outbound peers and none of them is discouraged. Peers with "
+            "NoBan are exempt, as they are everywhere else.",
+
+            "Not consensus. It changes no rule and no block; it changes "
+            "whose headers we are willing to spend twenty milliseconds on. "
+            "Reported by bobbyning, 8 November 2026, measured on an isolated "
+            "regtest instance: 725 headers in fifteen seconds, one core at "
+            "95 per cent, and getblocktemplate from 1 ms to 20 ms while it "
+            "ran.",
+        ]),
+        edits=[
+            Edit(
+                file="src/net_processing.cpp",
+                description="ignore headers from a discouraged address",
+                marker="WAM_NO_POW_FOR_A_DISCOURAGED_PEER",
+                anchor=(
+                    "void PeerManagerImpl::ProcessHeadersMessage(CNode& pfrom, Peer& peer,\n"
+                    "                                            std::vector<CBlockHeader>&& headers,\n"
+                    "                                            bool via_compact_block)\n"
+                    "{\n"
+                    "    size_t nCount = headers.size();"),
+                replacement=(
+                    "void PeerManagerImpl::ProcessHeadersMessage(CNode& pfrom, Peer& peer,\n"
+                    "                                            std::vector<CBlockHeader>&& headers,\n"
+                    "                                            bool via_compact_block)\n"
+                    "{\n"
+                    "    // WAM_NO_POW_FOR_A_DISCOURAGED_PEER\n"
+                    "    //\n"
+                    "    // Verifying a header here costs about twenty milliseconds of RandomX\n"
+                    "    // with cs_main held, against the microsecond a double-SHA256 costs\n"
+                    "    // Bitcoin. A peer that sends a bad header is discouraged already --\n"
+                    "    // and CConnman then accepts its next connection anyway, because\n"
+                    "    // upstream only enforces discouragement when the inbound slots are\n"
+                    "    // nearly full. That leniency exists for a good reason: the\n"
+                    "    // discouragement set is a rolling bloom filter and can answer yes for\n"
+                    "    // an address that never misbehaved.\n"
+                    "    //\n"
+                    "    // The reason holds; the price does not. Reconnecting costs the\n"
+                    "    // attacker nothing and buys another twenty milliseconds of ours,\n"
+                    "    // without limit. So the connection is still accepted exactly as\n"
+                    "    // upstream decided, and what is refused is the WORK: no proof of work\n"
+                    "    // is verified for an address we have already punished. A false\n"
+                    "    // positive costs that peer one header announcement, which we take\n"
+                    "    // from one of the others, instead of costing it the connection.\n"
+                    "    //\n"
+                    "    // Initial sync is untouched -- a syncing node chooses its own\n"
+                    "    // outbound peers and none of them is discouraged -- and NoBan peers\n"
+                    "    // are exempt here as they are everywhere else.\n"
+                    "    if (!pfrom.HasPermission(NetPermissionFlags::NoBan) &&\n"
+                    "        m_banman && m_banman->IsDiscouraged(pfrom.addr)) {\n"
+                    "        LogPrint(BCLog::NET, \"ignoring %u header(s) from discouraged peer=%d\\n\",\n"
+                    "                 headers.size(), pfrom.GetId());\n"
+                    "        return;\n"
+                    "    }\n"
+                    "\n"
+                    "    size_t nCount = headers.size();"),
             ),
         ],
     ))
