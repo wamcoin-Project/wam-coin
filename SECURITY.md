@@ -92,7 +92,7 @@ can be paid in full seven times over from what is left.
 
 *Two. A bounty is not only a cost. It is a distribution of coin that was
 never mined, and we have watched what that does.* An amount paid under this
-table has already been offered to the market in a single block. Nothing in
+table has already been offered to the market all at once. Nothing in
 that broke any rule — a bounty is the finder's coin and his to sell on the
 day he likes — but the effect on everyone else is not neutral. 10,250 WAM is
 seven hours of the entire network's output arriving in one wallet at one
