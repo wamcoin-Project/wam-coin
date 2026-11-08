@@ -54,7 +54,7 @@ import time
 from test_framework.messages import CBlockHeader, msg_headers
 from test_framework.p2p import P2PInterface
 from test_framework.test_framework import BitcoinTestFramework
-from test_framework.util import assert_equal
+from test_framework.util import assert_equal, p2p_port
 
 
 def routable_address():
@@ -78,6 +78,15 @@ class WamHeaderDosTest(BitcoinTestFramework):
     def set_test_params(self):
         self.num_nodes = 1
         self.setup_clean_chain = True
+        # The framework writes bind=127.0.0.1 into every node's config, so a
+        # node listens on the loopback only and a peer cannot reach it from
+        # the address this test needs. A second bind is added for that one
+        # address -- not 0.0.0.0, which would take the port before the
+        # config's loopback bind could have it and stop the node with
+        # "Unable to bind ... already running". Two addresses, one port, one
+        # machine, for the length of one test.
+        self.routable = routable_address()
+        self.extra_args = [[f"-bind={self.routable}:{p2p_port(0)}"]]
 
     def bad_header(self, tmpl, nonce):
         """A header that costs nothing to make and must be verified to refuse.
@@ -102,7 +111,7 @@ class WamHeaderDosTest(BitcoinTestFramework):
     def run_test(self):
         node = self.nodes[0]
 
-        addr = routable_address()
+        addr = self.routable
         if addr.startswith("127."):
             raise AssertionError(
                 "this machine has no address but the loopback, and a loopback "

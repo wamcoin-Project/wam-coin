@@ -1173,6 +1173,38 @@ def build_changes() -> list[Change]:
                    "tests fail on a WAM chain before they run a single assertion."),
         edits=[
             Edit(
+                file="test/functional/test_framework/messages.py",
+                description="the network magic a test peer speaks is WAM's",
+                marker="WAM_FRAMEWORK_MAGIC",
+                anchor=r'''MAGIC_BYTES = {
+    "mainnet": b"\xf9\xbe\xb4\xd9",   # mainnet
+    "testnet3": b"\x0b\x11\x09\x07",  # testnet3
+    "regtest": b"\xfa\xbf\xb5\xda",   # regtest
+    "signet": b"\x0a\x03\xcf\x40",    # signet
+}''',
+                replacement=r'''# WAM_FRAMEWORK_MAGIC -- the four bytes that open every p2p message.
+#
+# These were Bitcoin's until 8 November 2026, and nothing had noticed,
+# because not one functional test in this project had ever opened a p2p
+# connection: the four wam_* tests all speak RPC. The first test that did
+# -- feature_wam_header_dos.py -- was answered with
+#
+#     Header error: Wrong MessageStart fabfb5da received
+#
+# and the connection was closed before a single message was read. A test
+# framework that cannot say hello to the node cannot test the node's
+# network behaviour at all, which is a whole half of it.
+#
+# The values are chainparams.cpp's pchMessageStart, which spell the chain:
+# WAM! on mainnet, wam! on testnet, WAMR on regtest.
+MAGIC_BYTES = {
+    "mainnet": b"WAM!",               # 0x57 0x41 0x4d 0x21
+    "testnet3": b"wam!",              # 0x77 0x61 0x6d 0x21
+    "regtest": b"WAMR",               # 0x57 0x41 0x4d 0x52
+    "signet": b"\x0a\x03\xcf\x40",    # this chain has no signet
+}''',
+            ),
+            Edit(
                 file="test/functional/test_framework/test_node.py",
                 description="re-encode the deterministic mining keys for WAM",
                 marker="WAM_FRAMEWORK_KEYS",
