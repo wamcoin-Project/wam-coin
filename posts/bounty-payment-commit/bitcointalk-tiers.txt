@@ -58,7 +58,15 @@ does not move with the hash rate; it is what consensus pays. 10,250 WAM is
 seven hours of all of it. Measured against one person instead of everyone, on
 the day it was paid, it came to about 120 days of an average miner in our
 pool — four months of somebody paying his own electricity, for a report read
-in a day. A programme that pays a reader four months of a miner's work is not
+in a day.
+
+And the direction runs one way only. The hash rate rises, difficulty follows
+it, and the block keeps paying the same 47.5 WAM until it halves at height
+200,000. So the same 10,250 costs more work to produce every month that
+passes: a sum fixed in coin is a sum that grows in labour, and the figure
+above is the floor rather than the ceiling.
+
+A programme that pays a reader four months of a miner's work is not
 generous to the reader. It is unfair to the miner, and the miners are the
 people who keep this chain alive.
 
