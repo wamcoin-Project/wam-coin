@@ -90,8 +90,10 @@ it contradicted. He was right and the file was wrong.
 
 **What has been paid is in the ledger, and nothing else has.** 10,000 WAM went
 to chovy on 1–2 October 2026, 10,000 to Alboy on 11 October, 1,000 to
-Smooth Jazz Crypto on 13 October, and 250 to ahten on 15 October — 21,250 WAM
-to four people. The 1,000 for the pool API leak is the one still unpaid. Until 2 October this paragraph opened
+Smooth Jazz Crypto on 13 October, 250 to ahten on 15 October, and 10,250 to
+bobbyning on 8 November — 31,500 WAM to five people. Two are still unpaid: the
+1,000 for the pool API leak, and the 250 for the block spool, which is waiting
+on an address from the reporter. Until 2 October this paragraph opened
 "nothing has been paid yet", which stayed after it stopped being true and
 contradicted the line further down this same file. Between 14 and 15 September
 it claimed the opposite error: that 1,000 WAM had already been paid to the reviewer who
@@ -148,7 +150,7 @@ running, which comes first, because a chain with no nodes has nothing worth
 securing.
 
 **This programme's share of it is one eighth: 93,750 WAM, for the whole life
-of the programme.** 21,250 of that has been paid against the findings below.
+of the programme.** 31,500 of that has been paid against the findings below.
 One of every class in the table above comes to 91,250, so the table is
 payable even if every class is found — which is the test a promise has to
 pass before it is made.
@@ -337,6 +339,76 @@ rather than before it.
 
 Classified at 250, the hardening rung, which is where the reporter classified
 it. Held down by `pool/test/address-validation.test.js`.
+
+**250 WAM — the block spool was emptied at the start of the window it exists
+for, accepted 6 November 2026, payable.** `drainSpool` says in its own comment
+what the spool is for: dying between the node accepting a block and the payout
+being recorded. `_submitBlock` removed the entry the moment the node accepted
+the block — the first instant of that window rather than the last — and
+`_record` runs after it. A redis failure there returned UNAVAILABLE before
+`credited`, before `emit('share')` and before `emit('block')`. No event, and
+`recordBlock` is the only writer of `blocks:pending`, so nothing recorded the
+block. The resubmission hit JOB_NOT_FOUND because `refreshTemplate(true)` had
+already cleared the job, and the drain found an empty spool. 47.5 WAM on the
+chain, credited to nobody, with no path back: the one crash the spool was
+built for was the one it did not cover.
+
+Reported by 0xkerochan, with a harness that drives the real JobManager and
+ShareProcessor against a redis whose first write throws. Fixed on the option
+he named: the entry is released by the 'block' listener in `pool/server.js`
+after `recordBlock` returns, so it covers the whole accept-to-record window,
+and `unspoolRecorded` swallows its own failure because an entry that stays
+costs one round trip a minute while an entry removed early costs a block.
+Held down by `pool/test/block-spool.test.js`.
+
+Classified at 250, the hardening rung, which is where the reporter classified
+it — he wrote that he was not inflating it. The payment is waiting on a
+mainnet address from him.
+
+**10,250 WAM — a broadcast payment paid a second time, and three more faults
+in the same accounting, accepted 7 November 2026, PAID 8 November 2026.** Ten
+transactions of 1,025 WAM, all in block 37,299, and in
+`docs/TREASURY_LEDGER.md` with the rest.
+
+ioredis `pipeline()` is a batch, not a transaction, and its `exec()` resolves
+with `[error, result]` pairs: a command that fails arrives as data, not as a
+throw. `_processPayments` broadcast the transaction, wrote `payment:inflight`,
+then committed the balance decrements through such a pipeline. If that commit
+failed, nothing threw, nothing paused, every balance stayed as it was, and the
+run ten minutes later paid the same miners again from the same balances. The
+marker written for exactly this case was read in one place in the whole
+repository, `startupReconcile`, so it only ever spoke after a restart.
+
+Three more in the same report. `recordShare`'s accounting had the identical
+shape with a smaller blast radius, so a miner was told `valid:true` on the
+first submission of a share that was never recorded. `recordBlock` asked
+`blocks:pending` and `blocks:confirmed:hashes` whether a block was already
+accounted for, and a block sitting in `blocks:maturing` answered neither. And
+`shutdown()` did not wait for the accounting chain, so a SIGTERM arriving
+between a block being accepted and its payout being recorded lost it the way a
+power cut would — except that this is the ordinary way the pool is restarted,
+which makes it the likelier of the two.
+
+Reported by bobbyning from a read of `pool/` at `6d613ae`, without running
+anything. Fixed in `pool/lib/shareProcessor.js`, `pool/lib/jobManager.js` and
+`pool/server.js`: the marker is read before every payment run and pauses the
+pool if it is there, every `exec()` is wrapped and its replies read, the
+accounting is a MULTI, a duplicate share is answered with code 22 instead of
+"resubmit", and `_mature`'s `lrem` was moved outside its MULTI and gated on
+the replies — a MULTI is one unit against a lost connection but does not abort
+on a command that fails at run time, so with the `lrem` inside it, a failed
+credit could still erase the record of what was owed. Held down by
+`pool/test/payment-safety.test.js`, `pool/test/maturation-claim.test.js` and
+`pool/test/cross-job-replay.test.js`, each run against the old code to confirm
+it fails there.
+
+Classified at 10,000 for the payment commit and 250 for the share called
+accepted while its accounting had failed — both rungs the reporter named
+himself. His appendix A was the spool finding above, reported a day earlier
+and credited there, though his observation about `shutdown()` was new and is
+fixed with it. His appendix B, the block stranded in `blocks:maturing`, is
+fixed and credited to him by name; he did not price it and no amount was added
+for it.
 
 **1,000 WAM — the pool API leak, accepted 13 September 2026, unpaid.** Three of
 four `/api/*` endpoints returned every miner's full payout address while the
