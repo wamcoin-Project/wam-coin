@@ -101,15 +101,16 @@ whether anything was handed out before they arrived; a lump that size,
 landing and then moving, has the same shape as the thing they are asking
 about, whatever its reason.
 
-*Three. The amounts had drifted away from what this coin costs to make.* The
-network is near 969,000 H/s. Miners take 47.5 WAM a block and the chain makes
-thirty blocks an hour, so the whole network earns about 1,425 WAM an hour.
-10,250 WAM is seven hours of that — or, measured against one person rather
-than all of them, about 120 days of an average miner in our pool. Four months
-of somebody paying his own electricity, for a report read in a day. A
-programme that pays a reader four months of a miner's work is not generous to
-the reader. It is unfair to the miner, and the miners are the people who keep
-this chain alive.
+*Three. The amounts had drifted away from what this coin costs to make.*
+Miners take 47.5 WAM a block and the chain makes thirty blocks an hour, so
+every machine on this network together earns about 1,425 WAM an hour. That
+figure does not move with the hash rate; it is what consensus pays. 10,250
+WAM is seven hours of all of it. Measured against one person instead of
+everyone, on the day it was paid, it came to about 120 days of an average
+miner in our pool — four months of somebody paying his own electricity, for a
+report read in a day. A programme that pays a reader four months of a miner's
+work is not generous to the reader. It is unfair to the miner, and the miners
+are the people who keep this chain alive.
 
 *What did not change.* The classes did not: the table still names what it
 pays for rather than leaving it to be argued about afterwards. The bottom
