@@ -55,20 +55,18 @@ Three. The amounts had drifted away from what this coin costs to make. Miners
 take 47.5 WAM a block and the chain makes thirty blocks an hour, so every
 machine on this network together earns about 1,425 WAM an hour. That figure
 does not move with the hash rate; it is what consensus pays. 10,250 WAM is
-seven hours of all of it. Measured against one person instead of everyone, on
-the day it was paid, it came to about 120 days of an average miner in our
-pool — four months of somebody paying his own electricity, for a report read
-in a day.
+seven hours of all of it, or — measured against one person instead of
+everyone, on the day it was paid — about 120 days of an average miner in our
+pool.
 
 And the direction runs one way only. The hash rate rises, difficulty follows
 it, and the block keeps paying the same 47.5 WAM until it halves at height
-200,000. So the same 10,250 costs more work to produce every month that
-passes: a sum fixed in coin is a sum that grows in labour, and the figure
-above is the floor rather than the ceiling.
+200,000. So the same sum costs more work to produce every month that passes:
+a figure fixed in coin is a figure that grows in labour, and the one above is
+a floor rather than a ceiling.
 
-A programme that pays a reader four months of a miner's work is not
-generous to the reader. It is unfair to the miner, and the miners are the
-people who keep this chain alive.
+A table has to be priced against something, and ours had stopped being priced
+against what the coin is made of.
 
 What did not change. The classes did not: the table still names what it pays
 for rather than leaving it to be argued about afterwards. The bottom rung did
