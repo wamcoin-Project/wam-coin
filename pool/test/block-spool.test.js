@@ -122,7 +122,23 @@ function jm(store, outcome) {
         await m.drainSpool();
         assert.strictEqual(s.live.size, 1, 'an hour old and already forgotten');
         await m.drainSpool();
-        assert.strictEqual(s.live.size, 0, 'the node took it and it was not removed');
+
+        // AND IT IS STILL SPOOLED, WHICH IS THE CHANGE OF 2026-11-07.
+        //
+        // This used to assert 0 here: the node took it, so the drain removed
+        // it. But the emit is fire-and-forget -- the listener queues
+        // recordBlock and returns -- so the entry was deleted while the
+        // accounting it exists to protect had not run. The spool's whole
+        // purpose is to survive "accepted by the node, not yet paid for",
+        // and it was being emptied at the start of that window.
+        //
+        // The entry is released by whoever has seen the payout record exist,
+        // and by nobody else.
+        assert.strictEqual(s.live.size, 1,
+            'the entry was dropped before anything recorded the payout');
+        await m.unspoolRecorded('h1');
+        assert.strictEqual(s.live.size, 0,
+            'and it must go once the record exists, or every drain re-offers it');
     });
 
     await test('an accepted spooled block is counted and announced for payout', async () => {
@@ -204,11 +220,71 @@ function jm(store, outcome) {
     await test('"duplicate" means it was already accepted, and settles it', async () => {
         const s = memStore();
         s.live.set('h1', { height: 10, hash: 'h1', hex: 'deadbeef', worker: 'w', foundAt: Date.now() });
-        const r = await jm(s, DUPLICATE).drainSpool();
+        const m = jm(s, DUPLICATE);
+        const r = await m.drainSpool();
         assert.strictEqual(r.settled, 1);
+        // Settled with the NODE, which is not the same as paid for. "Already
+        // have it" is precisely the answer the drain gets when this process
+        // died between acceptance and accounting, so the entry has to
+        // outlive the offer -- see the drain above.
+        assert.strictEqual(s.live.size, 1,
+            'a block was dropped from the spool before its payout was recorded');
+        await m.unspoolRecorded('h1');
         assert.strictEqual(s.live.size, 0, 'a block already on the node stayed in the spool');
         assert.strictEqual(s.refused.size, 0,
             'a block that was already accepted was filed as refused');
+    });
+
+    await test('an accepted block stays spooled until something records it', async () => {
+        // H-02, end to end at the layer where it happened.
+        //
+        // _submitBlock used to unspool on acceptance, fire-and-forget, with
+        // the comment "it is on the chain; the spool has nothing left to
+        // protect". But _record() runs AFTER _submitBlock returns, and if it
+        // throws -- one redis blip -- processShare returns UNAVAILABLE before
+        // `credited`, before emit('share') and before emit('block'). No
+        // 'block' event, so recordBlock never runs, so blocks:pending never
+        // gets an entry, so nothing matures and nobody is paid. The
+        // resubmission hits JOB_NOT_FOUND because refreshTemplate(true)
+        // already cleared the job. And the drain, the one thing that could
+        // still have recovered it, found an empty spool.
+        //
+        // 47.5 WAM on the chain, credited to nobody, with no path back.
+        //
+        // Reported by 0xkerochan, 2026-11-06.
+        const s = memStore();
+        const m = jm(s, ACCEPTED);
+
+        const header = Buffer.alloc(80, 0x11);
+        const job = {
+            height: 42,
+            coinbaseValue: 5000000000,
+            distributableValue: 4750000000,
+            devFeeAmount: 250000000,
+            serializeBlock: () => Buffer.from('deadbeef', 'hex')
+        };
+        const share = { worker: 'w.rig1', height: 42 };
+
+        // _submitBlock writes it down before it asks the node, which is the
+        // test two rows below this one.
+        await m._submitBlock(job, header, Buffer.alloc(0), share);
+
+        assert.strictEqual(share.blockAccepted, true, 'the node took the block');
+        assert.strictEqual(s.live.size, 1,
+            'the block is on the chain and the only record that it is unpaid ' +
+            'was deleted before anything recorded the payout');
+
+        // _record() now throws. Nothing emits 'block'. The drain is the only
+        // thing left, and it has to find something.
+        const seen = [];
+        m.on('block', (b) => seen.push(b));
+        const r = await m.drainSpool();
+        assert.strictEqual(r.offered, 1, 'there was nothing left to recover');
+        assert.strictEqual(seen.length, 1, 'nobody was ever offered the payout');
+
+        // And only once the record exists does the evidence go.
+        await m.unspoolRecorded(share.blockHash);
+        assert.strictEqual(s.live.size, 0);
     });
 
     await test('a pool with no spool configured still runs, and says so once', async () => {

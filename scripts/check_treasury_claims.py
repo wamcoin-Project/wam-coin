@@ -105,10 +105,26 @@ DENIALS = [
 # wam:quote-end
 
 
-# A WAM mainnet P2PKH address, which is how the recipient cell is recognised
-# rather than counted to.
+# A WAM mainnet address in EITHER form the chain pays to, which is how the
+# recipient cell is recognised rather than counted to.
+#
+# This read base58 alone -- ^W[1-9A-HJ-NP-Za-km-z]{25,42}$ -- and the treasury
+# has been paying bech32 recipients since 13 October 2026. A row whose
+# recipient is a wam1 address did not look like a row at all, so it was
+# dropped before any arithmetic saw it, and nothing said so: 1,000 WAM to
+# Smooth Jazz Crypto went unseen here for twenty-six days, and the 10,250 to
+# bobbyning on 8 November would have joined it. The check whose entire subject
+# is "no paragraph may deny a payment that was made" was blind to every
+# payment made in the newer format, and reported green while being blind.
+#
+# The lesson is the one this repository keeps relearning: a check that matches
+# a SHAPE sees only that shape, and the day the shape changes it goes quiet
+# rather than red. Identifying a cell by what it is remains right -- it is why
+# a new fee column did not break this -- but the identity has to know every
+# form the thing legitimately takes.
 # wam:quote-begin
-ADDRESS = re.compile(r"^W[1-9A-HJ-NP-Za-km-z]{25,42}$")
+ADDRESS = re.compile(r"^(?:W[1-9A-HJ-NP-Za-km-z]{25,42}"
+                     r"|wam1[02-9ac-hj-np-z]{25,86})$")
 AMOUNT = re.compile(r"^\*{0,2}([\d,]+\.\d+)\s*WAM\s*\*{0,2}$")
 DATE = re.compile(r"^(20\d\d-\d\d-\d\d)$")
 # wam:quote-end

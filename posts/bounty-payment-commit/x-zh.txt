@@ -1,0 +1,32 @@
+X — 中文，自成一条线程，不作为英文线程的回复。
+================================================
+X weights a CJK character as two, so 280 is about 140 Chinese characters.
+Counted below, not estimated.
+
+Posted as its own thread rather than as a reply, because the readers it is
+for found this project on their own and read the code. A translation buried
+under an English post is not an announcement to them.
+
+---------------------------------------------------------------
+POST 1
+
+第五次有人为 WAM 做了真正的工作，并以这枚币作为报酬：一位社区成员发现
+矿池可能把同一批矿工付款两次——一次失败的 redis 提交什么也没有抛出。
+
+已修复，已测试，按公开的赏金档位支付。
+
+wamcoin.org/security
+
+---------------------------------------------------------------
+POST 2 — 对上一条的回复
+
+WAM 的源码，三处，分属三家公司：
+
+gitlab.com/WAMCoin/wam-coin
+github.com/wamcoin-Project/wam-coin
+gitea.com/WAMCoin/wam-coin
+
+wamcoin.org
+wamcoin.net
+
+技术讨论在 Discord：https://discord.gg/Gxvmrjy9Qb

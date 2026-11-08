@@ -460,6 +460,16 @@ class JobManager extends EventEmitter {
             try {
                 await this._record(share);
             } catch (err) {
+                // A DUPLICATE AND A FAILURE NEED OPPOSITE ANSWERS.
+                //
+                // UNAVAILABLE means "send it again", and for a share whose
+                // proof of work is already counted that is wrong twice over:
+                // the resubmission cannot be credited, and the miner loops.
+                // The record layer tags that case so it can be answered with
+                // the code that already exists for it.
+                if (err && err.duplicateShare) {
+                    return this._reject(REJECT.DUPLICATE, workerName);
+                }
                 this.log.error(`could not record a share from ${workerName}: ` +
                                `${err.message}`);
                 return this._reject(REJECT.UNAVAILABLE, workerName);
@@ -537,6 +547,32 @@ class JobManager extends EventEmitter {
     }
 
     /**
+     * Release a spooled block once its payout record exists.
+     *
+     * The only caller is the 'block' listener, after recordBlock has
+     * returned. Nothing else may remove an accepted block from the spool:
+     * the entry IS the evidence that a block reached the chain without being
+     * paid for, and it has to outlive every step between those two facts.
+     *
+     * A failure here is not an error worth propagating -- the entry simply
+     * stays, the next drain offers it again, the node answers ALREADY_HAVE,
+     * and recordBlock no-ops on the hash it has already recorded. The cost of
+     * failing to remove it is one wasted round trip a minute; the cost of
+     * removing it too early is a block nobody is paid for.
+     */
+    async unspoolRecorded(hash) {
+        if (!hash) return;
+        try {
+            await this._unspool(hash);
+        } catch (err) {
+            this.log.warn(`block ${hash.slice(0, 16)}... is recorded but could ` +
+                          `not be removed from the spool: ${err.message} -- the ` +
+                          'next drain will offer it again and recordBlock will ' +
+                          'no-op');
+        }
+    }
+
+    /**
      * Offer every spooled block to the node again.
      *
      * Called at start-up and on a timer. The expensive case -- a block sitting
@@ -570,8 +606,13 @@ class JobManager extends EventEmitter {
                               `found ${Math.round((Date.now() - e.foundAt) / 1000)}s ` +
                               'ago, by ' + e.worker);
                 this.stats.blocksFound++;
+                // Not unspooled here. The emit is fire-and-forget -- the
+                // listener queues recordBlock and returns -- so removing the
+                // entry on this line would delete it while the accounting it
+                // is protecting has not run yet, which is the same fault the
+                // accept path in _submitBlock had. unspoolRecorded() below is
+                // called once the record exists.
                 this._emitRecovered(e);
-                await this._unspool(e.hash);
                 settled++;
                 continue;
             }
@@ -596,8 +637,11 @@ class JobManager extends EventEmitter {
                 this.log.info(`spooled block ${e.height} is already on the node; ` +
                               'offering it for payout in case the crash was ' +
                               'between acceptance and accounting');
+                // Same reason as the accepted branch: the record does not
+                // exist yet when this returns, so the entry is not ours to
+                // remove. A block whose payout is already recorded costs one
+                // idempotent no-op per drain until the unspool lands.
                 this._emitRecovered(e);
-                await this._unspool(e.hash);
                 settled++;
             } else if (result.verdict === SUBMIT.REFUSED) {
                 this.log.error(`spooled block ${e.height} was read and refused: ` +
@@ -748,10 +792,35 @@ class JobManager extends EventEmitter {
             // winner has to be in it. What stays here is the only thing that
             // is urgent: getting every miner onto the new tip.
             this.refreshTemplate(true).catch(() => {});
-            // It is on the chain; the spool has nothing left to protect.
-            this._unspool(blockHash).catch((e) =>
-                this.log.warn(`block ${job.height} is accepted but could not be ` +
-                              `removed from the spool: ${e.message}`));
+            // THE SPOOL ENTRY STAYS UNTIL THE PAYOUT RECORD EXISTS.
+            //
+            // This used to unspool here, reasoning that a block on the chain
+            // has nothing left to protect. But drainSpool's own comment says
+            // what the spool is for: "dying between the node accepting a
+            // block and the payout being recorded". Deleting the entry at
+            // acceptance threw the evidence away at the START of that window
+            // instead of the end of it, and the recovery path below was left
+            // with nothing to offer.
+            //
+            // What that cost: _record() runs after this returns. If it threw
+            // -- a redis blip is enough -- processShare returned UNAVAILABLE
+            // before `credited`, before emit('share') and before
+            // emit('block'). The block was on the chain, no 'block' event
+            // ever fired, recordBlock is the only writer of blocks:pending
+            // and never ran, the resubmission hit JOB_NOT_FOUND because
+            // refreshTemplate(true) had already cleared the job, and the
+            // drain found an empty spool. 47.5 WAM on the chain, credited to
+            // nobody, with no path back. The one crash the spool was built
+            // for was the one it did not cover.
+            //
+            // The entry is now removed by whoever has seen the payout record
+            // exist -- the 'block' listener in server.js, after recordBlock
+            // returns. recordBlock is idempotent on the block hash, so an
+            // entry offered a second time costs nothing.
+            //
+            // Reported by 0xkerochan, 2026-11-06, with a harness that drives
+            // the real JobManager and ShareProcessor against a redis whose
+            // first write throws.
         } else if (result.verdict === SUBMIT.ALREADY_HAVE) {
             // A LOST RACE IS NOT A REJECTION, AND SAYING SO COSTS REAL THINGS.
             //

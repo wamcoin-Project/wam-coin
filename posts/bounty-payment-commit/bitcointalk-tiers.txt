@@ -1,0 +1,92 @@
+BITCOINTALK — the announcement thread, a SECOND reply.
+======================================================
+Posted straight after the payment reply, not days later. The table is
+published in this thread, so a reader working on a finding right now is
+working against numbers that no longer exist — and a reduction found rather
+than announced reads as a reduction hidden, whatever the reasons are.
+
+---------------------------------------------------------------
+
+The bounty table published in this thread was lowered today. The reasons
+belong next to it rather than in a changelog nobody opens, so they are here
+in full.
+
+  Inflation beyond the 22,000,000 cap, or a way past the treasury rule   3,000 WAM
+  A consensus split, or a remote crash of nodes                          2,000 WAM
+  Theft of funds held by software in this project                        1,500 WAM
+  Credit without entitlement — paying out coins nobody earned            1,000 WAM
+  Bulk deanonymisation of miners or users                                  600 WAM
+  Denial of service against the pool, the explorer or a seed               400 WAM
+  Hardening, a misconfiguration, or a document that misleads               250 WAM
+
+Every amount except the last is lower than it was. The top rung went from
+50,000 to 3,000.
+
+Nothing already reported is re-read against it. The 10,250 paid this morning
+was judged under the old table and paid at the rungs the reporter set
+himself, and every finding already accepted keeps the classification it was
+given.
+
+A programme that quietly starts paying less is a programme nobody trusts
+twice, so here are the three reasons. They were studied from every side
+before anything was touched.
+
+One. The treasury is finite, and we have now measured how fast it empties.
+Consensus pays it 2.5 WAM a block until height 400,000 — 750,000 WAM for its
+whole life, of which one eighth, 93,750, is this programme's share. 31,500 of
+that is already paid, in the programme's first fifty-three days. Under the
+old table a single inflation finding, at 50,000, was more than half of
+everything the programme had for its entire life. A table that one report can
+empty is not a commitment; it is a number waiting to be withdrawn. The new
+one can be paid in full seven times over from the 62,250 that is left.
+
+Two. A bounty is not only a cost. It is a distribution of coin that was never
+mined, and that is not a reading — we have watched it. An earlier bounty was
+offered to the market in full, not long after it was paid. Nothing in that
+broke a rule: a bounty is the finder's coin and his to sell on whatever day
+he chooses. But the effect on everyone else is not neutral. A sum of that
+size is hours of the whole network's output landing in one wallet and then
+moving, and the question a miner asks before pointing a CPU at a new chain is
+whether anything was handed out before he arrived. A lump arriving and
+leaving has that shape whatever the reason behind it.
+
+Three. The amounts had drifted away from what this coin costs to make. Miners
+take 47.5 WAM a block and the chain makes thirty blocks an hour, so every
+machine on this network together earns about 1,425 WAM an hour. That figure
+does not move with the hash rate; it is what consensus pays. 10,250 WAM is
+seven hours of all of it, or — measured against one person instead of
+everyone, on the day it was paid — about 120 days of an average miner in our
+pool.
+
+And the direction runs one way only. The hash rate rises, difficulty follows
+it, and the block keeps paying the same 47.5 WAM until it halves at height
+200,000. So the same sum costs more work to produce every month that passes:
+a figure fixed in coin is a figure that grows in labour, and the one above is
+a floor rather than a ceiling.
+
+A table has to be priced against something, and ours had stopped being priced
+against what the coin is made of.
+
+What did not change. The classes did not: the table still names what it pays
+for rather than leaving it to be argued about afterwards. The bottom rung did
+not move, because the smallest findings are the ones most often left
+unreported and 250 WAM is not what makes or breaks this budget. And the
+discretion above the table did not move either — a finding that matters more
+than its rung can still be paid more than its rung, and when that happens it
+will be said plainly that it was a judgement and not a tier. That matters
+more now than it did at 50,000, and it is the reason a lower ceiling is not
+a cap.
+
+All of the above is in the security policy itself, with every payment made so
+far, its reasoning, and its transaction id:
+https://wamcoin.org/security/
+
+Source, in three places:
+https://gitlab.com/WAMCoin/wam-coin
+https://github.com/wamcoin-Project/wam-coin
+https://gitea.com/WAMCoin/wam-coin
+
+https://wamcoin.org
+https://wamcoin.net
+
+The technical discussion is on Discord: https://discord.gg/Gxvmrjy9Qb

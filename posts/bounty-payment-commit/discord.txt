@@ -1,0 +1,49 @@
+DISCORD — the general channel. Posted as one message.
+=====================================================
+Counted below, against the 2,000 limit.
+
+---------------------------------------------------------------
+
+Somebody in this community read the mining pool's code — without running
+any of it — and found the pool could pay the same miners twice.
+He has been paid for it: the fifth time somebody has done real work for WAM
+and taken the coin as payment.
+
+The pool broadcasts a payment, writes a marker saying one is in flight, then
+commits the balance decrements to redis. That commit was an ioredis
+`pipeline()`, and `exec()` on a pipeline *resolves* with `[error, result]`
+pairs — a failed command arrives as data, not as a thrown error. So a failed
+commit threw nothing, paused nothing, and left every balance standing. Ten
+minutes later the next run paid the same miners again. The marker written for
+exactly this case was read in one place, at startup, so it only ever spoke
+after a restart.
+
+Three more in the same report: a miner could be told `valid:true` for a share
+that was never recorded; `recordBlock` asked two of the three places a block
+can already be accounted for, not the third; and shutdown did not wait for
+the accounting chain, so a restart between a block being accepted and its
+payout being recorded lost it.
+
+All four are fixed, each held down by a regression test that was checked
+against the old code and fails there.
+
+10,250 WAM — 10,000 for the payment commit and 250 for the share, both rungs
+he classified himself under the table as it stood that day; the table was
+lowered hours later, with the reasons on the same page. Ten transactions of 1,025, all in block 37,299 — the
+treasury is paid 2.5 WAM a block and never consolidated, so one transaction
+would have been 591 KB, six times what a node relays.
+
+Every amount, its reasoning and every txid:
+https://wamcoin.org/security/
+
+Reported by bobbyning.
+
+Source, in three places:
+https://gitlab.com/WAMCoin/wam-coin
+https://github.com/wamcoin-Project/wam-coin
+https://gitea.com/WAMCoin/wam-coin
+
+https://wamcoin.org
+https://wamcoin.net
+
+The technical discussion happens here.

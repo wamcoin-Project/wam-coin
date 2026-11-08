@@ -71,6 +71,17 @@ function fakeRedis(initial = {}) {
                 ltrim() { return p; },
                 del(k) { ops.push(['del', k]); return p; },
                 async exec() {
+                    // A COMMIT THAT DOES NOT ANSWER.
+                    //
+                    // The one failure this file had no case for, which is how
+                    // it came to be the one that paid twice: the broadcast
+                    // succeeded and exec() rejected. A rejected EXEC is not
+                    // proof it did not apply, so nothing is applied here and
+                    // nothing is assumed about redis either -- the test is
+                    // about what the POOL does next.
+                    if (r._commitFails) {
+                        throw new Error('connection lost before EXEC');
+                    }
                     for (const [op, k, f, by] of ops) {
                         if (op === 'hincrby') {
                             hashes[k] = hashes[k] || {};
@@ -202,6 +213,62 @@ function make(redis, daemon, cfg = {}) {
         await sp.processPayments();
         assert.strictEqual(await redis.get('wam:payment:inflight'), null,
             'a completed run left a marker that will pause the next start-up');
+    });
+
+    await test('a broadcast whose commit fails is not broadcast again', async () => {
+        // THE FAULT: six cases in this file and none of them failed at the
+        // commit. _processPayments broadcast inside a try/catch and committed
+        // the balances outside it, so a rejected exec() travelled up to the
+        // interval handler, which logs and nothing else. The balances were
+        // untouched, payment:inflight was still set, `paused` was never set
+        // on that path, and 600 seconds later the same batch was built from
+        // the same balances and broadcast a second time -- out of the pool's
+        // own wallet, with nothing in the logs looking wrong.
+        //
+        // Reported by bobbyning, 2026-11-07.
+        const redis = fakeRedis({ addr1: '500000000' });
+        const daemon = fakeDaemon();
+        const sp = make(redis, daemon);
+
+        redis._commitFails = true;
+        await sp.processPayments();
+        redis._commitFails = false;
+
+        assert.strictEqual(daemon.sent.length, 1, 'the first run did not pay');
+        assert.strictEqual((await redis.hgetall('wam:balances')).addr1, '500000000',
+            'the balance was deducted by a commit that did not answer');
+        assert.ok(await redis.get('wam:payment:inflight'),
+            'the intent must survive, or nothing can tell what happened');
+        assert.strictEqual(sp.paused, true,
+            'the run that did not commit left payments running');
+
+        // The next tick, exactly as the timer would fire it.
+        await sp.processPayments();
+        assert.strictEqual(daemon.sent.length, 1,
+            `the same batch was broadcast ${daemon.sent.length} times`);
+    });
+
+    await test('and the marker stops it even if nothing paused the pool', async () => {
+        // The guard beneath the guard. `paused` is one flag set from seven
+        // places, and the whole fault was a path that reached none of them.
+        // A test that only checks `paused` would pass again the next time a
+        // path is added that forgets it, so this clears the flag by hand and
+        // asks whether the marker alone is enough.
+        const redis = fakeRedis({ addr1: '500000000' });
+        const daemon = fakeDaemon();
+        const sp = make(redis, daemon);
+
+        redis._commitFails = true;
+        await sp.processPayments();
+        redis._commitFails = false;
+
+        sp.paused = false;                     // as if no path had set it
+        await sp.processPayments();
+
+        assert.strictEqual(daemon.sent.length, 1,
+            'an unfinished run was found only by a flag, not by its own record');
+        assert.strictEqual(sp.paused, true,
+            'finding the marker must pause the pool, not just skip one tick');
     });
 
     await test('a REFUSED payment clears it, so one RPC error does not halt the pool', async () => {

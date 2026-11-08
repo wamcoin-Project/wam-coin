@@ -558,8 +558,45 @@ def build(src, outdir, lang, direction, title, desc, og_desc):
     # \r\n on Windows, and this generator is run from Windows: both start
     # pages once went into the repository with CRLF on every line and nothing
     # said so.
-    (d / "index.html").write_text(page, encoding="utf-8", newline="\n")
+    emit(d / "index.html", page)
     return page
+
+
+CHECK = False
+DRIFT = []
+
+
+def emit(path, text):
+    """Write the file -- or, under --check, say whether it is already right.
+
+    A GENERATED PAGE GOES STALE IN SILENCE.
+
+    site/security/index.html is built from SECURITY.md. On 8 November 2026
+    SECURITY.md gained a fifth paid bounty and four published figures moved
+    with it; the commit went out and this generator was not run. For as long
+    as that lasted, wamcoin.org/security told every reader "21,250 WAM to
+    four people" while the file it is made from said 31,500 to five, which is
+    the exact class of contradiction that page exists to be free of.
+
+    Neither guard could see it. check_site_published.py compares the live
+    site to this repository and passed, because the two were stale together.
+    check_bounty_total.py reads SECURITY.md and site/index.html and has never
+    looked at the page built from the first of them.
+
+    So the generator answers it itself: --check renders everything, writes
+    nothing, and fails on any page that disagrees with its source. Nobody has
+    to remember.
+    """
+    if not CHECK:
+        path.write_text(text, encoding="utf-8", newline="\n")
+        return
+    try:
+        have = path.read_text(encoding="utf-8")
+    except OSError:
+        DRIFT.append((path, "has never been generated"))
+        return
+    if have.replace("\r\n", "\n") != text:
+        DRIFT.append((path, "is not what its source builds"))
 
 
 def check_page_links(pages):
@@ -645,12 +682,15 @@ def write_sitemap(built):
                 f"    <changefreq>{freq}</changefreq>",
                 f"    <priority>{prio}</priority>", "  </url>"]
     xml.append("</urlset>")
-    (REPO / "site/sitemap.xml").write_text("\n".join(xml) + "\n",
-                                           encoding="utf-8", newline="\n")
+    emit(REPO / "site/sitemap.xml", "\n".join(xml) + "\n")
     return len(entries)
 
 
 def main():
+    global CHECK
+    CHECK = "--check" in sys.argv[1:]
+    if CHECK:
+        print("  --check: rendering every page, writing nothing")
     built = {}
     for src, outdir, lang, direction, title, desc, og in PAGES:
         if not (REPO / src).exists():
@@ -671,7 +711,20 @@ def main():
     print("\n  every link on every page resolves to something served")
 
     n = write_sitemap(built)
-    print(f"  sitemap.xml regenerated: {n} URLs")
+    if not CHECK:
+        print(f"  sitemap.xml regenerated: {n} URLs")
+        return 0
+
+    if DRIFT:
+        print(f"\n  {len(DRIFT)} generated file(s) do not match their source:")
+        for path, why in DRIFT:
+            print(f"    {path.relative_to(REPO).as_posix():<26} {why}")
+        print("\n  Run: python3 scripts/build_pages.py")
+        print("  A page built from a document and then left behind tells")
+        print("  readers something the document no longer says.")
+        return 1
+    print(f"  sitemap.xml current, {n} URLs")
+    print("\n  every generated page is what its source builds")
     return 0
 
 

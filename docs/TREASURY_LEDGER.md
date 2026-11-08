@@ -35,8 +35,8 @@ The fee has a column of its own because a spend costs the treasury what it
 sent *and* what it paid to send it. A fee left out of the arithmetic is a
 number this file cannot be checked against, which defeats the point of it.
 
-At height 21,126 that is `2.5 × 21126 − 21,750.00000000 − 0.25882440 =
-31,064.74117560`, which is what `scantxoutset` returns, in 12,414 unspent
+At height 37,300 that is `2.5 × 37300 − 32,000.00000000 − 0.38078440 =
+61,249.61921560`, which is what `scantxoutset` returns, in 24,483 unspent
 outputs. Two independent routes to the same number, to the last decimal
 place.
 
@@ -67,6 +67,16 @@ place.
 | 2026-10-11 | **1248.75000000 WAM** | `0.01484520` | `WZSY6XFjmsef7Xb2E7DLhnkeU44bYyTLrA` | Same bounty, 9 of 9. | txid `b5d7710f76e7f247625cd04da5b1e7a3dc5c64f454f7bcf05dbcec7c2d851266` |
 | 2026-10-13 | **1000.00000000 WAM** | `0.01191480` | `wam1q03z5vzzkz03a5nq986y9n49u6ku28rvcw5p0mz` | Security bounty to Smooth Jazz Crypto (@smoothjazcrypto), accepted 12 October 2026: the pool deleted a matured block from its pending state before writing any durable record of it, and the round's shares are deleted when that state is written — so an interruption between the two destroyed the only surviving statement of what each miner was owed. Classified at 1,000 WAM under the denial-of-service rung, as a judgement: the mechanism is the credit ledger, the impact is one block in a window no attacker can cause. One transaction, 402 inputs. | txid `867bffa18cafda9a82349125a2c1e15828a095ffe584b44dfa63d90d722dab70` |
 | 2026-10-15 | **250.00000000 WAM** | `0.00303480` | `WRRXkrgxGkhePeBgFf4Xn1LYP8HfGKPzGh` | Security bounty to ahten (@ahteen66), accepted 15 October 2026: `addressToScript` in `pool/lib/util.js` tested whether an address looked like bech32 before trying to decode it as base58, so about one valid base58 address in twenty was refused as a segwit address for another chain -- including this treasury address itself, which decodes cleanly as version 73. A miner whose address matched was disconnected at `mining.authorize`; an operator whose `poolAddress` matched could not start his pool. No funds were at risk. The same fault had been fixed in the miner on 19 September and the pool was never updated with it. Classified at 250, the hardening rung, which is where the reporter classified it. One transaction of 102 inputs, in block 21,114. | txid `2ba6139518819ffeee0a15d4075680f04fa00a4730859cbe206ea4b1c57c2d12` |
+| 2026-11-08 | **1025.00000000 WAM** | `0.01221080` | `wam1qt54j2luencxehpq89n9ta4csfq3qq00t274w5e` | Security bounty to bobbyning, accepted 7 November 2026: the pool broadcast a payment, wrote its in-flight marker, and then committed the balance decrements in an ioredis pipeline — whose `exec()` resolves with the per-command error rather than throwing it. A failed commit therefore left every balance standing, nothing paused, and the next run ten minutes later paid the same miners again from the same balances. The marker written for exactly this was read in one place, `startupReconcile`, so it only ever spoke after a restart. Classified at 10,000 WAM under the published tiers, which is where the reporter classified it, plus 250 at the hardening rung for a separate finding: a share whose accounting failed was answered `valid:true` on its first submission, so the miner was told accepted while his work was credited to nothing. Paid in ten transactions because consensus pays the treasury 2.5 WAM per block and it is never consolidated, so its balance is thousands of small outputs: 10,250 in one transaction would be about 4,100 inputs and 591 KB, six times the standard size limit, which no node would relay. All ten are in block 37,299. 1 of 10. | txid `e8885d4fe2535f00afa121b8890390a0c2180f7924d24bfdb58e2b151e4651b3` |
+| 2026-11-08 | **1025.00000000 WAM** | `0.01221080` | `wam1qt54j2luencxehpq89n9ta4csfq3qq00t274w5e` | Same bounty, 2 of 10. | txid `3e7d1d74bd82b089afbaeb938774345e83c4e6ab6fca1069acadf11ab754bbd9` |
+| 2026-11-08 | **1025.00000000 WAM** | `0.01221080` | `wam1qt54j2luencxehpq89n9ta4csfq3qq00t274w5e` | Same bounty, 3 of 10. | txid `578ebaef27ae2edd451b7e68733cef3d7da289600c403cdec1ccce81514f082a` |
+| 2026-11-08 | **1025.00000000 WAM** | `0.01221080` | `wam1qt54j2luencxehpq89n9ta4csfq3qq00t274w5e` | Same bounty, 4 of 10. | txid `cc774c4ffff0bdfc10d41a0fa9862d7bb6f5fde66c7b5a918dc2d6f5e6b1d102` |
+| 2026-11-08 | **1025.00000000 WAM** | `0.01221080` | `wam1qt54j2luencxehpq89n9ta4csfq3qq00t274w5e` | Same bounty, 5 of 10. | txid `e4ec12c4a3a15603a325f3d7089809cc632f0fc2320686124a453c5e400871e1` |
+| 2026-11-08 | **1025.00000000 WAM** | `0.01221080` | `wam1qt54j2luencxehpq89n9ta4csfq3qq00t274w5e` | Same bounty, 6 of 10. | txid `f5d87fafb5284aeca83ea5931b91ee268f2971a477225af482d18393f38aebac` |
+| 2026-11-08 | **1025.00000000 WAM** | `0.01218120` | `wam1qt54j2luencxehpq89n9ta4csfq3qq00t274w5e` | Same bounty, 7 of 10. | txid `d616a50b1f7464d0dea9181b332a566013dacb91ddfb55c61634680536876a6b` |
+| 2026-11-08 | **1025.00000000 WAM** | `0.01209240` | `wam1qt54j2luencxehpq89n9ta4csfq3qq00t274w5e` | Same bounty, 8 of 10. | txid `c0cbd210bfb31481fefa2e85258899c17f1f9cad81af5a13679a46c72a6c26dd` |
+| 2026-11-08 | **1025.00000000 WAM** | `0.01221080` | `wam1qt54j2luencxehpq89n9ta4csfq3qq00t274w5e` | Same bounty, 9 of 10. | txid `4a7cdfad30e52783a34f898771ac7b518e8b9e02a5dd19b8f2620804ed11e95b` |
+| 2026-11-08 | **1025.00000000 WAM** | `0.01221080` | `wam1qt54j2luencxehpq89n9ta4csfq3qq00t274w5e` | Same bounty, 10 of 10. | txid `b51311e341bcbbc1fa5e0b3a77e39874cddd9e827107e64cacea3fea29cfa509` |
 
 The treasury is paid one output per block and never consolidated, so every
 spend above is built from 2.5 WAM outputs and nothing else: the 500 WAM line
@@ -75,8 +85,8 @@ is also why a bounty leaves in instalments rather than at once — 10,000 WAM in
 one transaction is about 4,000 inputs and 590 KB, six times the standard size
 limit, and no node would relay it.
 
-**Balance after the last line:** `31,064.74117560 WAM` in 12,414 unspent
-outputs, at height 21,126.
+**Balance after the last line:** `61,249.61921560 WAM` in 24,483 unspent
+outputs, at height 37,300.
 
 ---
 

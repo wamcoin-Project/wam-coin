@@ -383,8 +383,18 @@ async function main() {
     }, drainEvery);
     spoolTimer.unref?.();
 
+    // The spool entry is released HERE and nowhere else, because this is the
+    // only place that has seen the payout record exist. recordBlock either
+    // wrote blocks:pending or found the hash already accounted for; either
+    // way the block is no longer "on the chain and owed to nobody", which is
+    // the single condition the spool exists to survive. If recordBlock
+    // throws, the unspool is skipped, the entry stays, and the 60-second
+    // drain offers it again.
     jobManager.on('block', (share) => {
-        inOrder(`block ${share.height}`, () => shareProcessor.recordBlock(share));
+        inOrder(`block ${share.height}`, async () => {
+            await shareProcessor.recordBlock(share);
+            await jobManager.unspoolRecorded(share.blockHash);
+        });
     });
 
     // ---- 7. stratum -------------------------------------------------------
@@ -427,6 +437,27 @@ async function main() {
         api.close();
         jobManager.stop();
         shareProcessor.stop();
+
+        // LET THE ACCOUNTING CHAIN FINISH BEFORE REDIS GOES AWAY.
+        //
+        // recordShare and recordBlock run on `accounting`, and nothing used
+        // to wait for it here. A SIGTERM arriving between a block being
+        // accepted by the node and its payout being recorded therefore lost
+        // the same block a power cut would -- the block on the chain, nobody
+        // credited -- except that this is the ordinary way the pool is
+        // restarted, so it was the likelier of the two.
+        //
+        // Bounded, because a shutdown that waits forever is its own fault:
+        // whatever has not finished in ten seconds is left to the spool and
+        // the drain, which is exactly what they are for.
+        //
+        // Reported by bobbyning, 2026-11-07.
+        try {
+            await Promise.race([
+                accounting,
+                new Promise((r) => setTimeout(r, 10000).unref?.())
+            ]);
+        } catch { /* the chain logs its own failures */ }
 
         try {
             // One last payment run so miners are not left waiting on a restart.

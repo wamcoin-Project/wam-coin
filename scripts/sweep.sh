@@ -348,6 +348,16 @@ run "the ledger is what the chain says"  "$PY" scripts/check_treasury_ledger.py 
 # page. The documents were right each time; only the page was wrong.
 run "the pages say what the documents say" "$PY" scripts/test/test_build_pages.py
 
+# That one asks whether the generator renders correctly. This asks whether
+# anybody ran it. On 8 November 2026 SECURITY.md gained a fifth paid bounty
+# and four published figures moved with it; the commit shipped and
+# site/security/index.html was not rebuilt, so the page told readers "21,250
+# WAM to four people" while the document it is made from said 31,500 to five.
+# The live-site check further down passed throughout, because the live site
+# and the repository were stale together -- which is what a comparison
+# between two copies of the same mistake is worth.
+run "every generated page is what its source builds" "$PY" scripts/build_pages.py --check
+
 # And the one document generated from a binary rather than written. An
 # operator asked for an example wam.conf on 2026-10-13 and we shipped none:
 # the release is binaries and documents, and upstream's bitcoin.conf was

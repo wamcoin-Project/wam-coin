@@ -62,6 +62,30 @@ def _read(p, **kw):
     kw.setdefault("errors", "replace")
     return quoted.strip_quoted(_pathlib.Path(p).read_text(**kw))
 
+
+def _flat(line):
+    """One line, with the markup between its words taken out.
+
+    Every pattern in section 4 was written against a sentence, because a
+    sentence is what had broken the rule when they were written. On
+    2026-11-07 they were measured against the shapes a pool operator writes
+    instead, and they answered no to all of them:
+
+        | **fee**  | 0%, set via pool/config.json |         MISSED
+        | wampool.vslabs.co.in:3333 | 3334 | PROP | 0% |    MISSED
+        the pool fee is 1%                                  CAUGHT
+
+    A pipe between the name and the number was the whole difference, and a
+    pull request that adds a pool to a list is exactly where a table arrives.
+    So the markup goes before the match: a row reads as the claim it makes.
+
+    This can only make a pattern match text it was already meant to match --
+    it adds no new meaning, it removes a wall. The same for `**fee**`, which
+    is not `fee` to a regular expression, and for <td>, which is how the same
+    table reaches the generated page.
+    """
+    return re.sub(r"[|*_`>]+", " ", re.sub(r"<[^>]+>", " ", line))
+
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 HDR = ROOT / "src" / "wam" / "wam-params.h"
 
@@ -326,6 +350,7 @@ def main() -> int:
             continue
         text = _read(ROOT / rel)
         for i, line in enumerate(text.splitlines(), 1):
+            line = _flat(line)
             for pat, label in SETTINGS:
                 m = re.search(pat, line, re.I)
                 if m:
@@ -333,6 +358,76 @@ def main() -> int:
                         f"a pool setting, not a consensus rule -- nothing here "
                         f"keeps it true. It belongs on the pool's own page and "
                         f"in a dated post, not in a document.")
+
+    # ---- 5. a number standing beside a pool, in the list of pools ----------
+    #
+    # Section 4 asks whether a sentence states a setting. This asks it the
+    # other way round, because the list is where a setting belonging to
+    # SOMEBODY ELSE'S pool arrives: is a number standing next to a pool?
+    #
+    # On 2026-11-06 an operator was invited, in a comment on his own pull
+    # request, to send his fee and his reward scheme for this list. The
+    # invitation contradicted this page in two places and section 4's rule,
+    # and section 4 would not have caught the result: his table puts the name
+    # in one cell and the number in the next, and every pattern there wanted
+    # them in one sentence. _flat() closes most of that gap. This closes the
+    # rest, for the one block where a third party's terms would land.
+    #
+    # Scoped to "Which pool" and no wider, deliberately. That section itself
+    # says "taken after the chain's 5% treasury output", and "fee" beside a
+    # percentage is the whitepaper's entire subject -- the consensus 5% is
+    # written that way more than a dozen times there. A check that reddens the
+    # whitepaper is a check people learn to scroll past.
+    #
+    # Matched on the relation, not the spelling: a percentage or a WAM amount
+    # is refused on a line that names a stratum endpoint, and on a line
+    # carrying the vocabulary of a payout policy. Neither has to guess how an
+    # operator words it, which is the failure this is here to end.
+    WHICH_POOL = [
+        ("docs/MINE.md", re.compile(r"^##\s+Which pool\s*$", re.M),
+         re.compile(r"^##\s", re.M)),
+        ("site/mine/index.html",
+         re.compile(r"<h2[^>]*\bid=\"which-pool\"", re.I),
+         re.compile(r"<h2[\s>]", re.I)),
+    ]
+    A_NUMBER = [(re.compile(r"\d+(?:\.\d+)?\s*%"), "a percentage"),
+                (re.compile(r"\b\d[\d.,]*\s*WAM\b", re.I), "a WAM amount")]
+    NAMES_A_POOL = re.compile(r"\b[a-z0-9][a-z0-9.-]*\.[a-z]{2,}:\d{4,5}\b",
+                              re.I)
+    PAYOUT_WORDS = re.compile(
+        r"\b(fee|payout|threshold|minimum|scheme|PPLNS|PROP|SOLO)\b", re.I)
+
+    for rel, opens, closes in WHICH_POOL:
+        path = ROOT / rel
+        if not path.is_file():
+            continue
+        text = _read(path)
+        head = opens.search(text)
+        if not head:
+            # Renaming the heading must not quietly retire the guard.
+            bad(f"{rel}:1 has no 'Which pool' section, so the block this "
+                f"check exists to read was not read at all")
+            continue
+        rest = text[head.end():]
+        shut = closes.search(rest)
+        body = rest[:shut.start()] if shut else rest
+        first = text[:head.end()].count("\n") + 1
+        for j, raw in enumerate(body.splitlines()):
+            line = _flat(raw)
+            beside = NAMES_A_POOL.search(line) or PAYOUT_WORDS.search(line)
+            if not beside:
+                continue
+            for pat, what in A_NUMBER:
+                hit = pat.search(line)
+                if hit:
+                    bad(f"{rel}:{first + j} puts {what} "
+                        f"({hit.group(0).strip()}) beside "
+                        f"\"{beside.group(0)}\" in the pool list. That block "
+                        f"carries where to dial a pool and nothing else. A "
+                        f"fee, a scheme or a payout rule is the operator's to "
+                        f"state on their own page -- the page that changes "
+                        f"when they change it.")
+                    break
 
     # ---- report ------------------------------------------------------------
     scanned = files()
