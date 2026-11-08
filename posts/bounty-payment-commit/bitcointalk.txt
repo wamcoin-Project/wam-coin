@@ -53,7 +53,9 @@ that has never been red is a test that has never been shown to test anything.
 
 10,250 WAM — 10,000 for the payment commit and 250 for the share called
 accepted while its accounting had failed. Both are the rungs the reporter
-classified them at himself, from the table published in the security policy.
+classified them at himself, from the table as it stood that day. That table
+was lowered hours later — the top rung from 50,000 to 3,000 — and the three
+reasons are written out in full on the same page, beside it.
 His third finding, a block stranded in blocks:maturing, is fixed and credited
 to him by name; he did not price it and no amount was added for it.
 
@@ -65,7 +67,7 @@ standard size limit, and no node would relay it. The ten were cut from a
 single scan so that no two of them spend the same output — 4,115 outpoints,
 all distinct — and signed in one sitting on a machine with no network.
 
-That is 31,500 WAM paid to five people against this table so far. Every
+That is 31,500 WAM paid to five people under this programme so far. Every
 amount, the reasoning behind it, and every transaction id:
 https://wamcoin.org/security/ — and each payment is also in the treasury
 ledger, which can be checked against any node with scantxoutset.
