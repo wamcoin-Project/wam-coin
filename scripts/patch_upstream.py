@@ -359,6 +359,8 @@ def build_changes() -> list[Change]:
             ("test/functional/feature_wam_pow.py",     "test/functional/feature_wam_pow.py"),
             ("test/functional/feature_wam_randomx_epoch.py",
              "test/functional/feature_wam_randomx_epoch.py"),
+            ("test/functional/feature_wam_header_dos.py",
+             "test/functional/feature_wam_header_dos.py"),
         ]))
 
     # -----------------------------------------------------------------------
@@ -1274,6 +1276,7 @@ def build_changes() -> list[Change]:
                     "    'feature_wam_genesis.py',\n"
                     "    'feature_wam_pow.py',\n"
                     "    'feature_wam_randomx_epoch.py',\n"
+                    "    'feature_wam_header_dos.py',\n"
                     "    # vv Tests less than 5m vv\n"),
             ),
         ]))
