@@ -460,6 +460,16 @@ class JobManager extends EventEmitter {
             try {
                 await this._record(share);
             } catch (err) {
+                // A DUPLICATE AND A FAILURE NEED OPPOSITE ANSWERS.
+                //
+                // UNAVAILABLE means "send it again", and for a share whose
+                // proof of work is already counted that is wrong twice over:
+                // the resubmission cannot be credited, and the miner loops.
+                // The record layer tags that case so it can be answered with
+                // the code that already exists for it.
+                if (err && err.duplicateShare) {
+                    return this._reject(REJECT.DUPLICATE, workerName);
+                }
                 this.log.error(`could not record a share from ${workerName}: ` +
                                `${err.message}`);
                 return this._reject(REJECT.UNAVAILABLE, workerName);

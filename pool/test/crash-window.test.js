@@ -55,6 +55,7 @@
 const assert = require('assert');
 const ShareProcessor = require('../lib/shareProcessor');
 const { attachAtomic } = require('./fakeAtomic');
+const { attachMulti } = require('./fakeMulti');
 
 const GRN = '\x1b[32m'; const RED = '\x1b[31m'; const BLD = '\x1b[1m';
 const OFF = '\x1b[0m';
@@ -174,6 +175,8 @@ function countingRedis(failAt) {
         }
     };
     attachAtomic(api, hash, list);
+    // The maturation credit is a MULTI now, not a pipeline.
+    attachMulti(api);
     // The script is atomic on a real server, and the double must say so: one
     // tick for the whole thing, and either both effects or neither.
     const inner = api.wamClaimAndRecord;

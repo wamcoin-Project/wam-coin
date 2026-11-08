@@ -30,6 +30,7 @@ const assert = require('assert');
 const ShareProcessor = require('../lib/shareProcessor');
 const { COINBASE_MATURITY } = require('../lib/constants');
 const { attachAtomic, attachUnsupported } = require('./fakeAtomic');
+const { attachMulti } = require('./fakeMulti');
 
 let pass = 0;
 const fail = [];
@@ -98,6 +99,8 @@ function fakeRedis() {
         _dump: { h, l }
     };
     attachAtomic(ops, hash, list);
+    // The maturation credit is a MULTI now, not a pipeline.
+    attachMulti(ops);
     return ops;
 }
 

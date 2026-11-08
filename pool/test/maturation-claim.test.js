@@ -35,6 +35,7 @@
 const assert = require('assert');
 const ShareProcessor = require('../lib/shareProcessor');
 const { attachAtomic, attachUnsupported } = require('./fakeAtomic');
+const { attachMulti } = require('./fakeMulti');
 
 let pass = 0;
 const fail = [];
@@ -67,6 +68,16 @@ function fakeRedis() {
         },
         async lpush(k, v) { list(k).unshift(v); return list(k).length; },
         async ltrim() { return 'OK'; },
+        // recordBlock reads blocks:maturing whole, to find a block that was
+        // claimed for maturation and interrupted before it was credited.
+        // Such a block is in neither pending nor confirmed:hashes, so
+        // without this it passed the "already paid?" test and could be
+        // recorded a second time.
+        async lrange(k, start, stop) {
+            const arr = list(k);
+            const end = stop === -1 ? arr.length : stop + 1;
+            return arr.slice(start, end);
+        },
         async lrem(k, _c, v) {
             const arr = list(k);
             const i = arr.indexOf(v);
@@ -123,6 +134,10 @@ function fakeRedis() {
         _dump: { h, l }
     };
     attachAtomic(ops, hash, list);
+    // _mature credits through MULTI now, not a pipeline: a connection lost
+    // during the credit must leave no balance touched at all, rather than
+    // the first few miners credited and the rest not.
+    attachMulti(ops);
     return ops;
 }
 
@@ -196,9 +211,9 @@ function balances(redis) {
         const r = fakeRedis();
         await r.hset('wam:blocks:pending', 'H', JSON.stringify(RECORD));
         const sp = processorWith(r, 120);
-        r._crashAfter = 1;                       // die after the first hincrby
+        r._multiFails = 'connection lost before EXEC';
         await sp._mature('H', { ...RECORD }).catch(() => {});
-        r._crashAfter = undefined;
+        r._multiFails = undefined;
 
         const maturing = r._dump.l.get('wam:blocks:maturing') || [];
         assert.strictEqual(maturing.length, 1,
@@ -206,11 +221,49 @@ function balances(redis) {
         assert.strictEqual((await r.hgetall('wam:blocks:pending')).H, undefined,
             'the claim must be gone, so a later run cannot credit it again');
 
-        // And the restart: the block is no longer pending, so nobody is paid
-        // twice. What is owed is in blocks:maturing for an operator to replay.
-        await sp.checkPendingBlocks();
-        assert.strictEqual(balances(r).twam1aaa, '2375000000',
-            'a second run after the crash must not add anything');
+        // AND NOT ONE MINER IS CREDITED, WHICH IS THE POINT OF THE CHANGE.
+        //
+        // With a pipeline this asserted 2375000000 -- the first hincrby had
+        // been applied and the rest had not, so one miner held a credit for
+        // a block whose maturation never finished and whose other miners got
+        // nothing. The payout table was split across a failure. MULTI is one
+        // unit: the credit either happens whole or not at all, and the
+        // evidence in blocks:maturing is then a complete record of what is
+        // owed rather than a record of what is partly owed.
+        assert.strictEqual(balances(r).twam1aaa, undefined,
+            'a credit interrupted mid-transaction must leave no balance at all');
+    });
+
+    await test('a block stranded in maturing is not recorded a second time', async () => {
+        // The gap bobbyning found on 2026-11-07: a block claimed for
+        // maturation and interrupted before the credit is in neither
+        // blocks:pending nor blocks:confirmed:hashes, so recordBlock's
+        // "already paid?" test used to wave it through. The spool drain
+        // offers exactly such a block, and recording it again runs
+        // del(round) -- wiping a live round -- and puts it back in pending
+        // for a second payout.
+        const r = fakeRedis();
+        await r.hset('wam:blocks:pending', 'H', JSON.stringify(RECORD));
+        const sp = processorWith(r, 120);
+
+        r._multiFails = true;
+        await sp._mature('H', { ...RECORD }).catch(() => {});
+        r._multiFails = undefined;
+
+        assert.strictEqual((r._dump.l.get('wam:blocks:maturing') || []).length, 1,
+            'the block must be sitting in maturing for this test to mean anything');
+        assert.strictEqual((await r.hgetall('wam:blocks:pending')).H, undefined,
+            'and it must not be in pending, or the old check would catch it');
+
+        const again = await sp.recordBlock({
+            height: RECORD.height, blockHash: RECORD.blockHash,
+            worker: 'twam1aaa', coinbaseValue: RECORD.coinbaseValue,
+            distributableValue: RECORD.minerPot, devFeeAmount: 0
+        });
+        assert.strictEqual(again, null,
+            'recordBlock must refuse a block that is already maturing');
+        assert.strictEqual((await r.hgetall('wam:blocks:pending'))[RECORD.blockHash],
+            undefined, 'and must not put it back in pending for a second payout');
     });
 
     await test('a matured block still lands in blocks:confirmed', async () => {
