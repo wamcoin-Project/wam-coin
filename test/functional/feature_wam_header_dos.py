@@ -86,23 +86,37 @@ class WamHeaderDosTest(BitcoinTestFramework):
         # "Unable to bind ... already running". Two addresses, one port, one
         # machine, for the length of one test.
         self.routable = routable_address()
+
+    def setup_network(self):
+        # The bind is built here and not in set_test_params, because the port
+        # is only decided once the framework has applied --portseed. Run on
+        # its own the two agreed by luck; run inside test_runner.py, which
+        # gives every test a different seed, they did not, and the peer
+        # dialled a port nothing was listening on.
         self.extra_args = [[f"-bind={self.routable}:{p2p_port(0)}"]]
+        super().setup_network()
 
     def bad_header(self, tmpl, nonce):
-        """A header that costs nothing to make and must be verified to refuse.
+        """A header the node must refuse, and refuse every time.
 
-        Everything in it is what an honest header would carry except the
-        proof: the parent is the tip the node already has, so the cheap
-        parent lookup succeeds; nBits is the template's own, so the
-        difficulty comparison succeeds; the time is the template's, so both
-        timestamp tests succeed. Only the RandomX hash can refuse it, which
-        is the point -- twenty milliseconds, bought for ninety bytes.
+        The parent is the tip the node already has, so the cheap parent
+        lookup succeeds and the header reaches the contextual checks -- which
+        is the whole shape of the attack: ninety bytes that cost nothing and
+        buy a place in the expensive part of validation.
+
+        What makes it invalid is the timestamp, not the proof of work, and
+        that is deliberate. On regtest the target is about 2**255, so roughly
+        half of all nonces satisfy RandomX: a header built to fail the proof
+        is a coin toss, and a test that depends on a coin toss is not a test.
+        A timestamp of 1 is older than the median of any chain with a block
+        in it, so "time-too-old" is certain -- and it is BLOCK_INVALID_HEADER
+        either way, which is what discourages the address.
         """
         h = CBlockHeader()
         h.nVersion = tmpl["version"]
         h.hashPrevBlock = int(tmpl["previousblockhash"], 16)
         h.hashMerkleRoot = 0x1234
-        h.nTime = tmpl["curtime"]
+        h.nTime = 1
         h.nBits = int(tmpl["bits"], 16)
         h.nNonce = nonce
         h.rehash()
@@ -123,23 +137,25 @@ class WamHeaderDosTest(BitcoinTestFramework):
         tmpl = node.getblocktemplate({"rules": ["segwit"]})
         self.log.info(f"tip is height {tmpl['height'] - 1}, bits {tmpl['bits']}")
 
-        # ---- one: the node pays, and punishes -----------------------------
+        # ---- one: the address is punished ---------------------------------
         first = node.add_p2p_connection(P2PInterface(), dstaddr=addr)
-        started = time.time()
-        with node.assert_debug_log(["high-hash"], timeout=30):
+        with node.assert_debug_log(["Disconnecting and discouraging"], timeout=30):
             first.send_message(msg_headers([self.bad_header(tmpl, 1)]))
             first.wait_for_disconnect(timeout=30)
-        paid = time.time() - started
-        self.log.info(f"the first header was verified and refused in {paid * 1000:.0f} ms")
+        self.log.info("the first header was refused and the address discouraged")
 
-        # The address, not the connection, is what was punished. Without this
-        # the next assertion could pass for the wrong reason.
-        assert any("discouraging" in line and "not discouraging" not in line
-                   for line in open(node.debug_log_path, encoding="utf-8")), \
-            "the node disconnected the peer without discouraging the address"
-        self.log.info("the address is discouraged")
+        # Not "disconnecting but not discouraging", which is what the node
+        # says about a loopback peer. Without this line the next assertion
+        # could pass for a reason that has nothing to do with the fix.
+        log = open(node.debug_log_path, encoding="utf-8").read()
+        assert "not discouraging" not in log,             "the node disconnected the peer without discouraging the address, "             "so nothing below tests what it claims to"
 
-        # ---- two: the same address pays nothing ---------------------------
+        # ---- two: and buys nothing afterwards ------------------------------
+        #
+        # This is the fix. Against the unfixed node this header is verified
+        # exactly like the first one and neither assertion holds: the
+        # "ignoring" line is never written, and the twenty milliseconds are
+        # spent.
         second = node.add_p2p_connection(P2PInterface(), dstaddr=addr)
         started = time.time()
         with node.assert_debug_log(
@@ -147,23 +163,28 @@ class WamHeaderDosTest(BitcoinTestFramework):
                 unexpected_msgs=["high-hash"],
                 timeout=30):
             second.send_and_ping(msg_headers([self.bad_header(tmpl, 2)]))
-        free = time.time() - started
-        self.log.info(f"the second header was ignored in {free * 1000:.0f} ms, "
-                      "with no proof of work verified")
+        self.log.info("the second header was ignored in "
+                      f"{(time.time() - started) * 1000:.0f} ms, nothing verified")
 
-        # ---- and an honest peer is untouched ------------------------------
+        # ---- three: an address we have not punished is still served --------
         #
         # The guard must not be wider than its reason. A node that ignored
-        # everybody's headers would also pass the two assertions above.
+        # every peer's headers would pass both assertions above.
         self.restart_node(0)
-        self.log.info("after a restart the discouragement is gone with the "
-                      "node's memory of it, and headers work again")
-        honest = node.add_p2p_connection(P2PInterface(), dstaddr=addr)
+        third = node.add_p2p_connection(P2PInterface(), dstaddr=addr)
         tmpl = node.getblocktemplate({"rules": ["segwit"]})
-        with node.assert_debug_log(["high-hash"], timeout=30):
-            honest.send_message(msg_headers([self.bad_header(tmpl, 3)]))
-            honest.wait_for_disconnect(timeout=30)
-        self.log.info("  an address we have not punished is still served")
+        # send_message and wait for the disconnect, not send_and_ping: a peer
+        # whose header is refused is disconnected, so there is nobody left to
+        # answer a ping. Being disconnected is the proof -- the node read the
+        # header and judged it, which is what an unpunished address gets.
+        with node.assert_debug_log(
+                expected_msgs=["received: headers"],
+                unexpected_msgs=["ignoring 1 header(s) from discouraged peer"],
+                timeout=30):
+            third.send_message(msg_headers([self.bad_header(tmpl, 3)]))
+            third.wait_for_disconnect(timeout=30)
+        self.log.info("after the restart cleared the discouragement, headers "
+                      "from the same address are read again")
 
         assert_equal(node.getblockcount(), 1)
 
