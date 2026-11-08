@@ -15,9 +15,11 @@
 
 #pragma once
 
+#include <cmath>
 #include <cstdint>
 #include <map>
 #include <memory>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -69,9 +71,38 @@ public:
         return type == Type::Number ? number : fallback;
     }
 
+    // AN OUT-OF-RANGE double CAST TO int64_t IS UNDEFINED, AND x86-64
+    // RESOLVES IT AS INT64_MIN.
+    //
+    // Every integer this miner reads arrives as a JSON number, which is a
+    // double, and every site used to convert it with a bare cast. The rule
+    // in C++ is that a double whose truncated value does not fit the target
+    // integer makes the program undefined; what the hardware actually does
+    // is hand back 0x8000000000000000. So a node answering
+    //
+    //     "height": 1e300
+    //
+    // produced -9223372036854775808 from a field that is arithmetically
+    // positive, silently -- and HeightPush then ran forever on it, because
+    // an arithmetic right shift of a negative number never reaches zero.
+    // One hostile field, one hung miner, memory climbing until the OOM
+    // killer arrives.
+    //
+    // The fallback keeps its meaning: the field is absent, or is not a
+    // number, which is a thing a caller handles. A number that cannot be an
+    // int64 is not that. It is a node sending something no honest node
+    // sends, and it stops here rather than continuing as a plausible
+    // integer. Reported by bobbyning, 8 November 2026.
     int64_t AsInt(int64_t fallback = 0) const
     {
-        return type == Type::Number ? int64_t(number) : fallback;
+        if (type != Type::Number) return fallback;
+        if (!std::isfinite(number) ||
+            number >= 9223372036854775808.0 ||
+            number <  -9223372036854775808.0) {
+            throw std::runtime_error(
+                "a JSON number is outside the range of a 64-bit integer");
+        }
+        return int64_t(number);
     }
 
     bool AsBool(bool fallback = false) const
