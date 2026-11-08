@@ -383,8 +383,18 @@ async function main() {
     }, drainEvery);
     spoolTimer.unref?.();
 
+    // The spool entry is released HERE and nowhere else, because this is the
+    // only place that has seen the payout record exist. recordBlock either
+    // wrote blocks:pending or found the hash already accounted for; either
+    // way the block is no longer "on the chain and owed to nobody", which is
+    // the single condition the spool exists to survive. If recordBlock
+    // throws, the unspool is skipped, the entry stays, and the 60-second
+    // drain offers it again.
     jobManager.on('block', (share) => {
-        inOrder(`block ${share.height}`, () => shareProcessor.recordBlock(share));
+        inOrder(`block ${share.height}`, async () => {
+            await shareProcessor.recordBlock(share);
+            await jobManager.unspoolRecorded(share.blockHash);
+        });
     });
 
     // ---- 7. stratum -------------------------------------------------------
