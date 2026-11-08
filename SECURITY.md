@@ -44,17 +44,20 @@ launch, on BitcoinTalk and in the channels:
 
 | | |
 |---|---|
-| Inflation beyond the 22,000,000 cap, or a way past the treasury rule | 50,000 WAM |
-| A consensus split, or a remote crash of nodes | 15,000 WAM |
-| Theft of funds held by software in this project | 12,500 WAM |
-| Credit without entitlement — paying out coins nobody earned | 10,000 WAM |
-| Bulk deanonymisation of miners or users | 2,500 WAM |
-| Denial of service against the pool, the explorer or a seed | 1,000 WAM |
+| Inflation beyond the 22,000,000 cap, or a way past the treasury rule | 3,000 WAM |
+| A consensus split, or a remote crash of nodes | 2,000 WAM |
+| Theft of funds held by software in this project | 1,500 WAM |
+| Credit without entitlement — paying out coins nobody earned | 1,000 WAM |
+| Bulk deanonymisation of miners or users | 600 WAM |
+| Denial of service against the pool, the explorer or a seed | 400 WAM |
 | Hardening, a misconfiguration, or a document that misleads | 250 WAM |
 
-They are a floor and not a ceiling: a finding that matters more than its rung
-can be paid more than its rung, and if that happens it will be said plainly
-that it was a judgement and not a tier.
+They are a floor and not a ceiling. A finding that matters more than its rung
+can be paid more than its rung, and when that happens it will be said plainly
+that it was a judgement and not a tier. That is not a formality: the two
+classes this project would most like to hear about — a way past consensus,
+and a way into the treasury — are the two whose damage has no ceiling, and
+the payment for them will not have one either.
 
 **What changed on 1 October 2026, and what did not.** The table above was
 three rows, and its top row held three different things at one price:
@@ -67,9 +70,59 @@ from 10,000 to 15,000, deanonymisation rose from 1,000 to 2,500, and the
 classes that previously had no rung of their own now have one — which tells a
 reviewer where to look, and that brings more reports rather than fewer.
 
+**What changed on 8 November 2026, and why, in full.** Every amount above
+except the last was reduced. The top rung went from 50,000 WAM to 3,000.
+Nothing already reported is re-read against this table: every finding below
+keeps the classification it was given, and the 10,250 paid on 8 November was
+judged under the old one and paid in full at the rungs the reporter named
+himself.
+
+A programme that quietly starts paying less is a programme nobody trusts
+twice, so the reasons are here rather than left to be guessed at. There are
+three, and they were studied from every side before anything was touched.
+
+*One. The treasury is finite, and we have now measured how fast it empties.*
+Consensus pays it 2.5 WAM a block until height 400,000 — 750,000 WAM for its
+whole life, of which one eighth, 93,750, is this programme's share. 31,500 of
+that is already paid, in the programme's first fifty-three days. Under the
+old table a single inflation finding, at 50,000, was more than half of
+everything the programme had for its entire life. A table that one report can
+empty is not a commitment; it is a number waiting to be withdrawn. This one
+can be paid in full seven times over from what is left.
+
+*Two. A bounty is not only a cost. It is a distribution of coin that was
+never mined, and we have watched what that does.* An amount paid under this
+table has already been offered to the market in a single block. Nothing in
+that broke any rule — a bounty is the finder's coin and his to sell on the
+day he likes — but the effect on everyone else is not neutral. 10,250 WAM is
+seven hours of the entire network's output arriving in one wallet at one
+moment. The question miners ask before they point a CPU at a new chain is
+whether anything was handed out before they arrived; a lump that size,
+landing and then moving, has the same shape as the thing they are asking
+about, whatever its reason.
+
+*Three. The amounts had drifted away from what this coin costs to make.* The
+network is near 969,000 H/s. Miners take 47.5 WAM a block and the chain makes
+thirty blocks an hour, so the whole network earns about 1,425 WAM an hour.
+10,250 WAM is seven hours of that — or, measured against one person rather
+than all of them, about 120 days of an average miner in our pool. Four months
+of somebody paying his own electricity, for a report read in a day. A
+programme that pays a reader four months of a miner's work is not generous to
+the reader. It is unfair to the miner, and the miners are the people who keep
+this chain alive.
+
+*What did not change.* The classes did not: the table still names what it
+pays for rather than leaving it to be argued about afterwards. The bottom
+rung did not move, because the smallest findings are the ones most often left
+unreported and 250 WAM is not what makes or breaks this budget. And the
+discretion above the table did not move either — it matters more now than it
+did when the top rung was 50,000, and it is the reason a lower ceiling is not
+the same thing as a cap.
+
 **Findings already accepted keep the classification they were given.** The
 10,000 and the 1,000 below were judged under the three-row table and are not
-re-read against this one.
+re-read against the one that replaced it, and nothing below is re-read
+against the table of 8 November.
 
 **One payment per root cause, not per symptom.** Three reports that are three
 faces of one state machine are one finding, which is how the 10,000 below was
@@ -150,10 +203,10 @@ running, which comes first, because a chain with no nodes has nothing worth
 securing.
 
 **This programme's share of it is one eighth: 93,750 WAM, for the whole life
-of the programme.** 31,500 of that has been paid against the findings below.
-One of every class in the table above comes to 91,250, so the table is
-payable even if every class is found — which is the test a promise has to
-pass before it is made.
+of the programme.** 31,500 of that has been paid against the findings below,
+leaving 62,250. One of every class in the table above comes to 8,750, so what
+is left pays the whole table seven times over — which is the test a promise
+has to pass before it is made. The table it replaced passed that test once.
 
 **When the eighth is spent, the programme closes and this file says so.** It
 is not left open and unfunded. The ceiling can be raised later by announcement
