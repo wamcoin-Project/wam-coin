@@ -1,0 +1,83 @@
+BITCOINTALK — the announcement thread, as a reply.
+==================================================
+A forum reader clicked into a technical thread, so the detail is earned here
+in a way it is not on a timeline. Four paragraphs longer than the Discord
+text.
+
+---------------------------------------------------------------
+
+Somebody in this community read the mining pool's code at commit 6d613ae —
+without running any of it — and found that the pool could pay the same miners
+a second time. He has been paid for it: the fifth time somebody has done real
+work for WAM and taken the coin as the payment for it.
+
+The pool broadcasts a payment, writes a marker saying one is in flight, then
+commits the balance decrements to redis. That commit was an ioredis
+pipeline(), and this is the whole fault in one sentence: exec() on a pipeline
+*resolves* with [error, result] pairs. A command that fails arrives as data,
+not as a thrown error. So a failed commit threw nothing, nothing paused, and
+every balance stayed exactly as it was — while the transaction was already on
+the network. Ten minutes later the next payment run read those same balances
+and paid the same miners again.
+
+The marker was written for precisely this case, and it did not help. It was
+read in one place in the whole repository, inside startupReconcile, so it
+only ever spoke after a restart. A pool that keeps running never asks it.
+_processPayments now reads it before anything else and pauses if it is there,
+and the exec() is wrapped and its replies are read, so a failed commit pauses
+the pool directly rather than waiting for a restart that may not come.
+
+Three more in the same report. recordShare's accounting had the identical
+shape with a smaller blast radius: the pipeline resolved, nothing threw, and
+the miner was told valid:true on the first submission of a share that was
+never recorded. recordBlock asked blocks:pending and blocks:confirmed:hashes
+whether a block was already accounted for, and a block sitting in
+blocks:maturing answered neither. And shutdown() did not wait for the
+accounting chain, so a SIGTERM arriving between a block being accepted by the
+node and its payout being recorded lost it the way a power cut would — except
+that a restart is the ordinary way a pool is operated, which makes it the
+likelier of the two.
+
+One detail is worth naming because it caught us mid-fix. Moving the
+accounting from pipeline() to multi() is the obvious repair, and it is not
+sufficient on its own: a MULTI is one unit against a lost connection, but it
+does not abort on a command that fails at run time — the remaining commands
+still apply. _mature's lrem, which removes the evidence of what a maturing
+block owed, was inside that MULTI. Left there, a failed credit could still
+erase the record of what was owed. It now sits outside the transaction and
+runs only if the replies say the credit landed.
+
+All four are fixed and each is held down by a regression test, and each test
+was run against the old code first to confirm that it fails there. A test
+that has never been red is a test that has never been shown to test anything.
+
+10,250 WAM — 10,000 for the payment commit and 250 for the share called
+accepted while its accounting had failed. Both are the rungs the reporter
+classified them at himself, from the table published in the security policy.
+His third finding, a block stranded in blocks:maturing, is fixed and credited
+to him by name; he did not price it and no amount was added for it.
+
+Paid in ten transactions of 1,025 WAM, all confirmed in block 37,299. Ten
+because consensus pays the treasury 2.5 WAM per block and the treasury is
+never consolidated, so its balance is tens of thousands of outputs that size:
+10,250 in one transaction is about 4,100 inputs and 591 KB, six times the
+standard size limit, and no node would relay it. The ten were cut from a
+single scan so that no two of them spend the same output — 4,115 outpoints,
+all distinct — and signed in one sitting on a machine with no network.
+
+That is 31,500 WAM paid to five people against this table so far. Every
+amount, the reasoning behind it, and every transaction id:
+https://wamcoin.org/security/ — and each payment is also in the treasury
+ledger, which can be checked against any node with scantxoutset.
+
+Reported by bobbyning.
+
+Source, in three places:
+https://gitlab.com/WAMCoin/wam-coin
+https://github.com/wamcoin-Project/wam-coin
+https://gitea.com/WAMCoin/wam-coin
+
+https://wamcoin.org
+https://wamcoin.net
+
+The technical discussion is on Discord: https://discord.gg/Gxvmrjy9Qb

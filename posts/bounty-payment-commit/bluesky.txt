@@ -1,0 +1,32 @@
+BLUESKY — from @wamcoin.org. 300 characters, counted as real characters.
+========================================================================
+Counted below, not estimated.
+
+Bluesky counts what is written, so the six URLs cost what they actually are
+rather than 23 each. They still cost 132 characters, so this is a thread of
+two for the same reason X is.
+
+---------------------------------------------------------------
+POST 1
+
+The fifth time somebody has done real work for WAM and taken the coin as
+payment: someone in this community read the pool's code and found it
+could pay the same miners twice — a redis commit whose failure threw nothing.
+
+Fixed, tested, paid at the published rungs.
+
+wamcoin.org/security
+
+---------------------------------------------------------------
+POST 2 — a reply to post 1
+
+WAM's source, in three places, at three companies:
+
+gitlab.com/WAMCoin/wam-coin
+github.com/wamcoin-Project/wam-coin
+gitea.com/WAMCoin/wam-coin
+
+wamcoin.org
+wamcoin.net
+
+The technical discussion is on Discord: https://discord.gg/Gxvmrjy9Qb

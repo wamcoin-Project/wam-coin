@@ -1,0 +1,49 @@
+DISCORD — 中文，发在同一频道，作为英文那条之后的第二条消息。
+==========================================================
+Counted below, against the 2,000 limit. Discord counts a Chinese character
+as one, so this fits as written.
+
+The Chinese readers of this project arrived on their own, from somebody's own
+post, and they read the code. This is the same announcement, not a shorter
+one: the detail is what they came for.
+
+---------------------------------------------------------------
+
+一位社区成员读了矿池的代码——一行都没有运行过——发现矿池可能把同一批
+矿工付款两次。他已经拿到了赏金：这是第五次有人为 WAM 做了真正的工作，并以这
+枚币作为报酬。
+
+矿池的流程是：广播付款交易，写下一个「付款进行中」的标记，然后把余额扣减提交
+到 redis。那次提交用的是 ioredis 的 `pipeline()`，而 pipeline 的 `exec()`
+是正常返回 `[error, result]` 的——失败的命令是作为数据回来的，不是抛出的异常。
+于是提交失败时什么也没抛出，什么也没有暂停，每个余额都原样留在那里。十分钟后
+的下一轮，又从同样的余额里把同一批矿工付了一次。而那个正是为这种情况写下的标
+记，在整个仓库里只有一处会去读它，还是在启动时——所以它只在重启之后才说得出话。
+
+同一份报告里还有三处：矿工可能在一个从未被记录的份额上收到 `valid:true`；
+`recordBlock` 在「这个区块是否已入账」的三个地方里只问了两个，漏了第三个；
+关闭流程不等待记账链结束，所以一次重启如果正好落在区块被接受与派彩被记录之间，
+就会像断电一样把它丢掉。
+
+四处都已修复，每一处都有一个回归测试守着，而每个测试都先在旧代码上跑过，确认
+它在那里会失败。
+
+10,250 WAM——付款提交 10,000，份额那一处 250，两档都是报告人自己按我们公开
+的赏金表定的。分成十笔，每笔 1,025，全部在区块 37,299 里：共识每个区块付给
+国库 2.5 WAM 且从不合并，所以一笔交易会是大约 4,100 个输入、591 KB，是任何
+节点愿意转发的六倍。
+
+每一笔金额、定这个金额的理由，以及每一个交易 ID：
+https://wamcoin.org/security/
+
+报告人：bobbyning。
+
+源码，三处：
+https://gitlab.com/WAMCoin/wam-coin
+https://github.com/wamcoin-Project/wam-coin
+https://gitea.com/WAMCoin/wam-coin
+
+https://wamcoin.org
+https://wamcoin.net
+
+技术讨论就在这里。
