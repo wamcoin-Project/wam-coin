@@ -322,9 +322,9 @@ make -j"$JOBS" >/dev/null || die "the build failed"
 
 log "running the WAM consensus unit tests"
 if [ -x ./src/test/test_bitcoin ]; then
-    ./src/test/test_bitcoin --run_test=wam_monetary_tests,wam_devfee_tests \
-        || die "the WAM consensus tests failed -- refusing to install this binary"
-    ok "consensus tests pass"
+    ./src/test/test_bitcoin --run_test='wam_*' \
+        || die "the WAM unit tests failed -- refusing to install this binary"
+    ok "every wam_* unit test passes"
 fi
 
 log "installing binaries to $PREFIX/bin"

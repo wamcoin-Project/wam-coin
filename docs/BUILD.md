@@ -153,7 +153,7 @@ Expect 10–40 minutes. Peak memory is roughly 1.5 GB per compile job — on a m
 ## 5. Test
 
 ```bash
-./src/test/test_bitcoin --run_test=wam_monetary_tests,wam_devfee_tests
+./src/test/test_bitcoin --run_test='wam_*'
 ```
 
 `wam_monetary_tests` covers the emission schedule, epoch boundaries, the hard cap, and the
@@ -162,6 +162,14 @@ subsidy/treasury split across all 33 epochs.
 `wam_devfee_tests` covers consensus rule WAM-1, including the cases that matter: omitting
 the treasury output, underpaying it by a single base unit, and paying the correct amount to
 the *wrong* script.
+
+`wam_vesting_tests` puts the founder reserve's time locks to the script interpreter: before
+each unlock date the spend fails with `SCRIPT_ERR_UNSATISFIED_LOCKTIME`, on the date it
+succeeds, and the two known ways to defeat CLTV — a final input sequence, and mixing
+height-based with time-based locktimes — are both rejected.
+
+Use `wam_*`, not a list of suite names. The build and install gates do, and a suite added
+later is then run without anyone remembering to edit four files.
 
 The full upstream suite is also worth running once:
 
@@ -304,10 +312,11 @@ Mach-O before it is kept.
 
 **Two test suites run before anything is kept**, and a failure in either
 deletes nothing but refuses to leave you a binary: RandomX's own reference
-vectors, then `wam_monetary_tests` and `wam_devfee_tests`. The monetary
-schedule and the 5% treasury rule are precisely what a different compiler on a
-different architecture could get quietly wrong, and a node that gets either
-wrong does not crash — it forks itself off at block 1.
+vectors, then every `wam_*` suite — monetary, devfee and vesting. The
+monetary schedule, the 5% treasury rule and the vesting locks are precisely
+what a different compiler on a different architecture could get quietly
+wrong, and a node that gets any of them wrong does not crash — it forks
+itself off at block 1.
 
 Then the same proof the Windows section ends with, and for the same reason:
 
