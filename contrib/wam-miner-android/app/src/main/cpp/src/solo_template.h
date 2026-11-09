@@ -159,6 +159,24 @@ inline Bytes FromHex(const std::string& hex)
 }
 
 /**
+ * A template field that has to fit in 32 bits, refused rather than wrapped.
+ *
+ * `uint32_t(x)` on an out-of-range int64 is a silent modulo, and both fields
+ * that take this path -- the block version and the timestamp -- go into the
+ * header the miner then hashes for hours. A wrapped value is work against a
+ * header no node will accept, and nothing says so. Reported by bobbyning,
+ * 8 November 2026.
+ */
+inline int64_t Bounded(int64_t v, const char* what)
+{
+    if (v < 0 || v > 4294967295LL) {
+        throw std::runtime_error(std::string("the template's ") + what +
+                                 " does not fit in 32 bits: " + std::to_string(v));
+    }
+    return v;
+}
+
+/**
  * BIP34's height, encoded exactly as `CScript() << nHeight` encodes it.
  *
  * Consensus does not compare the height as a number: it builds that script
@@ -178,6 +196,20 @@ inline Bytes FromHex(const std::string& hex)
  */
 inline Bytes HeightPush(int64_t height)
 {
+    // A HEIGHT IS NEVER NEGATIVE, AND THE LOOP BELOW CANNOT SAY SO.
+    //
+    // `while (v) { ...; v >>= 8; }` terminates for every non-negative v and
+    // for no negative one: an arithmetic right shift keeps the sign, so
+    // -1 >> 8 stays -1 forever and each turn appends another byte. The caller
+    // froze inside it with its memory climbing until the OOM killer arrived.
+    // Refusing here rather than only at the caller, because the loop is the
+    // thing that cannot cope and it should be the thing that says so.
+    // Reported by bobbyning, 8 November 2026.
+    if (height < 0) {
+        throw std::runtime_error("a block height cannot be negative: " +
+                                 std::to_string(height));
+    }
+
     Bytes out;
     if (height == 0) { out.push_back(0x00); return out; }            // OP_0
     if (height >= 1 && height <= 16) {
@@ -240,7 +272,7 @@ inline SoloTemplate BuildSoloTemplate(const json::Value& t,
 {
     SoloTemplate out;
 
-    out.coinbaseValue = int64_t(t["coinbasevalue"].AsNumber());
+    out.coinbaseValue = t["coinbasevalue"].AsInt();
     out.longPollId    = t["longpollid"].AsString();
     out.prevHashHex   = t["previousblockhash"].AsString();
 
@@ -253,7 +285,7 @@ inline SoloTemplate BuildSoloTemplate(const json::Value& t,
             "bad-cb-devfee-amount, so every block built from it would be "
             "wasted.");
     }
-    out.devFeeAmount = int64_t(df["amount"].AsNumber());
+    out.devFeeAmount = df["amount"].AsInt();
     const Bytes devScript = FromHex(df["script"].AsString());
 
     if (out.devFeeAmount < 0 || out.devFeeAmount >= out.coinbaseValue) {
@@ -277,7 +309,7 @@ inline SoloTemplate BuildSoloTemplate(const json::Value& t,
         for (size_t k = 0; k < 32; k++) entry.hash[k] = id[31 - k];
 
         const json::Value& fee = tx["fee"];
-        if (fee.IsNull()) feesKnown = false; else totalFees += int64_t(fee.AsNumber());
+        if (fee.IsNull()) feesKnown = false; else totalFees += fee.AsInt();
 
         out.txs.push_back(std::move(entry));
     }
@@ -331,7 +363,18 @@ inline SoloTemplate BuildSoloTemplate(const json::Value& t,
     outputs.insert(outputs.end(), body.begin(), body.end());
 
     // ---- scriptSig: height, then the signature, then the extranonce ------
-    const int64_t height = int64_t(t["height"].AsNumber());
+    // THE ONLY NUMBER IN A TEMPLATE THAT INDEXES A LOOP.
+    //
+    // It is always the tip plus one, and the node that reports it is reached
+    // over plaintext HTTP -- so it is the node --rpc points at, or anyone on
+    // the path to it, that chooses this value. A hundred million blocks is
+    // three hundred and eighty years of two-minute blocks; anything outside
+    // that is not a height. Reported by bobbyning, 8 November 2026.
+    const int64_t height = t["height"].AsInt(-1);
+    if (height < 1 || height > 100000000) {
+        throw std::runtime_error("the template's height is not a height: " +
+                                 std::to_string(height));
+    }
     const Bytes heightPush = HeightPush(height);
 
     Bytes sigPush;
@@ -372,8 +415,8 @@ inline SoloTemplate BuildSoloTemplate(const json::Value& t,
     if (prev.size() != 32) throw std::runtime_error("previousblockhash was not 32 bytes");
     for (size_t i = 0; i < 32; i++) job.prevHash[i] = prev[31 - i];
 
-    job.version = uint32_t(t["version"].AsNumber());
-    job.ntime   = uint32_t(t["curtime"].AsNumber());
+    job.version = uint32_t(Bounded(t["version"].AsInt(), "version"));
+    job.ntime   = uint32_t(Bounded(t["curtime"].AsInt(), "curtime"));
     const Bytes nbits = FromHex(t["bits"].AsString());
     if (nbits.size() != 4) throw std::runtime_error("bits was not four bytes");
     job.nbits = (uint32_t(nbits[0]) << 24) | (uint32_t(nbits[1]) << 16) |

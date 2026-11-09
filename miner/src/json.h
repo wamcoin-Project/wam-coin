@@ -88,20 +88,62 @@ public:
     // One hostile field, one hung miner, memory climbing until the OOM
     // killer arrives.
     //
-    // The fallback keeps its meaning: the field is absent, or is not a
-    // number, which is a thing a caller handles. A number that cannot be an
-    // int64 is not that. It is a node sending something no honest node
-    // sends, and it stops here rather than continuing as a plausible
-    // integer. Reported by bobbyning, 8 November 2026.
-    int64_t AsInt(int64_t fallback = 0) const
+    /** Can this number become an int64_t without the cast being undefined?
+     *
+     *  The bounds are written as the doubles 2^63 and -2^63 rather than as
+     *  INT64_MAX, because INT64_MAX does not survive the conversion to
+     *  double that comparing against it performs: it rounds UP to 2^63, and
+     *  the test then admits the one value it exists to exclude.
+     */
+    bool Representable() const
     {
-        if (type != Type::Number) return fallback;
-        if (!std::isfinite(number) ||
-            number >= 9223372036854775808.0 ||
-            number <  -9223372036854775808.0) {
+        return std::isfinite(number) &&
+               number <  9223372036854775808.0 &&
+               number >= -9223372036854775808.0;
+    }
+
+    // Reported by bobbyning, 8 November 2026. What matters, and what the
+    // first version of this fix got wrong, is the next paragraph.
+    //
+    // A VALUE THAT CANNOT BE AN INTEGER IS REFUSED. WHO IT IS REFUSED TO IS
+    // THE CALLER'S DECISION, AND A FALLBACK IS HOW THE CALLER MAKES IT.
+    //
+    // The first version took a default argument and threw anyway, past the
+    // fallback, on the reasoning that a number no honest peer sends should
+    // stop here. The first half of that is right and the second half named
+    // the wrong place: "here" is a header with no idea who is calling. The
+    // solo path catches, so it stopped there. The stratum path catches
+    // nothing, so `{"id":1e300}` from the pool side reached std::terminate
+    // and killed the miner -- and three of its four call sites had written
+    // a fallback saying exactly what they wanted instead.
+    //
+    // So there are two forms, and the difference is a decision and not a
+    // convenience:
+    //
+    //     AsInt()           this must be an integer; anything else throws
+    //     AsInt(fallback)   if it cannot be one, give me this
+    //
+    // Neither can return a garbage integer, which was the whole point.
+    //
+    // Reported by Radenlingga (@stokraden45506), 9 November 2026, against
+    // c10e015 -- a defect created by the fix above, one day after it shipped
+    // to main, found by reading the fix rather than the announcement.
+    int64_t AsInt() const
+    {
+        if (type != Type::Number) {
+            throw std::runtime_error(
+                "a JSON value that has to be a whole number is not a number");
+        }
+        if (!Representable()) {
             throw std::runtime_error(
                 "a JSON number is outside the range of a 64-bit integer");
         }
+        return int64_t(number);
+    }
+
+    int64_t AsInt(int64_t fallback) const
+    {
+        if (type != Type::Number || !Representable()) return fallback;
         return int64_t(number);
     }
 

@@ -35,6 +35,7 @@
 #include <set>
 #include <chrono>
 #include <cstdlib>
+#include <exception>
 #include <string>
 #include <vector>
 
@@ -504,7 +505,36 @@ private:
         }
     }
 
+    // ONE BAD LINE IS ONE BAD LINE. IT IS NOT THE END OF THE MINER.
+    //
+    // Everything below this point reads numbers, strings and arrays that the
+    // other end chose. The forms that can refuse a value now say so by
+    // throwing -- and until 9 November 2026 nothing on this path caught it,
+    // and neither did the pool loop in main.cpp. So a single line from a
+    // hostile or compromised pool, or from anyone on the path (this miner
+    // speaks no TLS, so every one of its connections is plaintext), reached
+    // std::terminate: one line, every reference miner on that pool dead, and
+    // dead again on every reconnect.
+    //
+    // The call sites are fixed one by one above, and that is the real fix.
+    // This is the second one, because the first depends on every future
+    // reader of this header choosing the right form, and a mistake there
+    // should cost a log line rather than the process. A line we cannot
+    // understand is dropped and the connection carries on; the next notify
+    // puts the miner back to work.
+    //
+    // Reported by Radenlingga (@stokraden45506), 9 November 2026.
     void HandleLine(const std::string& line)
+    {
+        try {
+            DispatchLine(line);
+        } catch (const std::exception& e) {
+            Report(std::string("the pool sent a line this miner could not "
+                               "use (") + e.what() + "); ignoring it");
+        }
+    }
+
+    void DispatchLine(const std::string& line)
     {
         json::Value msg;
         std::string parseError;
@@ -530,8 +560,12 @@ private:
             Bytes seed;
             if (ParseHex(params.At(0).AsString(), seed) && seed.size() == 32) {
                 m_lastSeed = seed;
+                // AsInt(-1), not AsInt(). The seed is what this message is
+                // for and it has already parsed; the height is decoration on
+                // a log line. The strict form here meant a pool could kill
+                // the miner with a number it never had to make sense of.
                 Log("RandomX key change announced for height " +
-                    std::to_string(params.At(2).AsInt()));
+                    std::to_string(params.At(2).AsInt(-1)));
             }
         } else if (method == "client.reconnect") {
             Log("the pool asked us to reconnect");
