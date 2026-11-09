@@ -53,8 +53,6 @@ Each amount, each reason and each transaction id was in the public ledger before
 
 https://wamcoin.org/security
 
-The treasury's whole life is 750,000 WAM, of which one eighth — 93,750 — is this programme's share. 33,950 of it has been paid in the programme's first fifty-four days.
-
 [b]The source is in three places, at three companies:[/b]
 
 https://gitlab.com/WAMCoin/wam-coin
