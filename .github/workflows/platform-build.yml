@@ -487,7 +487,23 @@ jobs:
           # x86_64, and a binary for one does not run on the other. Both are
           # built because "macOS support" that covers one of them is a support
           # claim that fails for half the people who read it.
-          - runner: macos-14
+          # macos-latest, not a pinned image, and the reason is a measurement.
+          #
+          # This said macos-14 and it worked on 31 October. On 9 November, in
+          # the middle of cutting v0.1.14, GitHub answered the same request
+          # with "The configuration 'macos-14-arm64-us-default' is not
+          # supported" and cancelled the job. The image had been retired
+          # between one release and the next.
+          #
+          # This project pins versions on purpose, and that is still right for
+          # anything the binaries are built FROM -- Core v28.1, RandomX
+          # v1.2.1, the depends tree. It is wrong for the machine doing the
+          # building, because nobody tells us when a label is withdrawn and
+          # the first we hear is a release that cannot ship a Mac. A pin that
+          # stops the only Mac this project can reach is worse than a label
+          # that moves: the archive is hash-verified and signed afterwards
+          # either way.
+          - runner: macos-latest
             arch: arm64
           # macos-13 (Intel) is deliberately not here yet.
           #
