@@ -15,7 +15,7 @@ Everything here is irreversible once the first block is mined. Work through it i
       each one. Do not skip WAM-004 and WAM-005.
 - [ ] A testnet has been running for **at least two weeks** with more than one independent
       node, and has crossed at least one RandomX epoch rotation without a fork.
-- [ ] `./src/test/test_bitcoin --run_test=wam_monetary_tests,wam_devfee_tests` passes.
+- [ ] `./src/test/test_bitcoin --run_test='wam_*'` passes.
 - [ ] `node pool/test/rewards.test.js` passes.
 
 ## Phase 2 — Founder key custody

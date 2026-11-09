@@ -95,16 +95,66 @@ let seenCache = null;
 // that laptop is one machine. Two operators behind the same /24 would count
 // as one, which is rare and errs downward -- and a page about
 // decentralisation should undercount itself, never the reverse.
+//
+// THE /64 CANNOT BE READ OFF THE TEXT. This took `host.split(':').slice(0, 4)`
+// for a while, which is only the first four groups when the address has no
+// `::` inside them. Write `2001:db8::1` and `2001:db8::abcd` -- one host and
+// its neighbour in the same /64, because `::` stands for the zero groups in
+// between -- and the slice gives `2001:db8::1` and `2001:db8::abcd`. Two
+// machines, from one subscriber. That is the error this page cannot make:
+// it exists to undercount itself, and a compressed prefix made it overcount.
+// So expand first, then cut at the fourth hextet.
+function expandIPv6(host) {
+    let text = String(host || '').toLowerCase().split('%')[0];
+    if (!text.includes(':')) return null;
+
+    // An embedded IPv4 tail (::ffff:192.0.2.1) is the last two hextets.
+    const lastColon = text.lastIndexOf(':');
+    const tail = text.slice(lastColon + 1);
+    if (tail.includes('.')) {
+        const octets = tail.split('.').map(Number);
+        if (octets.length !== 4 ||
+            octets.some((n) => !Number.isInteger(n) || n < 0 || n > 255)) {
+            return null;
+        }
+        const hi = ((octets[0] << 8) | octets[1]).toString(16);
+        const lo = ((octets[2] << 8) | octets[3]).toString(16);
+        text = text.slice(0, lastColon + 1) + hi + ':' + lo;
+    }
+
+    const halves = text.split('::');
+    if (halves.length > 2) return null;
+    const left = halves[0] ? halves[0].split(':') : [];
+    const right = halves.length === 2 && halves[1] ? halves[1].split(':') : [];
+    const groups = [...left, ...right];
+    if (!groups.every((g) => /^[0-9a-f]{1,4}$/.test(g))) return null;
+
+    if (halves.length === 2) {
+        // `::` must stand for at least one zero group.
+        if (groups.length > 7) return null;
+        const zeros = new Array(8 - groups.length).fill('0');
+        return [...left, ...zeros, ...right].map((g) => g.padStart(4, '0'));
+    }
+    return groups.length === 8 ? groups.map((g) => g.padStart(4, '0')) : null;
+}
+
 function networkOf(host) {
-    if (host.includes(':')) return host.split(':').slice(0, 4).join(':') + '::/64';
+    if (host.includes(':')) {
+        const groups = expandIPv6(host);
+        // An unparseable address is hashed as written rather than dropped.
+        return groups ? groups.slice(0, 4).join(':') + '::/64' : host;
+    }
     const p = host.split('.');
     return p.length === 4 ? p.slice(0, 3).join('.') + '.0/24' : host;
 }
 
 function machineId(addr) {
-    const host = String(addr || '').replace(/^\[|\]$/g, '').split(']')[0]
-        .replace(/:\d+$/, '');
-    return crypto.createHash('sha256').update(networkOf(host))
+    // hostOf() already knows the three shapes a peer address takes; the old
+    // inline version stripped `:\d+$` from the whole string, which is also
+    // how a bare IPv6 address ends, so `2001:db8::1` became `2001:db8:`.
+    // Two neighbours collided there for the wrong reason, and a hextet that
+    // was not all digits did not collide at all.
+    return crypto.createHash('sha256').update(networkOf(hostOf(addr)))
         .digest('hex').slice(0, 16);
 }
 
@@ -365,4 +415,4 @@ function build(peers, known, netInfo, addrman) {
     };
 }
 
-module.exports = { build, classify, OWN_SEEDS };
+module.exports = { build, classify, OWN_SEEDS, networkOf, machineId };

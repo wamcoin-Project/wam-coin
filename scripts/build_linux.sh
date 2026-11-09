@@ -293,12 +293,12 @@ printf '\n%s4. the consensus tests, before anything is kept%s\n' "$BLD" "$OFF"
 # different compiler or a different library version could quietly get wrong,
 # and a node that gets either wrong forks itself off the chain at block 1.
 if [ -x ./src/test/test_bitcoin ]; then
-    ./src/test/test_bitcoin --run_test=wam_monetary_tests,wam_devfee_tests \
+    ./src/test/test_bitcoin --run_test='wam_*' \
         > "$BUILD_DIR/tests-linux.log" 2>&1 \
-        || die "the WAM consensus tests FAIL. Refusing to keep this binary.
+        || die "the WAM unit tests FAIL. Refusing to keep this binary.
           The last 20 lines:
 $(tail -20 "$BUILD_DIR/tests-linux.log" | sed 's/^/          /')"
-    ok "wam_monetary_tests and wam_devfee_tests pass"
+    ok "every wam_* unit test passes"
 else
     warn "test_bitcoin was not built -- the consensus tests did not run"
 fi

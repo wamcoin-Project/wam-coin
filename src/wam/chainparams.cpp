@@ -113,12 +113,30 @@ static const std::string WAM_FOUNDER_ADDRESS_TESTNET = "TK34fTbuMCXrwnmq72AE1EMM
 //  separate them permanently, and give the founder the ability to *prove*
 //  where treasury money went -- which serves him before it serves anyone else.
 //
-//  The mainnet value below is the same unspendable burn address the founder
-//  reserve used before its ceremony: hash160 of twenty zero bytes. It is valid
-//  base58check, so the node starts and testnet development continues, and
-//  scripts/preflight.sh and scripts/audit_repo.sh both refuse a launch while it
-//  is still here. Replace it with an address generated on an offline machine,
-//  from a key that is not the founder key.
+//  The mainnet value below is the real treasury key, not a placeholder. It
+//  went in on 23 August 2026 in a79835e, generated on an air-gapped machine
+//  from a key that is not the founder key, and it decodes to hash160
+//  a101cf17c209638136abe19e14dc4e1c9987370f. Consensus has paid the 5% into it
+//  since block 1, scripts/treasury_spend.py spends from it, and every spend it
+//  has made is in docs/TREASURY_LEDGER.md with its transaction id.
+//
+//  THIS PARAGRAPH SAID THE OPPOSITE FOR SEVENTY-SEVEN DAYS.
+//
+//  It described the value below as "the same unspendable burn address the
+//  founder reserve used before its ceremony: hash160 of twenty zero bytes",
+//  and told the reader to replace it with a real one -- while the key it was
+//  describing had been live since block 1 and had paid five security bounties.
+//  The burn address is WNg2svm2qApxheBKndKGQ9sRwporvRgRpT, which decodes to
+//  twenty zero bytes, and that string is what scripts/preflight.sh and
+//  scripts/audit_repo.sh refuse a launch over. They never look at the value
+//  here at all, so the sentence claiming they guard it was wrong twice.
+//
+//  It survived because a comment is not a value: nothing in the sweep reads
+//  prose, and the guards that do read this file were looking for a string
+//  that left it on 23 August. The one file a reader opens to find out who
+//  controls the treasury called the treasury key a placeholder, and said so
+//  in the same paragraph that explains why the two addresses are separate.
+//  Reported by bobbyning, 8 November 2026.
 static const std::string WAM_TREASURY_ADDRESS_MAINNET = "WdMMqW1DcgWZ6HtyJuEMdce6QkKg4raGmE";
 // Testnet treasury, generated 2026-08-19 on the seed node. Deliberately a
 // different key from the testnet founder address, so testnet exercises the same

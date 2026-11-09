@@ -130,9 +130,11 @@ make -j"$(nproc)"</code></pre>
 <p>Expect 10–40 minutes. Peak memory is roughly 1.5 GB per compile job — on a machine with 4 GB, use <code>make -j2</code> rather than <code>-j$(nproc)</code>.</p>
 <hr>
 <h2 id="5-test">5. Test</h2>
-<pre><code>./src/test/test_bitcoin --run_test=wam_monetary_tests,wam_devfee_tests</code></pre>
+<pre><code>./src/test/test_bitcoin --run_test='wam_*'</code></pre>
 <p><code>wam_monetary_tests</code> covers the emission schedule, epoch boundaries, the hard cap, and the subsidy/treasury split across all 33 epochs.</p>
 <p><code>wam_devfee_tests</code> covers consensus rule WAM-1, including the cases that matter: omitting the treasury output, underpaying it by a single base unit, and paying the correct amount to the <em>wrong</em> script.</p>
+<p><code>wam_vesting_tests</code> puts the founder reserve's time locks to the script interpreter: before each unlock date the spend fails with <code>SCRIPT_ERR_UNSATISFIED_LOCKTIME</code>, on the date it succeeds, and the two known ways to defeat CLTV — a final input sequence, and mixing height-based with time-based locktimes — are both rejected.</p>
+<p>Use <code>wam_*</code>, not a list of suite names. The build and install gates do, and a suite added later is then run without anyone remembering to edit four files.</p>
 <p>The full upstream suite is also worth running once:</p>
 <pre><code>make check</code></pre>
 <hr>
@@ -187,7 +189,7 @@ bash scripts/build_macos.sh</code></pre>
 <p>The script does this for you. No SDK question arises — <code>depends/README.md</code> lists the macOS SDK under <em>cross</em>-compiling, and this is not that.</p>
 <p>On an Intel Mac RandomX is configured with <code>-DARCH=x86-64</code>; on Apple Silicon that flag is not passed at all. It must never be <code>native</code>, on any platform: a binary tuned to the machine that built it computes proof-of-work that machine agrees with and can disagree with everyone else's.</p>
 <p>About twenty minutes on Apple Silicon — CI measured 739 seconds for the build and 279 more to sync the test chain. The binaries land in <code>out/macos-$(uname -m)/</code>, and each is checked with <code>file -bL</code> to be genuinely Mach-O before it is kept.</p>
-<p><strong>Two test suites run before anything is kept</strong>, and a failure in either deletes nothing but refuses to leave you a binary: RandomX's own reference vectors, then <code>wam_monetary_tests</code> and <code>wam_devfee_tests</code>. The monetary schedule and the 5% treasury rule are precisely what a different compiler on a different architecture could get quietly wrong, and a node that gets either wrong does not crash — it forks itself off at block 1.</p>
+<p><strong>Two test suites run before anything is kept</strong>, and a failure in either deletes nothing but refuses to leave you a binary: RandomX's own reference vectors, then every <code>wam_*</code> suite — monetary, devfee and vesting. The monetary schedule, the 5% treasury rule and the vesting locks are precisely what a different compiler on a different architecture could get quietly wrong, and a node that gets any of them wrong does not crash — it forks itself off at block 1.</p>
 <p>Then the same proof the Windows section ends with, and for the same reason:</p>
 <pre><code>bash scripts/test/test_platform_consensus.sh out/macos-$(uname -m)</code></pre>
 <p><strong>Apple Silicon is the one that has been proven.</strong> An Intel Mac has not been built or synced by anyone yet, so if you have one, that run is worth more to this project than a second arm64 one.</p>

@@ -37,7 +37,8 @@ const EventEmitter = require('events');
 
 const { computeBlockRewards, estimateHashrate, pplnsWindowDifficulty } = require('./rewards');
 const { COIN, COINBASE_MATURITY } = require('./constants');
-const { defineAtomicCommands, CLAIM_AND_RECORD_NAME } = require('./atomic');
+const { defineAtomicCommands, CLAIM_AND_RECORD_NAME,
+        RECORD_BLOCK_NAME } = require('./atomic');
 
 class ShareProcessor extends EventEmitter {
     /**
@@ -586,15 +587,46 @@ class ShareProcessor extends EventEmitter {
             confirmations: 0
         };
 
-        const pipe = this.redis.pipeline();
-        pipe.hset(this.k('blocks:pending'), share.blockHash, JSON.stringify(record));
-        pipe.del(this.k('round'));           // PROP round closes here
-        // The proof-of-work set belongs to the round and dies with it. Left
-        // behind it would grow for ever and start refusing honest shares in
-        // the astronomically unlikely case of a repeat across rounds.
-        pipe.del(this.k('round:pow'));
-        pipe.incrby(this.k('poolfees'), rewards.poolFee);
-        await pipe.exec();
+        // ONE OPERATION, AND THE IRREPLACEABLE WRITE AT THE FRONT OF IT.
+        //
+        // This was four commands in a pipeline whose replies were never read.
+        // A pipeline is a batch and not a transaction -- the comment forty
+        // lines up in _orphan says so, and the payment commit says so -- so a
+        // command that failed server-side arrived back as data while the
+        // other three were applied regardless. exec() resolved, this function
+        // returned the record, and the worst direction was the first command
+        // failing: the payout table never written, the round deleted anyway,
+        // the fee booked for a block nobody would ever be paid for. And since
+        // nothing threw, server.js called unspoolRecorded, so the one copy
+        // that could have re-offered the block went too. No line was logged.
+        //
+        // Reading the replies here would have made it loud, and loud is not
+        // enough: by the time a reply can be read the round is already gone,
+        // and the retry it triggers recomputes the payouts from an empty
+        // round. What fixes it is the order, and the order only means
+        // anything if nothing can run between the parts -- which is what the
+        // script in atomic.js is for. The second and third keys below are the
+        // round and its proof-of-work set, which belongs to the round and
+        // dies with it: left behind it would grow for ever and start refusing
+        // honest shares in the astronomically unlikely case of a repeat
+        // across rounds.
+        //
+        // Reported by Radenlingga (@stokraden45506), 2026-11-09, against
+        // c10e015.
+        const recorded = Number(await this.redis[RECORD_BLOCK_NAME](
+            this.k('blocks:pending'), this.k('round'),
+            this.k('round:pow'), this.k('poolfees'),
+            share.blockHash, JSON.stringify(record), String(rewards.poolFee)));
+
+        if (recorded !== 1) {
+            // Somebody else recorded it between the checks at the top of this
+            // function and this line. Those checks ask the same question over
+            // three separate awaits; this one is answered inside the script,
+            // where it cannot be overtaken -- and the loser destroys nothing.
+            this.log.info(`block ${share.height} was already recorded by ` +
+                          'another run; the round it closed is untouched');
+            return null;
+        }
 
         this.log.info(
             `block ${share.height} recorded: ${(record.minerPot / COIN).toFixed(8)} WAM to ` +
@@ -714,6 +746,14 @@ class ShareProcessor extends EventEmitter {
         // a capped list, a counter and a fee reversal, all derivable from the
         // evidence the atom above has already written. Only the payout table
         // was irreplaceable, and it is now safe.
+        // THE REPLIES ARE READ HERE TOO, AND HERE THEY ONLY LOG.
+        //
+        // Everything below is derivable from the evidence the atom above has
+        // already written, so a failure costs a count and a counter, not a
+        // payout table, and throwing would turn a bookkeeping slip into an
+        // orphan the caller believes never happened. But not reading the
+        // replies at all is how the recordBlock fault stayed invisible, and
+        // "it would have been cheap" is not a reason to be unable to see it.
         const pipe = this.redis.pipeline();
         pipe.ltrim(this.k('blocks:orphaned'), 0, 999);
         // Same reason as blocks:confirmed:count below. This list is capped at
@@ -721,7 +761,25 @@ class ShareProcessor extends EventEmitter {
         // and in the number that tells a miner how often his work was wasted.
         pipe.incr(this.k('blocks:orphaned:count'));
         pipe.decrby(this.k('poolfees'), record.poolFee);
-        await pipe.exec();
+
+        let replies = null;
+        try {
+            replies = await pipe.exec();
+        } catch (err) {
+            this.log.warn(`block ${record.height} is orphaned and its record ` +
+                          `is in ${this.k('blocks:orphaned')}, but the orphan ` +
+                          `count and the fee reversal did not run ` +
+                          `(${err.message}). Both are derivable from that ` +
+                          'list; nothing was paid and nothing is lost.');
+        }
+        const failed = (replies || []).filter((r) => Array.isArray(r) && r[0]);
+        if (failed.length) {
+            this.log.warn(`${failed.length} of ${replies.length} commands in ` +
+                          `the orphan bookkeeping for block ${record.height} ` +
+                          `failed (first: ${failed[0][0].message}). The orphan ` +
+                          `itself stands; the count and the fee reversal are ` +
+                          `derivable from ${this.k('blocks:orphaned')}.`);
+        }
 
         this.emit('blockOrphaned', record);
     }

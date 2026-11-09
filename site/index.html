@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>WAM Coin — a CPU-mineable proof-of-work currency</title>
 <link rel="icon" href="favicon.png" type="image/png">
-<meta name="description" content="A CPU-mineable proof-of-work currency with a hard 22,000,000 cap. RandomX, two-minute blocks, a disclosed and time-locked founder reserve. Launching 15 September 2026.">
+<meta name="description" content="A CPU-mineable proof-of-work currency with a hard 22,000,000 cap. RandomX, two-minute blocks, a disclosed and time-locked founder reserve. Mainnet live since 15 September 2026.">
 <link rel="canonical" href="https://wamcoin.org/">
 
 <!-- Every account that is us, in the form a search engine actually reads.
@@ -35,7 +35,7 @@
   "logo": "https://wamcoin.org/og-card.png",
   "email": "wam.coin.official@proton.me",
   "foundingDate": "2026",
-  "description": "A CPU-mineable proof-of-work currency with a hard 22,000,000 cap. RandomX, two-minute blocks, a disclosed and time-locked founder reserve. Mainnet 15 September 2026.",
+  "description": "A CPU-mineable proof-of-work currency with a hard 22,000,000 cap. RandomX, two-minute blocks, a disclosed and time-locked founder reserve. Mainnet live since 15 September 2026.",
   "sameAs": [
     "https://gitlab.com/WAMCoin/wam-coin",
     "https://x.com/WAMCoinCore",
@@ -63,7 +63,7 @@
 <meta property="og:site_name" content="WAM Coin">
 <meta property="og:url" content="https://wamcoin.org/">
 <meta property="og:title" content="WAM Coin — a CPU-mineable proof-of-work currency">
-<meta property="og:description" content="A Bitcoin Core v28.1 fork with RandomX proof of work. A hard 22,000,000 cap, two-minute blocks, and a founder reserve locked in the genesis block itself. Mainnet 15 September 2026.">
+<meta property="og:description" content="A Bitcoin Core v28.1 fork with RandomX proof of work. A hard 22,000,000 cap, two-minute blocks, and a founder reserve locked in the genesis block itself. Mainnet live since 15 September 2026.">
 <meta property="og:image" content="https://wamcoin.org/og-card.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
@@ -73,7 +73,7 @@
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:site" content="@WAMCoinCore">
 <meta name="twitter:title" content="WAM Coin — a CPU-mineable proof-of-work currency">
-<meta name="twitter:description" content="A Bitcoin Core v28.1 fork with RandomX proof of work. A hard 22,000,000 cap and a founder reserve locked in the genesis block. Mainnet 15 September 2026.">
+<meta name="twitter:description" content="A Bitcoin Core v28.1 fork with RandomX proof of work. A hard 22,000,000 cap and a founder reserve locked in the genesis block. Mainnet live since 15 September 2026.">
 <meta name="twitter:image" content="https://wamcoin.org/og-card.png">
 
 <!-- No fonts, no analytics, no CDN, nothing loaded from anywhere else. A page
@@ -341,8 +341,8 @@ copy of this list, kept so it can be signed and checked rather than merely belie
 <h2 class="sec">Mining</h2>
 <p>WAM is mined by ordinary computers. There is no pre-sale, no allocation to buy into, and
 no way to acquire it at launch except by mining it or by trading with someone who did.</p>
-<p class="dim">Mainnet opens 15 September 2026. Until then the testnet is running, and its
-coins are worth nothing by design.</p>
+<p class="dim">Mainnet opened 15 September 2026. The testnet still runs for development,
+and its coins are worth nothing by design.</p>
 <p class="dim"><strong>If you run a node, subscribe to releases</strong> on
 <a href="https://gitlab.com/WAMCoin/wam-coin">the repository</a> —
 <span class="mono">Watch ▾ → Custom → Releases</span>. Some releases change a consensus
@@ -351,10 +351,12 @@ disagrees about. It does eventually warn you, in a log nobody is reading. A rele
 notification arrives where you got the software, before any of that.</p>
 
 <p class="dim"><strong>One pool is not a network.</strong> There is a project pool at
-<a href="https://pool.wamcoin.org">pool.wamcoin.org</a>, and there should be others that
-are not ours. What keeps a chain decentralised is not how a pool is built — a pool is
-central by definition — it is that a miner can leave for one somebody else runs, or mine
-alone. <a href="https://gitlab.com/WAMCoin/wam-coin/blob/main/docs/POOL_OPERATOR.md">POOL_OPERATOR.md</a>
+<a href="https://pool.wamcoin.org">pool.wamcoin.org</a>, and three more run by other
+people are on <a href="https://wamcoin.org/mine/#which-pool">the mining page</a> — which
+is what a network looks like, and what this project cannot manufacture. What keeps a
+chain decentralised is not how a pool is built — a pool is central by definition — it
+is that a miner can leave for one somebody else runs, or mine alone.
+<a href="https://gitlab.com/WAMCoin/wam-coin/blob/main/docs/POOL_OPERATOR.md">POOL_OPERATOR.md</a>
 is the whole thing: architecture, configuration, payouts, and what it costs to run.</p>
 
 <p class="dim"><strong>The founder does not mine, and holds no WAM.</strong> Not one unit,
@@ -383,12 +385,13 @@ so 500 WAM went to him from the treasury — in the
 ledger</a> with its transaction id — and he swapped 249.68 WAM against Litecoin. The other
 five are still requests for requirements, with nothing agreed.</p>
 <p class="dim"><strong>A real, organic exchange has happened five times: somebody did work
-for this project and took WAM as the payment for it.</strong> Two researchers who found pool
-accounting faults were paid 10,000 WAM each — the amount the published bounty tiers give that
-class of finding — in nine transactions apiece. A third was paid 1,000 for a fault that could
-have destroyed a round's payout table, and a fourth 250 for address validation that refused
-one valid address in twenty. A fifth was paid 10,250 for a broadcast payment that could go
-out a second time, and three further faults in the same accounting. 31,500 WAM in all, with
+for this project and took WAM as the payment for it.</strong> The first was paid 10,000 WAM
+for a pool accounting fault, and the second 10,000 for another one — the amount the bounty
+table gave that class of finding at the time — in nine transactions each. The third was
+paid 1,000 for a fault that could have destroyed a round's payout table. The fourth, 250
+for address validation that refused one valid address in twenty. The fifth, 10,250 for a
+broadcast payment that could go out a second time, and three further faults in the same
+accounting. 31,500 WAM in all, with
 every transaction id in the treasury
 ledger and every finding written out in full in
 <a href="https://gitlab.com/WAMCoin/wam-coin/blob/main/SECURITY.md">the security
@@ -560,11 +563,11 @@ does not.</p>
 الخزينة</a> برقم معاملتها — وبادل 249.68 WAM بلايتكوين. والخمس الباقية ما زالت طلب
 متطلّبات لم يُوافَق على شيء فيها.</p>
 <p class="dim"><strong>وقد وقعت المبادلة العضويّة الحقيقيّة خمس مرّات: رجلٌ عمل عملاً لهذا
-المشروع وأخذ WAM ثمناً له.</strong> فمراجعان وجدا عطبَين في حسابات المسبح أُعطي كلٌّ منهما
-10,000 WAM — وهو ما تمنحه جداول المكافآت المنشورة لهذا الصنف من النتائج — في تسع معاملات
-لكلٍّ منهما. وثالثٌ أُعطي 1,000 على عطبٍ كان يمكن أن يمحو جدول دفع جولةٍ كاملة، ورابعٌ 250
-على تحقّقٍ من العناوين كان يرفض عنواناً صحيحاً من كلّ عشرين. وخامسٌ أُعطي 10,250 على دفعةٍ
-مبثوثةٍ قد تخرج مرّةً ثانية، وثلاثةِ أعطابٍ أخرى في المحاسبة نفسها. 31,500 WAM في الجملة، كلّ
+المشروع وأخذ WAM ثمناً له.</strong> فالأوّل أُعطي 10,000 WAM على عطبٍ في حسابات المسبح،
+والثاني 10,000 على عطبٍ آخر فيها — وهو ما كان جدولُ المكافآت يمنحه لهذا الصنف يومَها — في
+تسع معاملاتٍ لكلٍّ منهما. والثالث 1,000 على عطبٍ كان يمكن أن يمحو جدول دفع جولةٍ كاملة،
+والرابع 250 على تحقّقٍ من العناوين كان يرفض عنواناً صحيحاً من كلّ عشرين. والخامس 10,250 على
+دفعةٍ مبثوثةٍ قد تخرج مرّةً ثانية، وثلاثةِ أعطابٍ أخرى في المحاسبة نفسها. 31,500 WAM في الجملة، كلّ
 معرّف معاملةٍ منها في دفتر الخزينة، وكلّ عطبٍ مشروحٌ بتمامه في
 <a href="https://gitlab.com/WAMCoin/wam-coin/blob/main/SECURITY.md">سياسة الأمان</a>.
 ولم يشترِها أحدٌ منهم: كلٌّ قرأ هذه الشيفرة باحثاً عن خللٍ فيها، ثمّ قبل عملتها أجراً على
@@ -578,9 +581,9 @@ does not.</p>
 
 
 <footer>
-  <p class="en">MIT licensed, as Bitcoin Core. More than seven people have read this code and reported what they found — developers and reviewers, independently — and their findings were adopted; the accepted ones are named with their reports in the security policy. No firm has been hired to audit it. What stands in place of that is a published table with a price for each class of finding, open to anyone: 31,500 WAM has been paid against it so far, with every amount, its reasoning and its transaction id in the same policy.</p>
+  <p class="en">MIT licensed, as Bitcoin Core. More than ten people have read this code and reported what they found — developers and reviewers, independently — and their findings were adopted; the accepted ones are named with their reports in the security policy. No firm has been hired to audit it. What stands in place of that is a published table with a price for each class of finding, open to anyone: 31,500 WAM has been paid against it so far, with every amount, its reasoning and its transaction id in the same policy.</p>
   <p class="en">This page states no price, forecasts no value, and solicits nothing.</p>
-  <p class="ar" dir="rtl">رخصة MIT، كما Bitcoin Core. قرأ هذه الشيفرة أكثر من سبعة أشخاص
+  <p class="ar" dir="rtl">رخصة MIT، كما Bitcoin Core. قرأ هذه الشيفرة أكثر من عشرة أشخاص
   وأبلغوا بما وجدوا — مطوّرون ومراجعون مستقلّون — وأُخذت ملاحظاتهم؛ والمقبول منها
   مذكورٌ بأسماء أصحابه في سياسة الأمان. ولم نستأجر شركةً لتدقيقه؛ والذي يقوم مقام ذلك
   جدولٌ منشورٌ لكلّ صنفٍ من الاكتشافات سعرُه، مفتوحٌ لمن أراد: دُفع عليه حتى الآن

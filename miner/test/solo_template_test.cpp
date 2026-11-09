@@ -29,6 +29,7 @@
 //  wamd with `getblocktemplate '{"rules":["segwit"]}'`.
 // ===========================================================================
 
+#include <cstdint>
 #include <cstdio>
 #include <string>
 
@@ -192,6 +193,128 @@ static void TestTemplate()
 
 // ---------------------------------------------------------------------------
 
+/**
+ * Three ways a number in a getblocktemplate reply could end the miner.
+ *
+ * --solo reads that reply over plaintext HTTP, so the party choosing these
+ * values is the node --rpc points at, or anyone on the path to it. None of
+ * the three is a crash. Two are a hang with memory climbing until the OOM
+ * killer arrives, which is worse than a crash, because a miner that has
+ * stopped is noticed and a miner that is spinning is not.
+ *
+ * Reported by bobbyning, 8 November 2026.
+ */
+static void Throws(void (*f)(), const char* what)
+{
+    checks++;
+    try { f(); }
+    catch (const std::exception&) { std::printf("  ok    %s\n", what); return; }
+    failures++;
+    std::printf("  FAIL  %s -- it returned instead\n", what);
+}
+
+static void PushNegativeOne()  { HeightPush(-1); }
+static void PushIntMin()       { HeightPush(INT64_MIN); }
+
+static void TestHostileNumbers()
+{
+    std::printf("\nNumbers a node should never send, and what they used to do\n");
+
+    // 1. HeightPush ran forever on any negative height. `v >>= 8` on a
+    //    negative int64 is an arithmetic shift: -1 >> 8 is -1, so the loop
+    //    never reaches zero and appends a byte every turn. This cannot be
+    //    written as "it returns the wrong bytes" -- before the fix it did
+    //    not return.
+    Throws(PushNegativeOne, "HeightPush(-1) is refused, not looped on");
+    Throws(PushIntMin,      "HeightPush(INT64_MIN) is refused");
+
+    // and every height that is real still encodes exactly as it did
+    HeightVector(0,  "00");
+    HeightVector(1,  "51");
+    HeightVector(89, "0159");
+
+    // 2. int64_t(double) is undefined when the value does not fit, and
+    //    x86-64 resolves it as INT64_MIN. So "height": 1e300 reached
+    //    HeightPush as a negative number, through a field that is
+    //    arithmetically positive.
+    json::Value big;
+    std::string err;
+    checks++;
+    if (json::ParseLine("{\"height\":1e300}", big, err)) {
+        std::printf("  ok    1e300 parses as JSON, which it must\n");
+    } else {
+        failures++;
+        std::printf("  FAIL  1e300 did not parse: %s\n", err.c_str());
+    }
+    checks++;
+    try {
+        const int64_t got = big["height"].AsInt();
+        failures++;
+        std::printf("  FAIL  AsInt turned 1e300 into %lld\n", (long long)got);
+    } catch (const std::exception&) {
+        std::printf("  ok    AsInt refuses 1e300 rather than answering INT64_MIN\n");
+    }
+
+    // 3. End to end, on the first-poll path of --solo: the captured template
+    //    with one field changed and nothing else.
+    const std::string good(kTemplate);
+    const Bytes en1 = {0xde, 0xad, 0xbe, 0xef};
+    const char* const bad[] = { "\"height\":-1", "\"height\":1e300", "\"height\":0" };
+    const char* const says[] = {
+        "a template with height -1 is refused",
+        "a template with height 1e300 is refused",
+        "a template with height 0 is refused",
+    };
+    for (int i = 0; i < 3; i++) {
+        std::string s = good;
+        const size_t at = s.find("\"height\":89");
+        s.replace(at, std::string("\"height\":89").size(), bad[i]);
+        json::Value t2;
+        std::string e2;
+        checks++;
+        if (!json::ParseLine(s, t2, e2)) {
+            failures++;
+            std::printf("  FAIL  the edited template does not parse: %s\n", e2.c_str());
+            continue;
+        }
+        try {
+            BuildSoloTemplate(t2, "wamrt1q9uynnmupf5jl920vgztyef0v3esfjvdzfxfhyt",
+                              NetParamsFor("regtest"), "/wam-miner/", en1, 4);
+            failures++;
+            std::printf("  FAIL  %s -- it built a job\n", says[i]);
+        } catch (const std::exception&) {
+            std::printf("  ok    %s\n", says[i]);
+        }
+    }
+
+    // and the real one still builds, so the bound did not eat the chain
+    json::Value t3;
+    std::string e3;
+    checks++;
+    if (json::ParseLine(kTemplate, t3, e3)) {
+        try {
+            SoloTemplate st = BuildSoloTemplate(
+                t3, "wamrt1q9uynnmupf5jl920vgztyef0v3esfjvdzfxfhyt",
+                NetParamsFor("regtest"), "/wam-miner/", en1, 4);
+            if (st.job.height == 89) {
+                std::printf("  ok    the real template still builds at height 89\n");
+            } else {
+                failures++;
+                std::printf("  FAIL  the real template built at height %lld\n",
+                            (long long)st.job.height);
+            }
+        } catch (const std::exception& ex) {
+            failures++;
+            std::printf("  FAIL  the real template now throws: %s\n", ex.what());
+        }
+    } else {
+        failures++;
+        std::printf("  FAIL  the captured template does not parse: %s\n", e3.c_str());
+    }
+}
+
+// ---------------------------------------------------------------------------
+
 static void Is(bool got, bool want, const char* what)
 {
     checks++;
@@ -278,6 +401,7 @@ int main()
     std::printf("\nsolo_template_test\n");
     TestHeights();
     TestTemplate();
+    TestHostileNumbers();
     TestSameWork();
     std::printf("\n  %d checks, %d failure(s)\n\n", checks, failures);
     return failures ? 1 : 0;

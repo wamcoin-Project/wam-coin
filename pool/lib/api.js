@@ -15,7 +15,10 @@ const path = require('path');
 
 const {
     COIN, SUBSIDY_HALVING_INTERVAL, INITIAL_BLOCK_SUBSIDY_WAM, MAX_HALVINGS,
-    DEVFEE_PERCENT, DEVFEE_LAST_HEIGHT
+    DEVFEE_PERCENT, DEVFEE_LAST_HEIGHT,
+    // the local variable below is called nextHalvingHeight, so the
+    // shared rule comes in under a name that does not shadow it
+    nextHalvingHeight: nextHalving
 } = require('./constants');
 
 // The same validator the stratum server authorizes with. Two address checks in
@@ -490,8 +493,7 @@ class ApiServer {
                 : Math.floor(subsidy * DEVFEE_PERCENT / 100);
             nextHalvingHeight = fromNode('next_halving_height')
                 ? supply.next_halving_height
-                : (Math.floor(Math.max(0, height - 1) / supply.halving_interval) + 1)
-                  * supply.halving_interval;
+                : nextHalving(height, supply.halving_interval);
             halvings = fromNode('halving_epoch') ? supply.halving_epoch : 0;
             emissionSource = 'node';
         } else {
@@ -501,7 +503,7 @@ class ApiServer {
                 ? Math.floor((height - 1) / SUBSIDY_HALVING_INTERVAL) : 0;
             subsidy = halvings >= MAX_HALVINGS
                 ? 0 : Math.floor(INITIAL_BLOCK_SUBSIDY_WAM * COIN / Math.pow(2, halvings));
-            nextHalvingHeight = (halvings + 1) * SUBSIDY_HALVING_INTERVAL;
+            nextHalvingHeight = nextHalving(height);
             treasurySubsidy = (height >= 1 && height <= DEVFEE_LAST_HEIGHT)
                 ? Math.floor(subsidy * DEVFEE_PERCENT / 100) : 0;
             emissionSource = 'local';

@@ -35,8 +35,8 @@ The fee has a column of its own because a spend costs the treasury what it
 sent *and* what it paid to send it. A fee left out of the arithmetic is a
 number this file cannot be checked against, which defeats the point of it.
 
-At height 37,300 that is `2.5 × 37300 − 32,000.00000000 − 0.38078440 =
-61,249.61921560`, which is what `scantxoutset` returns, in 24,483 unspent
+At height 38,089 that is `2.5 × 38089 − 33,950.00000000 − 0.40409680 =
+61,272.09590320`, which is what `scantxoutset` returns, in 24,489 unspent
 outputs. Two independent routes to the same number, to the last decimal
 place.
 
@@ -77,6 +77,9 @@ place.
 | 2026-11-08 | **1025.00000000 WAM** | `0.01209240` | `wam1qt54j2luencxehpq89n9ta4csfq3qq00t274w5e` | Same bounty, 8 of 10. | txid `c0cbd210bfb31481fefa2e85258899c17f1f9cad81af5a13679a46c72a6c26dd` |
 | 2026-11-08 | **1025.00000000 WAM** | `0.01221080` | `wam1qt54j2luencxehpq89n9ta4csfq3qq00t274w5e` | Same bounty, 9 of 10. | txid `4a7cdfad30e52783a34f898771ac7b518e8b9e02a5dd19b8f2620804ed11e95b` |
 | 2026-11-08 | **1025.00000000 WAM** | `0.01221080` | `wam1qt54j2luencxehpq89n9ta4csfq3qq00t274w5e` | Same bounty, 10 of 10. | txid `b51311e341bcbbc1fa5e0b3a77e39874cddd9e827107e64cacea3fea29cfa509` |
+| 2026-11-09 | **900.00000000 WAM** | `0.01073080` | `wam1qt54j2luencxehpq89n9ta4csfq3qq00t274w5e` | Security bounty to bobbyning, three findings accepted 8 November 2026, each a different component and a different root cause, and each classified at the rung the reporter named himself. 400 for a denial of service on the node's headers path, where verifying one header costs this chain about twenty milliseconds of RandomX against the microsecond a double-SHA256 costs Bitcoin, and a punished address could reconnect and buy it again without limit. 250 for the treasury comment in `src/wam/chainparams.cpp`, which described the value underneath it as the opposite of what it decodes to. 250 for the reference miner hanging and growing without bound on one hostile `getblocktemplate` field. Measured on isolated regtest instances and his own machines; nothing was run against the live network. One transaction of 362 inputs, in block 38,089. | txid `262f1813d6483d5b1f7bec160d932f1120bf7bc4874d788edbdeef72e3361a0c` |
+| 2026-11-09 | **800.00000000 WAM** | `0.00954680` | `WSMbshr6iKbzQBEbk1WK5UxDcp2EK5Vszb` | Security bounty to Radenlingga (@stokraden45506), two findings accepted 9 November 2026, 400 each at the denial-of-service rung. The first: `recordBlock` committed a found block as four commands in a redis pipeline and never read the replies, so a refused write could destroy the round while the payout table was never written, and the function reported success. The second, found the next morning by reading the fix for the first: the 8 November change that made the miner's `AsInt()` refuse an impossible number refused it by throwing, and the stratum path caught nothing — so one line from a hostile pool, or from anyone on a path this miner speaks no TLS over, ended the process. Both reproduced against this repository's own sources on 127.0.0.1; nothing touched the live pool or the network. One transaction of 322 inputs, in block 38,089. | txid `c3429df273b5e5eb03cb4c35271e9396cd634498ab902196c72ede83cc08fd15` |
+| 2026-11-09 | **250.00000000 WAM** | `0.00303480` | `Wd2cHTHQFNVKdoZJQJcPd1KvPTkPESjDPE` | Security bounty to 0xzerocomp, accepted 8 November 2026: the block spool was emptied at the start of the window it exists to cover, so the one crash it was built to survive — between the node accepting a block and the payout record being written — lost the block anyway. Reported with a harness driving the real JobManager. One transaction of 102 inputs, in block 38,089. | txid `1a5498938994237fe6ce9bc5c87767521bd52befc0b980a4e6563d1670ecdc33` |
 
 The treasury is paid one output per block and never consolidated, so every
 spend above is built from 2.5 WAM outputs and nothing else: the 500 WAM line
@@ -85,8 +88,8 @@ is also why a bounty leaves in instalments rather than at once — 10,000 WAM in
 one transaction is about 4,000 inputs and 590 KB, six times the standard size
 limit, and no node would relay it.
 
-**Balance after the last line:** `61,249.61921560 WAM` in 24,483 unspent
-outputs, at height 37,300.
+**Balance after the last line:** `61,272.09590320 WAM` in 24,489 unspent
+outputs, at height 38,089.
 
 ---
 

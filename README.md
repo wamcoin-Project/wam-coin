@@ -83,16 +83,16 @@ curl -fs localhost:8081/api/health || echo "WAM node is down"
 
 ## Project status
 
-**Testnet is live. Mainnet launches 2026-09-15 00:00 UTC.**
+**Mainnet is live since 2026-09-15 00:00 UTC. The testnet still runs.**
 
 | | |
 |---|---|
-| Consensus code | compiles; 29 Boost tests pass |
+| Consensus code | compiles; 35 Boost tests pass |
 | Testnet | running, seed nodes in France and Singapore, found by DNS |
 | Mainnet genesis | mined and committed — `d8d3debe…` |
 | Founder key | generated offline, on paper, never on a networked machine |
 | Founder reserve | fully time-locked; nothing spendable at launch |
-| Release | [v0.1.13](https://wamcoin.org/downloads/), built and published by CI from a tag |
+| Release | [v0.1.14](https://wamcoin.org/downloads/), built and published by CI from a tag |
 | Independent review | two developers outside the project, both still reading — [findings and what changed](review/REVIEW_RESPONSE.md) |
 | Registry | [SLIP-0044](https://github.com/satoshilabs/slips/blob/master/slip-0044.md) coin type **5718349** and [SLIP-0173](https://github.com/satoshilabs/slips/blob/master/slip-0173.md) prefix **`wam`** — merged into SatoshiLabs' registry, 2026-08-26 |
 | Paid security audit | **none** |

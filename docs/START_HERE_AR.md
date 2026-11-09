@@ -126,14 +126,14 @@ WAM نقودٌ لا تُصدرها شركة ولا يحفظها مصرف.
 ### التنزيل
 
 ```bash
-curl -LO https://wamcoin.org/downloads/v0.1.13/wam-coin-v0.1.13-x86_64-linux-gnu.tar.gz
-curl -LO https://wamcoin.org/downloads/v0.1.13/SHA256SUMS
+curl -LO https://wamcoin.org/downloads/v0.1.14/wam-coin-v0.1.14-x86_64-linux-gnu.tar.gz
+curl -LO https://wamcoin.org/downloads/v0.1.14/SHA256SUMS
 ```
 
 ### تأكّد أنه ملفّنا فعلاً
 
 ```bash
-curl -LO https://wamcoin.org/downloads/v0.1.13/SHA256SUMS.asc
+curl -LO https://wamcoin.org/downloads/v0.1.14/SHA256SUMS.asc
 curl -LO https://wamcoin.org/verify_release.sh
 curl -LO https://wamcoin.org/SIGNING-KEY.asc
 bash verify_release.sh .
@@ -146,8 +146,8 @@ bash verify_release.sh .
 ### الفكّ والتشغيل
 
 ```bash
-tar -xzf wam-coin-v0.1.13-x86_64-linux-gnu.tar.gz
-cd wam-coin-v0.1.13/bin
+tar -xzf wam-coin-v0.1.14-x86_64-linux-gnu.tar.gz
+cd wam-coin-v0.1.14/bin
 ./wamd -printtoconsole
 ```
 
@@ -378,13 +378,13 @@ cp /path/to/your/backup.dat ~/.wam/wallets/mine/wallet.dat
 
 | الأرشيف | ما فيه |
 |---|---|
-| `wam-coin-v0.1.13-…` | `wamd` و`wam-cli` — العقدة |
-| `wam-miner-v0.1.13-…` | `wam-miner` — المعدّن وحده |
+| `wam-coin-v0.1.14-…` | `wamd` و`wam-cli` — العقدة |
+| `wam-miner-v0.1.14-…` | `wam-miner` — المعدّن وحده |
 
 ```bash
-curl -LO https://wamcoin.org/downloads/v0.1.13/wam-miner-v0.1.13-x86_64-linux-gnu.tar.gz
-tar -xzf wam-miner-v0.1.13-x86_64-linux-gnu.tar.gz
-cd wam-miner-v0.1.13
+curl -LO https://wamcoin.org/downloads/v0.1.14/wam-miner-v0.1.14-x86_64-linux-gnu.tar.gz
+tar -xzf wam-miner-v0.1.14-x86_64-linux-gnu.tar.gz
+cd wam-miner-v0.1.14
 chmod +x wam-miner
 ```
 
@@ -516,9 +516,9 @@ stats    3.41 kH/s   accepted 20  rejected 0  blocks 1
 **[gitlab.com/WAMCoin/wam-coin](https://gitlab.com/WAMCoin/wam-coin)**
 ← **Watch ▾** ← **Custom** ← **Releases** ✓
 
-وهذا أهمّ ممّا يبدو. WAM قبل الإطلاق، وبعض الإصدارات تُغيّر **قاعدة إجماع** —
-فـ`v0.1.5` نقلت عنوان خزينة الشبكة الرئيسية، وعقدةٌ تبقى على `v0.1.4` سترفض
-كل كتلةٍ صحيحة يوم الإطلاق وتنفصل عن الشبكة عند الكتلة الأولى.
+وهذا أهمّ ممّا يبدو. بعض الإصدارات تُغيّر **قاعدة إجماع** — فـ`v0.1.5` نقلت
+عنوان خزينة الشبكة الرئيسية قبل الإطلاق، وعقدةٌ تبقى على `v0.1.4` كانت سترفض
+كل كتلةٍ صحيحة من الكتلة الأولى وتنفصل عن الشبكة. وقد يأتي إصدارٌ كهذا في أيّ وقت.
 
 وعقدتك تنتبه في النهاية. يُطلق Core تحذيراً حين يتجاوز عملُ السلسلة التي
 ترفضها عملَ قمّتها بستّ كتل — نحو اثنتي عشرة دقيقة عند كتلةٍ كل دقيقتين —
@@ -529,7 +529,7 @@ Warning: We do not appear to fully agree with our peers!
 You may need to upgrade, or other nodes may need to upgrade.
 ```
 
-لكنه في السجلّ وفي `getnetworkinfo`، وهذا الإصدار بلا واجهة رسومية، ولا أحد
+لكنه في السجلّ وفي `getnetworkinfo`، ولا أحد
 يراقب عقدةً تعمل بهدوء منذ أسبوع. أمّا إشعار الإصدار فيصلك **في المكان الذي
 أخذت منه البرنامج**، قبل أن يحدث أيٌّ من ذلك.
 

@@ -221,6 +221,21 @@ run "supply arithmetic"          "$PY" scripts/verify_supply.py
 run "pool, miner and node agree on addresses" \
     "$PY" scripts/check_address_agreement.py
 
+# And the phone runs the same miner as the desktop. contrib/ carries its own
+# copy of miner/src for the Gradle build, and on 8 November two reported and
+# paid JSON faults were fixed in one of the two trees. The announcement was
+# true of one copy; the hang it described was still in the sources of the
+# app. An outsider found it by diffing, because nothing here was.
+run "the phone runs the same miner" \
+    "$PY" scripts/check_android_miner.py
+
+# And the miner's own tests are actually run. Until 9 November 2026 nothing
+# in this repository opened miner/test/ -- three test programs, one of them
+# extended the day before to hold down a paid finding, and no gate that could
+# have told us whether any of them still passed.
+run "the miner's unit tests" \
+    bash scripts/test_miner.sh
+
 # How much has been paid in bounties is stated in four places by hand. On
 # 2026-10-13 the front page's footer said 21,000 WAM, which was right and
 # counted three payments, while the paragraph directly above it said the
@@ -323,6 +338,13 @@ run "no page promises and forgets"  "$PY" scripts/check_promises.py
 # front page anyway, because nothing compared a claim about money to
 # docs/TREASURY_LEDGER.md.
 run "treasury claims match the ledger" "$PY" scripts/check_treasury_claims.py
+
+# And two plans cut in one sitting cannot take the same coin. --parts keeps
+# the parts of one payment apart; until 9 November nothing kept two separate
+# plans apart, and three people were owed that day. The failure would have
+# arrived at broadcast, after the key had been used.
+run "two plans cannot spend one output" \
+    "$PY" scripts/test/test_treasury_exclude.py
 
 # That one reads what we SAY about the money. This reads the LEDGER itself,
 # against the chain, and it is the half that was missing. docs/TREASURY_LEDGER.md

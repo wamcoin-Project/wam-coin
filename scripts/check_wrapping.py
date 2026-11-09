@@ -141,6 +141,13 @@ PUBLISHED = (
     "posts/v0.1.10",
     "posts/v0.1.12",
     "posts/bounty-address-validation",
+    # The 10,250 paid to bobbyning on 8 November, announced in every channel
+    # the same day, and the tier change that went out beside it. Hand-wrapped
+    # for Discord, Telegram and X, which is the fault this check is for -- but
+    # people have read them at that width already, and editing a file to match
+    # a message nobody will see again is tidying, not honesty. The next draft
+    # is where the rule bites.
+    "posts/bounty-payment-commit",
 )
 
 # A line is "wrapped" when it is long, stops mid-sentence, and has more text

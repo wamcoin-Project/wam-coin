@@ -160,6 +160,35 @@ def main() -> int:
         print(f"          ... and {len(extra) - 12} more")
 
     print()
+    if extra and not missing:
+        # THE FILE KNOWS SOMETHING THIS BINARY DOES NOT, AND THAT IS USUALLY
+        # THE BINARY'S FAULT.
+        #
+        # Options only ever leave a node when a build turns a capability off.
+        # So a file listing more than the binary accepts most often means the
+        # binary was configured without something the release has -- and the
+        # old advice here, "regenerate it", would then DELETE those options
+        # from the file.
+        #
+        # On 9 November 2026 that was ten lines away from happening: the node
+        # built on this project's WSL by install.sh has no ZMQ, so it accepted
+        # 126 options against the file's 136, and the ten it did not know were
+        # -zmqpub* -- the entire reason v0.1.13 exists. Regenerating would have
+        # removed them and the check would then have passed.
+        #
+        # The direction decides the advice. Nothing is regenerated from a
+        # binary that is missing things.
+        print(f"  {RED}{BLD}this binary accepts fewer options than the file "
+              f"documents{OFF}")
+        print("  DO NOT regenerate from it. Check first whether the binary is")
+        print("  the incomplete one: a node built without ZMQ, without the")
+        print("  wallet, or without the GUI accepts fewer options than a")
+        print("  release does, and regenerating would delete what it lacks.")
+        print()
+        print("  If this binary IS a full release build, then the options")
+        print("  above were genuinely removed and the file should be rebuilt:")
+        print(f"      bash scripts/gen_wam_conf.sh {wamd.parent}\n")
+        return 1
     if missing or extra:
         print(f"  {RED}{BLD}the example configuration is out of date{OFF}")
         print("  Regenerate it rather than editing the list by hand:")

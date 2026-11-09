@@ -1,0 +1,148 @@
+WAM Coin v0.1.14 — a peer you have already punished cannot buy any more of your node's time
+
+THIS IS THE FILE THE ANNOUNCEMENT BOT READS. Read the warning before editing.
+
+    git tag -a v0.1.14 -F posts/v0.1.14/TAG_MESSAGE.txt
+
+The annotated tag message becomes the release notes, and bots/announce.js
+posts the FIRST WHOLE PARAGRAPHS THAT FIT IN TWELVE LINES to Telegram and
+Discord, automatically, the moment the release is published. Nobody reviews
+it in between.
+
+So the first two paragraphs below have to make sense on their own, to somebody
+who sees nothing else. Everything after them is for the release page.
+
+THERE IS NO MANDATORY: LINE IN THIS RELEASE, AND ONE MUST NOT BE ADDED.
+
+Every node on v0.1.13 should take this one, and that is not the same thing.
+MANDATORY means a node that stays behind leaves the chain — v0.1.5 moved the
+mainnet treasury address, and a node left on v0.1.4 would have rejected every
+valid block and forked itself off at height 1, still running and still mining,
+alone. Nothing here touches a consensus rule. WAM-027 decides which PEER a
+node will spend work on; two nodes, one with it and one without, agree on
+exactly the same blocks. A node that does not update is not on another chain.
+It is just reachable, and this release is why it should not stay that way.
+
+Spending the word on a release that does not need it is how it stops meaning
+anything on the release that does.
+
+------------------------------------------------------------------------------
+
+Update your node. Verifying one block header costs this chain about twenty
+milliseconds of RandomX, where Bitcoin spends a microsecond, and a peer could
+buy that again and again for ninety bytes a time: the node punished the
+address and then served its next connection anyway. Headers from a discouraged
+peer are now dropped before any proof of work is touched.
+
+Found by bobbyning, who read the code without running anything against the
+network. The same release stops one line from a pool killing the reference
+miner, and corrects a halving figure the channels were publishing a block
+early. Node, wam-miner and the wam-qt wallet, for Linux, Windows and macOS.
+Five findings, three people, 1,950 WAM paid on 9 November.
+
+THE LONGER VERSION
+------------------
+
+The header only had to name our tip as its parent, which is public, and carry
+the difficulty anyone can compute. The address was discouraged on the first
+bad header and CConnman accepted its next connection regardless, because an
+inbound slot was free -- upstream means that leniency and it costs upstream a
+microsecond. It cost us the whole defence. Held down by
+test/functional/feature_wam_header_dos.py, which connects from an address the
+node will not call local, because a loopback peer is never discouraged and a
+test written on the loopback would have passed against the unfixed node for
+the wrong reason.
+
+**The reference miner would also die on one line from a pool.** On 8 November
+a fix stopped it reading an impossible number out of a template; the fix threw
+where nothing caught, and four places on the stratum path handed a pool's
+number straight into it. One line — `{"id":1e300,...}` — ended the process,
+and this miner speaks no TLS, so anyone on the path could send it. Three of
+those four had already written down what they wanted instead and were thrown
+past anyway. A value that cannot be an integer is still refused; who it is
+refused to is the caller's decision now, and a line the miner cannot
+understand costs a log line rather than the miner.
+
+Found by Radenlingga, the morning after the fix that caused it shipped, by
+reading the fix.
+
+WHAT ELSE IS IN IT
+------------------
+
+**The phone runs the same miner as the desktop.** contrib/wam-miner-android
+keeps its own copy of the miner's sources for the Gradle build, and the
+8 November fixes went into one of the two trees. For a day the announcement
+was true of the desktop and the hang it described was still sitting in the
+sources of the app. Both copies are now identical byte for byte except two
+lines that are written down, and a check refuses any third difference.
+
+**getsupplyinfo named the last block of the old epoch as the next halving.**
+Standing at regtest height 150 it said the halving was there while the node
+still paid 50 WAM; 151 was the first block to pay 25. On mainnet it named
+200,000 when the subsidy falls at 200,001, and the countdown reached zero a
+block early. Found by dang150296 in a second independent review that rebuilt
+the patched Core and ran native regtest — and when the RPC was fixed he found
+the same arithmetic written out four more times, in the explorer and the
+pool's API, in the branches that run when the node cannot be asked. It is one
+function per package now rather than five copies of an expression.
+
+**Six tests that were built into every binary and never run.**
+wam_vesting_tests puts the founder reserve's time locks to the script
+interpreter: refused before each unlock date with the exact locktime error,
+accepted on it, and both known ways to defeat CLTV rejected. Every command in
+this repository that ran the unit tests named two suites and not that one, so
+./install.sh and both platform builds compiled them and asked nothing. They run
+now — the form is `--run_test='wam_*'`, which is what ./CONTRIBUTING.md has
+always told contributors to use — and they pass, 6 of 6, with 35 of 35 across
+all seven suites. Reported by bobbyning.
+
+**And the pool.** A found block was committed through a redis pipeline whose
+replies nobody read, so a refused write could destroy the round that was the
+only record of who had earned what, while the function reported success and
+the crash-recovery entry was released with it. Reported by Radenlingga. The
+block spool was emptied at the start of the window it exists to cover;
+reported by 0xzerocomp. Both are already live on the pool and neither needs
+this release — they are here because this is where the release notes say what
+changed.
+
+FIVE FINDINGS, THREE PEOPLE, 1,950 WAM
+--------------------------------------
+
+Everything above except the Android copy and the halving arithmetic was
+reported by somebody outside this project, and paid on 9 November in three
+transactions in block 38,089. The amounts, the reasons and the transaction
+ids are in docs/TREASURY_LEDGER.md; the findings and how each was classified
+are in ./SECURITY.md.
+
+Two of the people who found these things asked for nothing at all for part of
+their work. That is recorded too, in the commits, because it is part of what
+happened.
+
+DOWNLOADS
+---------
+
+Node, miner and wallet, for Linux, Windows and macOS:
+
+    wam-coin-v0.1.14-x86_64-linux-gnu.tar.gz
+    wam-coin-v0.1.14-x86_64-w64-mingw32.zip
+    wam-coin-v0.1.14-arm64-apple-darwin.tar.gz
+
+    wam-miner-v0.1.14-x86_64-linux-gnu.tar.gz
+    wam-miner-v0.1.14-x86_64-w64-mingw32.zip
+    wam-miner-v0.1.14-arm64-apple-darwin.tar.gz
+
+    wam-qt-v0.1.14-x86_64-linux-gnu.tar.gz
+    wam-qt-v0.1.14-x86_64-w64-mingw32.zip
+    wam-qt-v0.1.14-arm64-apple-darwin.tar.gz
+
+The wallet is a separate download so that a node is not several times larger
+for the people who never open a window.
+
+VERIFY IT
+---------
+
+    bash scripts/verify_release.sh v0.1.14
+
+SHA256SUMS.asc is a signature over SHA256SUMS and nothing else. If a file you
+downloaded is not named in that list, it is covered by nothing — check the
+list before you run anything.

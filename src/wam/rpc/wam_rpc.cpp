@@ -108,9 +108,36 @@ static RPCHelpMan getsupplyinfo()
             const CAmount vested = wam::GetVestedPremine(nTipTime);
             const CAmount locked = consensus.nGenesisPremine - vested;
 
+            // THE FIRST BLOCK THAT PAYS LESS, NOT THE LAST THAT PAYS FULL.
+            //
+            // GetBlockSubsidy counts halvings as (nHeight - 1) / interval,
+            // because block 0 mints the premine and would otherwise sit
+            // inside epoch 0 and leave that epoch one block short. So epoch
+            // e begins at e * interval + 1, and the + 1 below is that same
+            // offset read back out.
+            //
+            // Without it this reported the last block of the CURRENT epoch:
+            // on regtest, standing at height 150, "next halving 150" and
+            // "0 blocks until halving" -- while block 150 still paid 50 WAM
+            // and 151 was the first to pay 25. On mainnet it names 200,000
+            // when the subsidy falls at 200,001.
+            //
+            // It is not a consensus or payout fault; the arithmetic that
+            // pays miners was always right. It is a number we publish:
+            // explorer/lib/collector.js serves it and bots/announce.js
+            // posts "Next halving in N blocks" from it, so the wrong one
+            // reaches the channels and the explorer rather than stopping at
+            // an RPC nobody calls.
+            //
+            // Found by dang150296 (Urriki1502) on 9 November 2026, in a
+            // second independent review of v0.1.13 that rebuilt the patched
+            // Core and ran native regtest. He reported it, priced it at
+            // nothing, and was right about the severity and modest about
+            // the reach.
             const int epoch = (height >= 1)
                 ? (height - 1) / consensus.nSubsidyHalvingInterval : 0;
-            const int nextHalving = (epoch + 1) * consensus.nSubsidyHalvingInterval;
+            const int nextHalving =
+                (epoch + 1) * consensus.nSubsidyHalvingInterval + 1;
 
             UniValue out(UniValue::VOBJ);
             out.pushKV("height", height);

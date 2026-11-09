@@ -138,14 +138,14 @@ The rest of this page is the terminal. Everything in it still applies.
 ### Download it
 
 ```bash
-curl -LO https://wamcoin.org/downloads/v0.1.13/wam-coin-v0.1.13-x86_64-linux-gnu.tar.gz
-curl -LO https://wamcoin.org/downloads/v0.1.13/SHA256SUMS
+curl -LO https://wamcoin.org/downloads/v0.1.14/wam-coin-v0.1.14-x86_64-linux-gnu.tar.gz
+curl -LO https://wamcoin.org/downloads/v0.1.14/SHA256SUMS
 ```
 
 ### Check that it is really our file
 
 ```bash
-curl -LO https://wamcoin.org/downloads/v0.1.13/SHA256SUMS.asc
+curl -LO https://wamcoin.org/downloads/v0.1.14/SHA256SUMS.asc
 curl -LO https://wamcoin.org/verify_release.sh
 curl -LO https://wamcoin.org/SIGNING-KEY.asc
 bash verify_release.sh .
@@ -158,8 +158,8 @@ it is the only thing standing between you and a file somebody else swapped in.
 ### Unpack and run
 
 ```bash
-tar -xzf wam-coin-v0.1.13-x86_64-linux-gnu.tar.gz
-cd wam-coin-v0.1.13/bin
+tar -xzf wam-coin-v0.1.14-x86_64-linux-gnu.tar.gz
+cd wam-coin-v0.1.14/bin
 ./wamd -printtoconsole
 ```
 
@@ -406,14 +406,14 @@ end.
 
 | archive | what is in it |
 |---|---|
-| `wam-coin-v0.1.13-…` | `wamd`, `wam-cli` — the node |
-| `wam-miner-v0.1.13-…` | `wam-miner` — the miner, and nothing else |
+| `wam-coin-v0.1.14-…` | `wamd`, `wam-cli` — the node |
+| `wam-miner-v0.1.14-…` | `wam-miner` — the miner, and nothing else |
 | `wam-qt-v0.1.11-…` | `wam-qt` — the wallet, with a window |
 
 ```bash
-curl -LO https://wamcoin.org/downloads/v0.1.13/wam-miner-v0.1.13-x86_64-linux-gnu.tar.gz
-tar -xzf wam-miner-v0.1.13-x86_64-linux-gnu.tar.gz
-cd wam-miner-v0.1.13
+curl -LO https://wamcoin.org/downloads/v0.1.14/wam-miner-v0.1.14-x86_64-linux-gnu.tar.gz
+tar -xzf wam-miner-v0.1.14-x86_64-linux-gnu.tar.gz
+cd wam-miner-v0.1.14
 chmod +x wam-miner
 ```
 
@@ -558,10 +558,10 @@ Subscribe to releases on the repository:
 **[gitlab.com/WAMCoin/wam-coin](https://gitlab.com/WAMCoin/wam-coin)**
 → **Watch ▾** → **Custom** → **Releases** ✓
 
-This matters more than it sounds. WAM is pre-launch, and some releases change
-a consensus rule — v0.1.5 moved the mainnet treasury address, and a node left
-on v0.1.4 will reject every valid block on launch day and fork itself off the
-network at height 1.
+This matters more than it sounds. Some releases change a consensus rule —
+v0.1.5 moved the mainnet treasury address before launch, and a node left on
+v0.1.4 would have rejected every valid block from height 1 and forked itself
+off the network. The next such release can arrive at any time.
 
 Your node does eventually notice. Core raises a warning once the chain it is
 rejecting is about six blocks of work ahead — roughly twelve minutes, at
@@ -572,9 +572,8 @@ Warning: We do not appear to fully agree with our peers!
 You may need to upgrade, or other nodes may need to upgrade.
 ```
 
-But that lives in the log and in `getnetworkinfo`, this release ships without
-a graphical interface, and nobody watches a node that has been quietly working
-for a week. A release notification arrives where you got the software, before
+But that lives in the log and in `getnetworkinfo`, and nobody watches a node
+that has been quietly working for a week. A release notification arrives where you got the software, before
 any of that happens.
 
 You can also read it from the node itself at any time:

@@ -77,15 +77,15 @@ hr{border:0;border-top:1px solid var(--rule);margin:2.2rem 0}
 <p><strong>Every command here is for the live chain.</strong> Mainnet opened at 00:00 UTC on 15 September 2026 and these coins are real ones. This page taught the test network until 19 September, with mainnet as an afterthought at the bottom -- so a reader who followed it from the top made a <code>twam1</code> address, pointed it at the live pool, and hashed for nothing until he reached a paragraph explaining why. The test network still exists for people developing against it; it is not on this page, and it is not where you start.</p>
 <p>The Linux commands are first because they are the ones strangers have been running since August. <a href="#windows">Windows</a> and <a href="#macos">macOS</a> are below them and both are new in v0.1.8 — including what each operating system will say about the files when you first run them, which is explained there rather than left to surprise you.</p>
 <h2 id="linux-nine-lines">Linux — nine lines</h2>
-<pre><code>curl -LO https://wamcoin.org/downloads/v0.1.13/wam-coin-v0.1.13-x86_64-linux-gnu.tar.gz
-curl -LO https://wamcoin.org/downloads/v0.1.13/wam-miner-v0.1.13-x86_64-linux-gnu.tar.gz
-curl -LO https://wamcoin.org/downloads/v0.1.13/SHA256SUMS
-curl -LO https://wamcoin.org/downloads/v0.1.13/SHA256SUMS.asc
+<pre><code>curl -LO https://wamcoin.org/downloads/v0.1.14/wam-coin-v0.1.14-x86_64-linux-gnu.tar.gz
+curl -LO https://wamcoin.org/downloads/v0.1.14/wam-miner-v0.1.14-x86_64-linux-gnu.tar.gz
+curl -LO https://wamcoin.org/downloads/v0.1.14/SHA256SUMS
+curl -LO https://wamcoin.org/downloads/v0.1.14/SHA256SUMS.asc
 curl -LO https://wamcoin.org/verify_release.sh
 curl -LO https://wamcoin.org/SIGNING-KEY.asc
 bash verify_release.sh .
-tar -xzf wam-coin-v0.1.13-x86_64-linux-gnu.tar.gz &amp;&amp; tar -xzf wam-miner-v0.1.13-x86_64-linux-gnu.tar.gz
-cd wam-coin-v0.1.13/bin
+tar -xzf wam-coin-v0.1.14-x86_64-linux-gnu.tar.gz &amp;&amp; tar -xzf wam-miner-v0.1.14-x86_64-linux-gnu.tar.gz
+cd wam-coin-v0.1.14/bin
 ./wamd -daemon
 ./wam-cli createwallet "mine"
 ./wam-cli -rpcwallet=mine getnewaddress</code></pre>
@@ -111,13 +111,13 @@ ls ~/.wam/wallets/              # what exists on disk
 <h2 id="windows">Windows</h2>
 <p>Since v0.1.8 there are Windows binaries, node and miner, and they need no WSL and no Linux. Open PowerShell and work in a folder you choose:</p>
 <pre><code>mkdir C:\wam ; cd C:\wam
-curl.exe -LO https://wamcoin.org/downloads/v0.1.13/wam-coin-v0.1.13-x86_64-w64-mingw32.zip
-curl.exe -LO https://wamcoin.org/downloads/v0.1.13/wam-miner-v0.1.13-x86_64-w64-mingw32.zip
-curl.exe -LO https://wamcoin.org/downloads/v0.1.13/SHA256SUMS
-Expand-Archive wam-coin-v0.1.13-x86_64-w64-mingw32.zip -DestinationPath .
-Expand-Archive wam-miner-v0.1.13-x86_64-w64-mingw32.zip -DestinationPath .</code></pre>
+curl.exe -LO https://wamcoin.org/downloads/v0.1.14/wam-coin-v0.1.14-x86_64-w64-mingw32.zip
+curl.exe -LO https://wamcoin.org/downloads/v0.1.14/wam-miner-v0.1.14-x86_64-w64-mingw32.zip
+curl.exe -LO https://wamcoin.org/downloads/v0.1.14/SHA256SUMS
+Expand-Archive wam-coin-v0.1.14-x86_64-w64-mingw32.zip -DestinationPath .
+Expand-Archive wam-miner-v0.1.14-x86_64-w64-mingw32.zip -DestinationPath .</code></pre>
 <p><strong>Check it before you run it.</strong> One command, and it is the only step here that cannot be checked afterwards:</p>
-<pre><code>curl.exe -LO https://wamcoin.org/downloads/v0.1.13/SHA256SUMS.asc
+<pre><code>curl.exe -LO https://wamcoin.org/downloads/v0.1.14/SHA256SUMS.asc
 curl.exe -LO https://wamcoin.org/SIGNING-KEY.asc
 curl.exe -LO https://wamcoin.org/verify_release.ps1
 powershell -ExecutionPolicy Bypass -File verify_release.ps1</code></pre>
@@ -125,7 +125,7 @@ powershell -ExecutionPolicy Bypass -File verify_release.ps1</code></pre>
 <p>This page used to tell you to run <code>certutil -hashfile</code> and compare sixty-four hexadecimal characters against <code>SHA256SUMS</code> by eye. Nobody does that: people check the first four characters and the last four, which is the check an attacker would design for. The script compares every one of them, and then does the part <code>certutil</code> cannot — it verifies that <code>SHA256SUMS</code> itself is ours, by the fingerprint published in <a href="/security/">SECURITY.md</a>.</p>
 <p>That last part needs GnuPG, which Windows does not ship. If you have <a href="https://gitforwindows.org/">Git for Windows</a> you already have one and the script finds it; otherwise install <a href="https://gpg4win.org/">Gpg4win</a>. Without it the script checks the hashes, tells you the signature was <strong>not</strong> checked, and exits without saying the release is good — because a matching hash against an unsigned list proves your download is not corrupt and proves nothing about who wrote the list.</p>
 <p>Then the node, with the directory named explicitly so you always know where the wallet is:</p>
-<pre><code>cd wam-coin-v0.1.13\bin
+<pre><code>cd wam-coin-v0.1.14\bin
 .\wamd.exe -datadir=C:\wam\data
 .\wam-cli.exe -datadir=C:\wam\data createwallet "mine"
 .\wam-cli.exe -datadir=C:\wam\data -rpcwallet=mine backupwallet C:\wam\wallet-backup.dat
@@ -171,18 +171,18 @@ echo server=1&gt; %LOCALAPPDATA%\WAM\wam.conf</code></pre>
 <p><strong>And one thing you should know before you start, because we would want to know it.</strong> These binaries are built on an Apple machine — a macOS runner — and on that machine they sync this chain from its genesis block before the archive is allowed to be published. What has <strong>not</strong> happened is a person sitting at a Mac they own, opening them, and using the wallet. Nobody on this project owns a Mac.</p>
 <p>So if you are that person: tell us what happened, whether it worked or not. The security contact is in <code>SECURITY.md</code>, and the channels are on the website. A first report from a platform we do not own is worth more to us than anything we can measure ourselves.</p>
 <pre><code>mkdir -p ~/wam &amp;&amp; cd ~/wam
-curl -LO https://wamcoin.org/downloads/v0.1.13/wam-coin-v0.1.13-arm64-apple-darwin.tar.gz
-curl -LO https://wamcoin.org/downloads/v0.1.13/wam-miner-v0.1.13-arm64-apple-darwin.tar.gz
-curl -LO https://wamcoin.org/downloads/v0.1.13/SHA256SUMS
-curl -LO https://wamcoin.org/downloads/v0.1.13/SHA256SUMS.asc
+curl -LO https://wamcoin.org/downloads/v0.1.14/wam-coin-v0.1.14-arm64-apple-darwin.tar.gz
+curl -LO https://wamcoin.org/downloads/v0.1.14/wam-miner-v0.1.14-arm64-apple-darwin.tar.gz
+curl -LO https://wamcoin.org/downloads/v0.1.14/SHA256SUMS
+curl -LO https://wamcoin.org/downloads/v0.1.14/SHA256SUMS.asc
 curl -LO https://wamcoin.org/SIGNING-KEY.asc
 curl -LO https://wamcoin.org/verify_release.sh
 bash verify_release.sh .</code></pre>
 <p><code>verify_release.sh</code> needs GnuPG, which macOS does not ship: <code>brew install gnupg</code> first, or the script will tell you the signature was <strong>not</strong> checked and exit without calling the release good. It should end with <code>this is the WAM release, unmodified since it was signed</code>.</p>
 <p>Then:</p>
-<pre><code>tar -xzf wam-coin-v0.1.13-arm64-apple-darwin.tar.gz
-tar -xzf wam-miner-v0.1.13-arm64-apple-darwin.tar.gz
-cd wam-coin-v0.1.13/bin
+<pre><code>tar -xzf wam-coin-v0.1.14-arm64-apple-darwin.tar.gz
+tar -xzf wam-miner-v0.1.14-arm64-apple-darwin.tar.gz
+cd wam-coin-v0.1.14/bin
 ./wamd -datadir=$HOME/wam/data -daemon
 ./wam-cli -datadir=$HOME/wam/data createwallet "mine"
 ./wam-cli -datadir=$HOME/wam/data -rpcwallet=mine backupwallet $HOME/wam/wallet-backup.dat
@@ -200,7 +200,7 @@ cd wam-coin-v0.1.13/bin
 <pre><code>xattr -d com.apple.quarantine ./wamd ./wam-cli ./wam-miner</code></pre>
 <p>That removes the <em>downloaded-from-the-internet</em> mark from those three files and nothing else. It is not "disable Gatekeeper", it is not <code>sudo</code>, and it does not change a system setting. Do it only for files whose signature you have just checked, and never because a stranger told you to.</p>
 <h2 id="the-one-line-that-is-not-optional">The one line that is not optional</h2>
-<pre><code>curl -LO https://wamcoin.org/downloads/v0.1.13/SHA256SUMS.asc
+<pre><code>curl -LO https://wamcoin.org/downloads/v0.1.14/SHA256SUMS.asc
 curl -LO https://wamcoin.org/verify_release.sh
 curl -LO https://wamcoin.org/SIGNING-KEY.asc
 bash verify_release.sh .</code></pre>
