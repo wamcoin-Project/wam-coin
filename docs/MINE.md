@@ -28,15 +28,15 @@ than left to surprise you.
 ## Linux — nine lines
 
 ```
-curl -LO https://wamcoin.org/downloads/v0.1.13/wam-coin-v0.1.13-x86_64-linux-gnu.tar.gz
-curl -LO https://wamcoin.org/downloads/v0.1.13/wam-miner-v0.1.13-x86_64-linux-gnu.tar.gz
-curl -LO https://wamcoin.org/downloads/v0.1.13/SHA256SUMS
-curl -LO https://wamcoin.org/downloads/v0.1.13/SHA256SUMS.asc
+curl -LO https://wamcoin.org/downloads/v0.1.14/wam-coin-v0.1.14-x86_64-linux-gnu.tar.gz
+curl -LO https://wamcoin.org/downloads/v0.1.14/wam-miner-v0.1.14-x86_64-linux-gnu.tar.gz
+curl -LO https://wamcoin.org/downloads/v0.1.14/SHA256SUMS
+curl -LO https://wamcoin.org/downloads/v0.1.14/SHA256SUMS.asc
 curl -LO https://wamcoin.org/verify_release.sh
 curl -LO https://wamcoin.org/SIGNING-KEY.asc
 bash verify_release.sh .
-tar -xzf wam-coin-v0.1.13-x86_64-linux-gnu.tar.gz && tar -xzf wam-miner-v0.1.13-x86_64-linux-gnu.tar.gz
-cd wam-coin-v0.1.13/bin
+tar -xzf wam-coin-v0.1.14-x86_64-linux-gnu.tar.gz && tar -xzf wam-miner-v0.1.14-x86_64-linux-gnu.tar.gz
+cd wam-coin-v0.1.14/bin
 ./wamd -daemon
 ./wam-cli createwallet "mine"
 ./wam-cli -rpcwallet=mine getnewaddress
@@ -128,18 +128,18 @@ and no Linux. Open PowerShell and work in a folder you choose:
 
 ```
 mkdir C:\wam ; cd C:\wam
-curl.exe -LO https://wamcoin.org/downloads/v0.1.13/wam-coin-v0.1.13-x86_64-w64-mingw32.zip
-curl.exe -LO https://wamcoin.org/downloads/v0.1.13/wam-miner-v0.1.13-x86_64-w64-mingw32.zip
-curl.exe -LO https://wamcoin.org/downloads/v0.1.13/SHA256SUMS
-Expand-Archive wam-coin-v0.1.13-x86_64-w64-mingw32.zip -DestinationPath .
-Expand-Archive wam-miner-v0.1.13-x86_64-w64-mingw32.zip -DestinationPath .
+curl.exe -LO https://wamcoin.org/downloads/v0.1.14/wam-coin-v0.1.14-x86_64-w64-mingw32.zip
+curl.exe -LO https://wamcoin.org/downloads/v0.1.14/wam-miner-v0.1.14-x86_64-w64-mingw32.zip
+curl.exe -LO https://wamcoin.org/downloads/v0.1.14/SHA256SUMS
+Expand-Archive wam-coin-v0.1.14-x86_64-w64-mingw32.zip -DestinationPath .
+Expand-Archive wam-miner-v0.1.14-x86_64-w64-mingw32.zip -DestinationPath .
 ```
 
 **Check it before you run it.** One command, and it is the only step here that
 cannot be checked afterwards:
 
 ```
-curl.exe -LO https://wamcoin.org/downloads/v0.1.13/SHA256SUMS.asc
+curl.exe -LO https://wamcoin.org/downloads/v0.1.14/SHA256SUMS.asc
 curl.exe -LO https://wamcoin.org/SIGNING-KEY.asc
 curl.exe -LO https://wamcoin.org/verify_release.ps1
 powershell -ExecutionPolicy Bypass -File verify_release.ps1
@@ -169,7 +169,7 @@ Then the node, with the directory named explicitly so you always know where
 the wallet is:
 
 ```
-cd wam-coin-v0.1.13\bin
+cd wam-coin-v0.1.14\bin
 .\wamd.exe -datadir=C:\wam\data
 .\wam-cli.exe -datadir=C:\wam\data createwallet "mine"
 .\wam-cli.exe -datadir=C:\wam\data -rpcwallet=mine backupwallet C:\wam\wallet-backup.dat
@@ -335,10 +335,10 @@ than anything we can measure ourselves.
 
 ```
 mkdir -p ~/wam && cd ~/wam
-curl -LO https://wamcoin.org/downloads/v0.1.13/wam-coin-v0.1.13-arm64-apple-darwin.tar.gz
-curl -LO https://wamcoin.org/downloads/v0.1.13/wam-miner-v0.1.13-arm64-apple-darwin.tar.gz
-curl -LO https://wamcoin.org/downloads/v0.1.13/SHA256SUMS
-curl -LO https://wamcoin.org/downloads/v0.1.13/SHA256SUMS.asc
+curl -LO https://wamcoin.org/downloads/v0.1.14/wam-coin-v0.1.14-arm64-apple-darwin.tar.gz
+curl -LO https://wamcoin.org/downloads/v0.1.14/wam-miner-v0.1.14-arm64-apple-darwin.tar.gz
+curl -LO https://wamcoin.org/downloads/v0.1.14/SHA256SUMS
+curl -LO https://wamcoin.org/downloads/v0.1.14/SHA256SUMS.asc
 curl -LO https://wamcoin.org/SIGNING-KEY.asc
 curl -LO https://wamcoin.org/verify_release.sh
 bash verify_release.sh .
@@ -352,9 +352,9 @@ WAM release, unmodified since it was signed`.
 Then:
 
 ```
-tar -xzf wam-coin-v0.1.13-arm64-apple-darwin.tar.gz
-tar -xzf wam-miner-v0.1.13-arm64-apple-darwin.tar.gz
-cd wam-coin-v0.1.13/bin
+tar -xzf wam-coin-v0.1.14-arm64-apple-darwin.tar.gz
+tar -xzf wam-miner-v0.1.14-arm64-apple-darwin.tar.gz
+cd wam-coin-v0.1.14/bin
 ./wamd -datadir=$HOME/wam/data -daemon
 ./wam-cli -datadir=$HOME/wam/data createwallet "mine"
 ./wam-cli -datadir=$HOME/wam/data -rpcwallet=mine backupwallet $HOME/wam/wallet-backup.dat
@@ -407,7 +407,7 @@ have just checked, and never because a stranger told you to.
 ## The one line that is not optional
 
 ```
-curl -LO https://wamcoin.org/downloads/v0.1.13/SHA256SUMS.asc
+curl -LO https://wamcoin.org/downloads/v0.1.14/SHA256SUMS.asc
 curl -LO https://wamcoin.org/verify_release.sh
 curl -LO https://wamcoin.org/SIGNING-KEY.asc
 bash verify_release.sh .
