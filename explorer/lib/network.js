@@ -32,7 +32,7 @@
 // Our own seeds. Published in DNS already, so naming them costs nobody
 // anything and lets a reader see the network is not all in one place.
 const OWN_SEEDS = {
-    '169.58.159.165': { label: 'seed', where: 'France' },
+    '169.58.159.165': { label: 'seed', where: 'Germany' },
     '5.223.52.200':   { label: 'seed', where: 'Singapore' }
 };
 
@@ -253,7 +253,7 @@ function classify(addr) {
  * THE TWO ARE NOT THE SAME NUMBER, and this panel claimed they were until
  * 2026-09-14. The founder said the figure looked false because it moved --
  * 9, then 7, then 6 -- and he was right to distrust it. Measured on the
- * France node at one moment:
+ * Germany node at one moment:
  *
  *     getaddrmaninfo   ipv4 new 8 + tried 2, ipv6 new 1   =  11
  *     getnodeaddresses 0                                  =   6
@@ -278,7 +278,7 @@ function build(peers, known, netInfo, addrman) {
     // opposite of what a page about decentralisation should do.
     //
     // This counts seeds among this node's PEERS, so it can never include the
-    // machine it runs on. Served from the France seed it reports Singapore
+    // machine it runs on. Served from the Germany seed it reports Singapore
     // and nothing else, and the page used to label that "WAM seed nodes: 1"
     // -- which a reader takes as "this network has one seed", a single point
     // of failure, when there are two.
@@ -358,7 +358,7 @@ function build(peers, known, netInfo, addrman) {
         // without crawling, and it does not require anyone to be online now.
         //
         // It is also the number most easily misread, and was misread. It
-        // went from four to five when a node in France appeared, and stayed
+        // went from four to five when a node in Germany appeared, and stayed
         // at five when that node vanished ten hours later -- because an
         // address book does not forget. It also holds this node's own
         // address, self-advertised, and both WAM seeds. So the count alone

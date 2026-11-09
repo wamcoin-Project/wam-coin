@@ -131,7 +131,7 @@ CLI="wam-cli $(wam_cli_flags "$NETWORK")" || exit 2
 # therefore the one case it is blind to, and it is not an exotic case -- it is
 # what a deploy that silently did nothing produces, on every machine at once.
 #
-# On 2026-11-01 this printed "byte-identical binaries" about France and
+# On 2026-11-01 this printed "byte-identical binaries" about Germany and
 # Singapore while wam-tx, wam-util and wam-wallet on both were pinned at
 # v0.1.7, six releases back, since 11 September. They agreed perfectly, so it
 # said so, correctly and uselessly.

@@ -265,7 +265,7 @@ log "3/4  Applying the WAM transformations"
 # is absent and the upstream anchor is gone too, so the patcher aborts
 # part-way.
 #
-# On 18 September that cost an hour. France's tree was patched at 0.1.0 in
+# On 18 September that cost an hour. Germany's tree was patched at 0.1.0 in
 # August; re-running it for 0.1.9 stopped at configure.ac with
 #
 #     anchor for 'version 28.1.0 -> 0.1.8' not found

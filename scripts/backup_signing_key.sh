@@ -31,7 +31,7 @@
 #  copy imports and cannot sign; a copy whose passphrase has been misremembered
 #  imports, is the right key by fingerprint, and is useless. pull_backups.sh
 #  already carries this lesson in its own header -- "a second copy of a file on
-#  a disk that is about to fail" -- and the France rehearsal on 11 September
+#  a disk that is about to fail" -- and the Germany rehearsal on 11 September
 #  made the general version of it plain: a safeguard nobody has watched work is
 #  a safeguard nobody can vouch for.
 #

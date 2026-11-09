@@ -66,7 +66,7 @@ RED = "\033[31m"; GRN = "\033[32m"; YEL = "\033[33m"; BLD = "\033[1m"; OFF = "\0
 KNOWN = {
     "71.38.219.3": "United States",
     "91.216.73.201": "Spain",
-    "169.58.159.165": "ours (France)",
+    "169.58.159.165": "ours (Germany)",
     "5.223.52.200": "ours (Singapore)",
     "13.140.33.187": "ours (US-east)",
     "127.0.0.1": "localhost",

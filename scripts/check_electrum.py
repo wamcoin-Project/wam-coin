@@ -170,7 +170,7 @@ def node_state(host, network):
     unverified -- only ever ran when ssh FAILED quickly. When ssh HUNG, the
     exception went straight past it and killed the script.
 
-    That morning one slow ssh to the France node did exactly that, twice in
+    That morning one slow ssh to the Germany node did exactly that, twice in
     sixty seconds, and the ops panel printed a Python traceback under two rows
     named "electrum servers answer and agree" and "a server we do not own
     agrees". All four of our endpoints were answering at the correct height at

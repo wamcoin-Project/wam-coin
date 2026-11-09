@@ -48,7 +48,7 @@ KEEP = 200
 # through a read-only key, so a parked line is never removed when it is sent.
 # By 4 September Singapore held twenty-one lines, all forwarded, all from the
 # day's own testing -- and the ONLY thing preventing them being sent again was
-# a state file on France. Lose that file, or rebuild that machine, and
+# a state file on Germany. Lose that file, or rebuild that machine, and
 # yesterday's alarms arrive as today's.
 #
 # An alarm nobody forwarded within a day is not going to be forwarded, and one
@@ -166,7 +166,7 @@ if __name__ == "__main__":
     # So a person can prove delivery whenever they want to, rather than
     # trusting that the last alarm would have arrived:
     #
-    #     python3 scripts/wamnotify.py "test from France"
+    #     python3 scripts/wamnotify.py "test from Germany"
     import sys
     send(" ".join(sys.argv[1:]) or "wamnotify test")
     print("sent, or parked if this host holds no token")

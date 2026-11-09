@@ -20,7 +20,7 @@
 #  one line out of `ssh -v`: the panel spawned its shell checks through the
 #  `bash` on the Windows PATH, which is the WSL launcher, and WSL is a
 #  separate machine with its own ~/.ssh. It offered
-#  wam.coin.official@proton.me. France and Singapore authorise that key.
+#  wam.coin.official@proton.me. Germany and Singapore authorise that key.
 #  US-east, added on 16 September, does not.
 #
 #  Nothing could have found that by looking at the host, and nothing in this
@@ -32,7 +32,7 @@
 #  The first version of this file compared the whole of authorized_keys and
 #  took the commonest set as the baseline. With three hosts holding three
 #  different sets there is no commonest set, so it picked the first and
-#  reported Singapore as wrong for holding report@france -- a key Singapore
+#  reported Singapore as wrong for holding report@germany -- a key Singapore
 #  is SUPPOSED to hold, because the daily report reads its facts through it.
 #  A check that calls a correct configuration a failure is worse than none.
 #

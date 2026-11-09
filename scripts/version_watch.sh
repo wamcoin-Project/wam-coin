@@ -84,7 +84,7 @@ else
 fi
 
 # Minimal Debian and Ubuntu images ship without this directory even though
-# pam_motd reads it, and the France host is one of them. The first version
+# pam_motd reads it, and the Germany host is one of them. The first version
 # of this script found it missing, said so on stderr, and exited without
 # writing anything -- correct behaviour, in the one place where being silent
 # defeats the entire point. Create it: it is the documented location, it is

@@ -164,7 +164,7 @@ echo reloaded
     # seed rotation spreads the arrivals across all three either way.
     # THE UPPER CLAMP USED TO BE 110, AND IT THREW THE DERIVATION AWAY.
     #
-    # MEM/48 gives 249 on the France host, 165 on US-east and 39 on
+    # MEM/48 gives 249 on the Germany host, 165 on US-east and 39 on
     # Singapore. The 39 is this formula working: the small host takes the
     # fewest strangers, exactly as the paragraph above says it should. The
     # other two were then flattened to 110 by a fixed number, so the two

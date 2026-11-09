@@ -10,7 +10,7 @@
 #
 #    wam-backup            from 23 August 2026, nightly, and there was
 #                          nothing to restore from
-#    wam-reorg-watch       France 03:11 UTC and Singapore 03:47 UTC on
+#    wam-reorg-watch       Germany 03:11 UTC and Singapore 03:47 UTC on
 #                          1 September 2026, for ten and a half hours
 #
 #  Each was found by a person going and looking. The cause was the same each

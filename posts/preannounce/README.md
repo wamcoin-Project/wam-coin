@@ -30,7 +30,7 @@ release assets             the GitHub API, not the packaging script
 ```
 
 **One node, not two.** A second operator ran a node for several days and
-left; the France node still retries the address every ten minutes, which
+left; the Germany node still retries the address every ten minutes, which
 reads like a live peer in the logs and is not one — `lastseen=116.5hrs` at
 the time of writing. The drafts say one because one is true.
 
@@ -111,7 +111,7 @@ go and confirm our signing fingerprint linked them to a stranger's
 storefront. That is exactly the attack the paragraph exists to prevent, and
 it was in the paragraph.
 
-A check run from the France node said `security.md` did not resolve. It was
+A check run from the Germany node said `security.md` did not resolve. It was
 wrong; the phone had already loaded the page. The measurement said no, the
 man looking at it said yes, and the man looking at it was right.
 

@@ -144,7 +144,7 @@ the journal to empty the block database afterwards.
 
 ### Both hosts are on UTC — settled 2026-08-29
 
-France ran `Europe/Berlin` and Singapore `Etc/UTC`, so at 00:00 UTC on 15
+Germany ran `Europe/Berlin` and Singapore `Etc/UTC`, so at 00:00 UTC on 15
 September one journal would have said 02:00 while the other said 00:00.
 Nothing the chain does was affected — genesis, `MAX_FUTURE_BLOCK_TIME` and
 every block timestamp are absolute — but a person reading two logs side by
@@ -152,7 +152,7 @@ side at two in the morning is, and that is exactly when an hour disappears.
 
 It was found by a check of mine reporting a crash loop that was not
 happening: it wrote a UTC mark and `journalctl --since` read it as local
-time. France is now `Etc/UTC`. The calendar timers were re-checked after the
+time. Germany is now `Etc/UTC`. The calendar timers were re-checked after the
 change rather than assumed — `wam-backup.timer` fired once on the way past,
 succeeded, and its next run is 03:20 UTC, because a backup that quietly
 stopped being nightly is a failure this project has already had.
@@ -170,7 +170,7 @@ was given a temporary listener and knocked on from the other host:
 
 **Re-measured 2026-09-13, and one row of this table was wrong.**
 
-| Port | France | Singapore | US-east | |
+| Port | Germany | Singapore | US-east | |
 |---|---|---|---|---|
 | 9555 | open | open | open | mainnet P2P |
 | 50001 / 50002 / 50004 | open | open | open | mainnet Electrum, as published |
@@ -476,13 +476,13 @@ Three things were found by doing it rather than reading it:
     which is the state a listing reviewer would have found a defect in.
 
     **Two hosts, and not the third — changed 2026-09-13.**
-    `electrum.wamcoin.org` is France and `electrum2.wamcoin.org` is now
+    `electrum.wamcoin.org` is Germany and `electrum2.wamcoin.org` is now
     **US-east**, not Singapore. Wallet queries are the half of the load that
     grows with adoption, and Singapore has 1914 MB against US-east's 7941;
     it is a seed node and nothing else now. The command runs on those two:
 
     ```bash
-    systemctl enable --now wam-electrumx@mainnet     # France and US-east
+    systemctl enable --now wam-electrumx@mainnet     # Germany and US-east
     ```
 
     On Singapore the instance is installed and **disabled**, so an absent
@@ -547,7 +547,7 @@ on 3333-3336 to stop.
 
 ### Rehearsed against a real mainnet node, 2026-09-04
 
-A mainnet node was started deliberately on France, ElectrumX and the explorer
+A mainnet node was started deliberately on Germany, ElectrumX and the explorer
 were run against it, every check in this phase was run, and the whole thing was
 torn down — blocks, chainstate and indexes emptied, the pool wallet verified
 byte-identical afterwards by checksum, and the testnet untouched throughout.
@@ -768,7 +768,7 @@ way the answer goes, launch night is one `systemctl enable --now` per host.
 
 **The answer, decided 12 September: Singapore runs mainnet only.** Stop
 testnet there on the night. There are three seeds now, and testnet keeps
-running on the two that have room for it -- France and the US seed -- so
+running on the two that have room for it -- Germany and the US seed -- so
 nothing is lost: the rehearsal ground stays, and the two independent
 operators keep a chain to be on.
 

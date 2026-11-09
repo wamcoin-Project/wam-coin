@@ -229,13 +229,13 @@ ls -l "$BIN" | tail -n +2 | sed 's/^/    /'
 #   - US-east held COPIES of all five programs, taken on 15 October. Four
 #     releases later the testnet node was still running v0.1.9 from them,
 #     and every deploy restarted that service and reported success.
-#   - France and Singapore pointed wam-tx, wam-util and wam-wallet straight
+#   - Germany and Singapore pointed wam-tx, wam-util and wam-wallet straight
 #     at /opt/wam-v0.1.7/ -- a version directory, not the swap directory --
 #     so those three stood still from 11 September.
 #
 # Both are the mistake the comment above warns about, made one layer up: a
 # copy, and a link to a version instead of to "current". And neither was
-# visible to a check that compares hosts to each other, because France and
+# visible to a check that compares hosts to each other, because Germany and
 # Singapore were wrong in exactly the same way and so agreed.
 #
 # One indirection now: /usr/local/bin/<name> -> $BIN/<name> -> the release.

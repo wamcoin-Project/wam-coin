@@ -501,7 +501,7 @@ async function renderNetwork() {
     + (n.connectedOwn ? ` · ${n.connectedOwn} of them a WAM seed` : ''));
 
   // The address book only grows. It went from four to five when a node in
-  // France appeared and stayed at five when that node vanished the same
+  // Germany appeared and stayed at five when that node vanished the same
   // day, which reads as a network that never loses anybody. So the count is
   // shown with the part of it that has actually been heard from lately --
   // that number does fall -- and with how much of it is our own machines.

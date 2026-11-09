@@ -136,12 +136,12 @@ COMPONENTS = [
 SERVICES = [
     {"unit": "wamd.service",              "where": "all three", "what": "testnet node"},
     {"unit": "wamd-mainnet.service",      "where": "all three", "what": "mainnet node"},
-    {"unit": "wam-pool.service",          "where": "France",    "what": "stratum pool"},
-    {"unit": "wam-announce.service",      "where": "France",    "what": "Telegram and Discord announcements"},
-    {"unit": "wam-dashboard.service",     "where": "France",    "what": "the ops panel"},
-    {"unit": "electrumx@mainnet.service", "where": "France, US-east", "what": "Electrum server"},
-    {"unit": "electrumx@testnet.service", "where": "France, US-east", "what": "Electrum server, testnet"},
-    {"unit": "wam-miner.service",         "where": "France, US-east", "what": "our own miner"},
+    {"unit": "wam-pool.service",          "where": "Germany",    "what": "stratum pool"},
+    {"unit": "wam-announce.service",      "where": "Germany",    "what": "Telegram and Discord announcements"},
+    {"unit": "wam-dashboard.service",     "where": "Germany",    "what": "the ops panel"},
+    {"unit": "electrumx@mainnet.service", "where": "Germany, US-east", "what": "Electrum server"},
+    {"unit": "electrumx@testnet.service", "where": "Germany, US-east", "what": "Electrum server, testnet"},
+    {"unit": "wam-miner.service",         "where": "Germany, US-east", "what": "our own miner"},
 ]
 
 

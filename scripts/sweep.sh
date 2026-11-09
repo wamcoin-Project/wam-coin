@@ -275,7 +275,7 @@ run "a check that cannot ask stays quiet" bash scripts/test/test_release_check_s
 # The same confusion, on the ops panel rather than in the channels. On
 # 2026-11-04 two rows read FAILING -- "electrum servers answer and agree" and
 # "a server we do not own agrees" -- while all four of our endpoints and cup's
-# were answering at the right height. One slow ssh to the France node had
+# were answering at the right height. One slow ssh to the Germany node had
 # raised TimeoutExpired out of check_electrum.py's own private copy of the ssh
 # call, past the caller's graceful path, and the panel printed the traceback
 # under those two names. wamssh.py exists so this is written once; this holds
@@ -559,7 +559,7 @@ else
         # cannot see is a fleet that is uniformly wrong -- which is exactly what
         # a deploy that silently did nothing produces, on every machine at once.
         #
-        # On 1 November 2026 it called France and Singapore "byte-identical"
+        # On 1 November 2026 it called Germany and Singapore "byte-identical"
         # while wam-tx, wam-util and wam-wallet on both were pinned at v0.1.7,
         # six releases back, since 11 September. They agreed perfectly. The
         # third host had COPIES of the same v0.1.7 tools, and a v0.1.9 wamd its
@@ -894,8 +894,8 @@ if [ "${#SKIPPED[@]}" -gt 0 ]; then
         #
         # No seed holds a key to any other seed, including to itself. That is
         # deliberate and it is the safer arrangement -- daily_report.py says
-        # why in its own header: a key on France is a key that goes with
-        # France if France is ever taken. peer_watch.py exists precisely so
+        # why in its own header: a key on Germany is a key that goes with
+        # Germany if Germany is ever taken. peer_watch.py exists precisely so
         # that the seeds can watch each other WITHOUT one.
         #
         # So the cross-host checks can only run where the operator key is,

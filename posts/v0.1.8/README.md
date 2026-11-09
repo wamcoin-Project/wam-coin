@@ -23,7 +23,7 @@ on 12 September, and each can be re-read:
 heights 0, 1, 5000, 6000   scripts/test/test_platform_consensus.sh, the gate
                            in .github/workflows/platform-build.yml
 10 accepted, 0 rejected    the miner's own stats line, Windows 11
-block 8478                 the pool journal on the France host:
+block 8478                 the pool journal on the Germany host:
                            "BLOCK CANDIDATE at height 8478 by ...win11"
                            then "BLOCK 8478 ACCEPTED"
 Bearfoos.A!ml              Get-MpThreatDetection, ThreatID 2147731250,

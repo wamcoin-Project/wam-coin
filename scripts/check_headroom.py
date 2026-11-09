@@ -14,7 +14,7 @@
  and on 2026-10-11 it read:
 
  <!-- wam:quote-begin -->
-     France: 9653/11960 MB free, 173G disk
+     Germany: 9653/11960 MB free, 173G disk
      Singapore: 1156/1914 MB free, 29G disk
      US-east: 6609/7941 MB free, 75G disk ... US-east has no swap
  <!-- wam:quote-end -->

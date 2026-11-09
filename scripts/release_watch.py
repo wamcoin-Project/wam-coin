@@ -48,7 +48,7 @@ the same way, and ten minutes is how long a mistake should be allowed to live.
 WHY IT WILL NOT CRY WOLF
 
 It alarms once, when the answer changes to "does not verify", and says so once
-more when it recovers -- because the France rehearsal on 11 September proved
+more when it recovers -- because the Germany rehearsal on 11 September proved
 that the missing half of an alert is not "something broke" but "it is over".
 
 Exit 2 from the check means the question could not be asked: no gpg, no curl,

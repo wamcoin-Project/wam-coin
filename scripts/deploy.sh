@@ -13,14 +13,14 @@
 #
 #      git -C /opt/wam fetch -q origin && git -C /opt/wam reset -q --hard origin/main
 #
-#  On 2 September 2026 that line failed on France with "could not read
+#  On 2 September 2026 that line failed on Germany with "could not read
 #  Username for 'https://github.com'" -- git's unhelpful way of saying the ref
 #  listing came back malformed. GitHub was having a bad few minutes; the same
 #  command worked perfectly a quarter of an hour later.
 #
 #  The failure was not the problem. The problem was that the && chain stopped
 #  there, the script printed "4fb9fda -> 4fb9fda", and that reads as "nothing
-#  to do" rather than "this did not happen". France stayed two commits behind
+#  to do" rather than "this did not happen". Germany stayed two commits behind
 #  and the only thing that noticed was check_deployed_code.sh going red on the
 #  panel an hour later -- which is the safety net working, and is not a
 #  substitute for the deploy telling the truth at the time.

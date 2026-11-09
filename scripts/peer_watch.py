@@ -9,7 +9,7 @@
 
 WHY THIS EXISTS
 
-On 11 September every WAM service on the France host was stopped for eight
+On 11 September every WAM service on the Germany host was stopped for eight
 minutes, deliberately, to answer a question the schedule had been carrying
 since the 9th: does the network survive losing a seed?
 
@@ -21,23 +21,23 @@ which is a helper script exiting non-zero, not a seed node dying, the
 explorer and pool returning 502 to the public, and the chain producing
 nothing for four block times. And every part of that alarm -- the watcher
 that noticed, the unit that fired, the credentials it sent with -- was
-running on the machine that had just died. It arrived because France was
+running on the machine that had just died. It arrived because Germany was
 alive enough to send it.
 
-A power cut would have been silent. Singapore does not watch France. The new
+A power cut would have been silent. Singapore does not watch Germany. The new
 seed watched nothing at all. The only thing looking at all three was the
 operations panel on a laptop, which is not always on.
 
 WHAT IT WATCHES, AND WHY IT NEEDS NO NEW ACCESS
 
-Not SSH. France already holds a key Singapore accepts, and daily_report.py
-says in writing why that is a risk worth naming: if France is taken, what
+Not SSH. Germany already holds a key Singapore accepts, and daily_report.py
+says in writing why that is a risk worth naming: if Germany is taken, what
 that key reaches goes with it. Adding two more such paths to make a watchdog
 would be buying a smaller failure with a larger one.
 
 It watches the peer list the node already has. Our seeds connect to each
-other by `addnode`, so if Singapore is up, it is in France's getpeerinfo. If
-it stops appearing there, France knows without asking anybody for anything.
+other by `addnode`, so if Singapore is up, it is in Germany's getpeerinfo. If
+it stops appearing there, Germany knows without asking anybody for anything.
 
 That also makes the check honest about what it can see: it reports "I can no
 longer see this host from here", which is true and useful, rather than "that
@@ -51,7 +51,7 @@ noise, and a watcher that is usually wrong is a watcher nobody reads.
 
 So it needs the same host missing on MISSES_BEFORE_ALARM consecutive runs
 before it says anything, and it says it once. When the host comes back it
-says that once too, with how long it was gone -- because the thing the France
+says that once too, with how long it was gone -- because the thing the Germany
 rehearsal proved was missing is not only "something broke" but "it is over".
 """
 
@@ -71,7 +71,7 @@ from wamnotify import send as notify  # noqa: E402
 # DNS to resolve before this check could run, and DNS is one of the things
 # that breaks.
 SEEDS = {
-    "169.58.159.165": "France",
+    "169.58.159.165": "Germany",
     "5.223.52.200": "Singapore",
     "13.140.33.187": "US-east",
 }

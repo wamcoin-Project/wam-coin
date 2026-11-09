@@ -76,7 +76,7 @@ PORT = int(os.environ.get("WAM_OPS_PORT", "9787"))
 STATE = os.path.join(HERE, "state.json")
 
 HOSTS = [
-    ("France", "169.58.159.165"),
+    ("Germany", "169.58.159.165"),
     ("Singapore", "5.223.52.200"),
     ("US-east", "13.140.33.187"),
 ]
@@ -155,7 +155,7 @@ def rsh(host, cmd, timeout=45, tries=2):
     """
     # ONE MISSED TIMEOUT IS NOT A DEAD MACHINE.
     #
-    # On 2026-09-24 the panel showed France "unreachable -- timed out after 60
+    # On 2026-09-24 the panel showed Germany "unreachable -- timed out after 60
     # seconds" while ssh from the same laptop answered in six, and the backup
     # check went red with it because it reaches all three hosts. The cause was
     # 70 MB being scp'd to that host at the same moment: its uplink and sshd
@@ -243,7 +243,7 @@ WAMMAIN="-chain=main -conf=/root/.wam-mainnet/wam.conf -datadir=/root/.wam-mainn
 # minutes without complaining. The three calls below then never return, this
 # whole script never reaches its ###end, and rsh's 60 second limit expires.
 #
-# The panel's verdict for that was "France -- unreachable", in red, at the
+# The panel's verdict for that was "Germany -- unreachable", in red, at the
 # top of the page, dragging the backup check red with it. On 2026-09-26 that
 # is exactly what happened, twice: the node was healthy, ssh answered in 1.7
 # seconds, every command in this script ran in under a fifth of a second when
@@ -452,7 +452,7 @@ def portable(argv):
     "all 3 nodes agree" and "every deployed checkout is origin/main". The
     reason was one line out of ssh -v: WSL holds
     wam.coin.official@proton.me, the laptop shell holds gargo@r4x0uf-TUF,
-    France and Singapore authorise both, and US-east -- added on 16
+    Germany and Singapore authorise both, and US-east -- added on 16
     September -- authorises only the second. So the panel had been reporting
     a healthy host as unreadable, permanently, for a reason no amount of
     looking at the host would ever reveal.

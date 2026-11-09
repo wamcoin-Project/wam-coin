@@ -120,7 +120,7 @@ def node(network, host):
     """(height, chainwork) from a node ON THAT NETWORK, or None, or "wrong".
 
     The answer is checked against the `chain` field before it is believed.
-    Asking this script about mainnet, on the France host, ran `wam-cli
+    Asking this script about mainnet, on the Germany host, ran `wam-cli
     getblockchaininfo` with no flag -- and that host's wam.conf carries
     testnet=1, so the reply came from the TEST chain and was reported as
     mainnet. Height 5,897 and all.

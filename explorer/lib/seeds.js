@@ -9,7 +9,7 @@
 //  WHY THIS EXISTS
 //
 //  The network panel used to count seeds among this node's peers, which can
-//  never include the machine it runs on. Served from the France seed it saw
+//  never include the machine it runs on. Served from the Germany seed it saw
 //  Singapore and nothing else, and the page said "WAM seed nodes: 1" -- read
 //  by a visitor as a network with a single point of failure, when there were
 //  two.
@@ -31,7 +31,7 @@
 //  become 3 on its own the day a third machine existed, with no code change.
 //
 //  Half of that was true. US-east arrived and the count did move to 3 by
-//  itself -- and the page then read "3 WAM seed nodes / France · Singapore",
+//  itself -- and the page then read "3 WAM seed nodes / Germany · Singapore",
 //  because PLACES below is a hand-written map and nobody added the row. The
 //  count measures the network; the names are copied from ops/ops.py by hand,
 //  and the copy drifted. The founder found it by reading his own panel.
@@ -55,7 +55,7 @@ const P2P_PORT = { main: 9555, test: 19555, regtest: 29555 };
 // Places we already publish for our own machines. Anything else stays
 // unnamed: this is a public page.
 const PLACES = {
-    '169.58.159.165': 'France',
+    '169.58.159.165': 'Germany',
     '5.223.52.200': 'Singapore',
     '13.140.33.187': 'US'
 };

@@ -69,7 +69,7 @@ test('port numbers of third parties do not leak either', () => {
 test('our own seeds ARE named, because their addresses are public DNS', () => {
     const out = net.build(PEERS, [], null);
     const where = out.seeds.map((s) => s.where).sort();
-    assert.deepStrictEqual(where, ['France', 'Singapore']);
+    assert.deepStrictEqual(where, ['Germany', 'Singapore']);
 });
 
 test('but even our seeds are named by place, not by address', () => {
@@ -165,7 +165,7 @@ test('the gossip list and the address book are different numbers', () => {
     // 2026-09-14. The panel printed getnodeaddresses under the label "every
     // address this node has ever heard of", and the founder distrusted it
     // because it moved: 9, then 7, then 6, with nobody joining or leaving.
-    // Measured on France at one moment: getaddrmaninfo said 11, and
+    // Measured on Germany at one moment: getaddrmaninfo said 11, and
     // getnodeaddresses said 6. Core filters the gossip list by its current
     // opinion of each address; the book does not move for that reason.
     const addrman = {

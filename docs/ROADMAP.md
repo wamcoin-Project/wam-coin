@@ -119,7 +119,7 @@ patch. What it is **not** is a promise that 1914 MB is enough forever.
 
 | host | memory | what it does | what it must never do |
 |---|---|---|---|
-| France, Contabo | 12 GB | pool, explorer, announcer, Electrum #1, node | — |
+| Germany, Contabo | 12 GB | pool, explorer, announcer, Electrum #1, node | — |
 | US-east, Contabo | 8 GB | node, **Electrum #2** — `electrum2.wamcoin.org` since 13 Sep | — |
 | Singapore, Hetzner | 1.9 GB | **seed node only**, since 13 Sep | serve wallets |
 

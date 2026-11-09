@@ -18,7 +18,7 @@
  Both were false. All four of our Electrum endpoints were answering at the
  correct height at that moment, over certificates that verified, and so was
  cup's server in Seoul. What had actually happened was one slow ssh to the
- France node, and the stored detail for both rows was a Python traceback
+ Germany node, and the stored detail for both rows was a Python traceback
  ending in subprocess.TimeoutExpired.
 
  check_electrum.py kept a private copy of the ssh call. Its caller had the

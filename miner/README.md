@@ -79,7 +79,7 @@ Add a worker label if you run more than one machine:
 wam-miner -o stratum+tcp://pool.wamcoin.org:3333 -u <your WAM address>.livingroom
 ```
 
-Community pool: **VEIN Pool** (EU, France, PPLNS) — https://veinpool.fr/coin/wam
+Community pool: **VEIN Pool** (EU, Germany, PPLNS) — https://veinpool.fr/coin/wam
 
 ```
 wam-miner -o stratum+tcp://veinpool.fr:3310 -u <your WAM address>.livingroom

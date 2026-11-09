@@ -316,7 +316,7 @@ def main():
             # A network timeout reaching Telegram or Discord says nothing about
             # whether the bot works. On 6 September one timed-out request from
             # the founder's laptop -- on a connection in Libya, about a bot
-            # running healthily in France -- printed "announcements to this
+            # running healthily in Germany -- printed "announcements to this
             # channel are silently going nowhere". The announcer was cycling
             # every minute at the time, and api.telegram.org answered from that
             # server in 0.22 seconds on three tries out of three.

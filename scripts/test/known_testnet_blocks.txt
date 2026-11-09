@@ -6,7 +6,7 @@
 # something differently from the nodes that have been running since August,
 # and it must not be published no matter how cleanly it compiled.
 #
-# Taken from the France node on 2026-09-07 while it was at height 6533. These
+# Taken from the Germany node on 2026-09-07 while it was at height 6533. These
 # are historical blocks, so they do not move -- unless the test chain is reset
 # a third time, which has happened twice and would make every line here stale
 # at once. The failure message says so, because "your binary is wrong" and

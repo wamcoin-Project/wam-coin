@@ -42,11 +42,11 @@
 #
 #  HOW IT READS THE OTHER MACHINE
 #
-#  Not with a general ssh key. France holds a key that Singapore accepts
+#  Not with a general ssh key. Germany holds a key that Singapore accepts
 #  only with a forced command -- /usr/local/bin/wam-facts, which prints
 #  status and changes nothing. Asked for a shell, or for /etc/shadow, sshd
 #  ignores the request and runs the facts script instead; that was tested
-#  rather than assumed. If France is ever taken, what that key grants on
+#  rather than assumed. If Germany is ever taken, what that key grants on
 #  Singapore is the ability to read a status line.
 #
 #  It goes to one private chat, never to the announcement channel. An
@@ -70,7 +70,7 @@ STATE = "/var/lib/wam-report/state.json"
 FACTS = "/usr/local/bin/wam-facts"
 KEY = "/root/.ssh/id_report"
 
-ME = ("France", None)                     # gathered by running facts locally
+ME = ("Germany", None)                     # gathered by running facts locally
 OTHERS = [("Singapore", "5.223.52.200"),
           # US-east was missing from every daily report since it was added on
           # 16 September: the list was written when there were two machines.

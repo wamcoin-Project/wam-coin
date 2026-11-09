@@ -93,7 +93,7 @@ being watched.
 ## And the one that comes to you
 
 The dashboard waits to be opened. `scripts/daily_report.py` does not: it
-runs on the France server every morning at 06:00 UTC and sends one message
+runs on the Germany server every morning at 06:00 UTC and sends one message
 to a private Telegram chat.
 
     systemctl status wam-report.timer     # on the pool host

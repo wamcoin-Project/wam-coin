@@ -23,7 +23,7 @@
 #
 #    - "nodes agree" compares the hosts TO EACH OTHER. It caught this one only
 #      because two of the three happened to be right. In the same reading it
-#      also called France and Singapore "byte-identical" while wam-tx,
+#      also called Germany and Singapore "byte-identical" while wam-tx,
 #      wam-util and wam-wallet on both were pinned to /opt/wam-v0.1.7/ --
 #      SIX releases back, since 11 September, on both machines, and therefore
 #      in perfect agreement. wam-wallet is the tool that opens and repairs a

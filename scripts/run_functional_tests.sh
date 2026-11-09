@@ -39,7 +39,7 @@
 #  HOW
 #
 #  The harness (test/functional/test_framework/) and test/config.ini come from
-#  a configured Core build tree, and one exists on the France host from the
+#  a configured Core build tree, and one exists on the Germany host from the
 #  original build. The four test files are copied out of that host's CURRENT
 #  checkout each run, so what is tested is this repository's tests, never the
 #  copies that were in the build tree when it was configured.

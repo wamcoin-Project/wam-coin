@@ -41,7 +41,7 @@ Three rules, or this becomes a ritual:
 | 6 Sep | **A stranger follows START_HERE** from nothing: download, verify, sync, mine | nothing |
 | 7 Sep | **Phases A→D** in full on v0.1.6, from an empty directory | nothing |
 | 8 Sep | **Phase F** — the announcer posting to mainnet | nothing |
-| 9 Sep → 11 Sep | **France dies.** Does Singapore carry the network alone? | nothing |
+| 9 Sep → 11 Sep | **Germany dies.** Does Singapore carry the network alone? | nothing |
 | 10 Sep → 11 Sep | The **third seed** | done: Contabo US-east, not Vultr |
 | 11–12 Sep | Repeat whatever found a defect; publish the BitcoinTalk announcement | done 11 Sep |
 | 12 Sep | **Rewrite the 24 marked commit messages** — on a mirror first, verified, then force-pushed | done 11 Sep, a day early |
@@ -87,7 +87,7 @@ is the day it is needed.
 
 | 7 Sep | **Build the node for Windows and macOS** — asked for by the founder, against my own judgement that it should wait | **`nMinimumChainWork` stops every new node syncing.** Setting it turns on Core's presync path, which enforces Bitcoin's 2016-block retarget rule, which DarkGravityWave violates at height 1: `invalid difficulty transition at height=1 (presync phase)`. Published releases carry zero, so the live network was never affected — but `check_min_chain_work.py` instructs setting it on mainnet **after launch**. Also: macOS was built against Homebrew's boost, which is newer than Core v28 accepts; three separate files hardcoded `wam-backup.timer` and I fixed two, leaving the panel red in the only one that is looked at; and the consensus gate assumed a free RPC port and a POSIX path, either of which would have failed the Windows runner | `PermittedDifficultyTransition` patched; macOS moved to `depends`; the unit lists discover; the gate picks a free port and converts the path. **Windows then synced 6,029 blocks from genesis and matched all four known blocks** |
 | 11 Sep | **A third seed node**, on a clean machine | **five defects, all in paths that run rarely**: `harden_server.sh` called a function it never defines and died one line early, so the git HTTP/1.1 setting never applied; `install_release.sh` resolved its own directory after a `cd` and aborted after downloading the release; it also ran `wamd -version` with `2>/dev/null`, so a missing-library failure exited 127 and printed nothing; **both production servers were carrying a v0.1.5 `wam-wallet` in PATH beside a v0.1.7 node**, because the installer linked three binaries and stopped; and the runtime library line this project publishes **names a package that does not exist on Ubuntu 24.04**, with `libevent-pthreads` missing from both releases' lists | all five fixed; `seed3.wamcoin.org` now answers with a machine, and all three nodes report byte-identical binaries |
-| 11 Sep | **France dies** — every WAM service stopped on the France host for eight minutes | **the chain stopped.** Height held at 8,307 across four block times, because the only miner runs on France. The *network* survived — Singapore and the new seed stayed up, agreed, and kept peers — but nothing was added to the chain. Explorer and pool returned 502 for the whole outage; wamcoin.org was unaffected, being on GitHub Pages. One alert did arrive, and **it named the wrong event**: it reported `wam-reorg-watch@testnet.service FAILED`, not that a seed node had died. **Everything that alerted ran on the dying machine**, so a real power cut would have been silent. And the new seed had no alerting at all | alerting wired on the new seed and proved end to end; the miner and the cross-machine watch are decisions, recorded below |
+| 11 Sep | **Germany dies** — every WAM service stopped on the Germany host for eight minutes | **the chain stopped.** Height held at 8,307 across four block times, because the only miner runs on Germany. The *network* survived — Singapore and the new seed stayed up, agreed, and kept peers — but nothing was added to the chain. Explorer and pool returned 502 for the whole outage; wamcoin.org was unaffected, being on GitHub Pages. One alert did arrive, and **it named the wrong event**: it reported `wam-reorg-watch@testnet.service FAILED`, not that a seed node had died. **Everything that alerted ran on the dying machine**, so a real power cut would have been silent. And the new seed had no alerting at all | alerting wired on the new seed and proved end to end; the miner and the cross-machine watch are decisions, recorded below |
 
 Five in one evening, in a phase that had been rehearsed once already. That is
 the number to watch.
@@ -295,10 +295,10 @@ leave it.
 
 ---
 
-## 11 September: France dies
+## 11 September: Germany dies
 
 Two days late, and worth the wait only because it was run properly: every WAM
-service on the France host stopped at 13:37:24 UTC and started again at
+service on the Germany host stopped at 13:37:24 UTC and started again at
 13:45:02. Eight minutes. The machine and its SSH stayed up, so the simulation
 is of a **service death, not a power cut** — and the difference turned out to
 be the most important thing it found.
@@ -313,7 +313,7 @@ T+4min  h=8307     T+7min  h=8307
 
 Four block times, no block. Singapore and the new seed stayed up, stayed
 connected, and agreed with each other throughout — the network was never in
-danger. But **the only miner on this chain runs on France**, so nothing was
+danger. But **the only miner on this chain runs on Germany**, so nothing was
 being added to the thing the network was faithfully agreeing about.
 
 The question in the schedule was "does Singapore carry the network alone?"
@@ -344,10 +344,10 @@ gone and died of it. The alarm we heard was an accident of dependency.
 ### Everything that alerted was on the machine that died
 
 The reorg watcher that noticed, the alert unit that fired, and the credentials
-it sent with are all on France. This message arrived because France was alive
+it sent with are all on Germany. This message arrived because Germany was alive
 enough to send it.
 
-**A power cut would have been silent.** Singapore does not watch France. The
+**A power cut would have been silent.** Singapore does not watch Germany. The
 new seed watches nothing. The only thing that polls all three is the
 operations panel on a laptop that is not always on.
 
@@ -580,7 +580,7 @@ block 8478      solved at 03:05:46
 ```
 <!-- wam:quote-end -->
 
-and on the pool, on France:
+and on the pool, on Germany:
 
 ```
 01:05:47  *** BLOCK CANDIDATE at height 8478 by twam1qzrjw…win11 ***
@@ -776,7 +776,7 @@ indexes exists is not a thing to meet at 00:05 on launch night, and it is
 derivable from nothing, so it is now outside the datadir at
 `/root/mainnet-txindex-leftover-20260912T200839Z` rather than deleted.
 
-**France's mainnet pool wallet is there and it opens.** Checked offline, on
+**Germany's mainnet pool wallet is there and it opens.** Checked offline, on
 a copy, with `wam-wallet info` — because loading it in a node would mean
 starting a mainnet node, which is the one thing that must not happen before
 the date:
@@ -808,7 +808,7 @@ changed. Nothing went red. The check kept passing, about a different file.
 
 It now walks every published archive. All three carry the right genesis and
 the right consensus addresses, and the Linux binaries carry zero AVX-512 —
-measured, on France, which is the first time that question has been answered
+measured, on Germany, which is the first time that question has been answered
 about a published release rather than skipped.
 
 ### Three defects had to be fixed before it could be

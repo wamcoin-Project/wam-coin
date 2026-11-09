@@ -39,7 +39,7 @@
 #
 #  Restart=always restarts a unit whose ExecStartPre failed, so a plain
 #  refusal became a retry every RestartSec seconds -- forty of them in ten
-#  minutes on the France host, which is the crash loop this gate exists to
+#  minutes on the Germany host, which is the crash loop this gate exists to
 #  prevent, arriving by a different door. 78 is EX_CONFIG from sysexits.h,
 #  and wamd-mainnet.service names it in RestartPreventExitStatus, so systemd
 #  reports the failure once and stops.
