@@ -1,0 +1,34 @@
+POST 1 — the release. Counted, not estimated.
+==============================================
+WAM v0.1.14 — update your node.
+
+One block header costs this chain ~20ms of RandomX, where Bitcoin spends a microsecond — and a peer could buy that again and again for 90 bytes, punished and then served anyway.
+
+Now dropped before any proof of work.
+
+wamcoin.org/downloads/
+==============================================
+
+POST 2 — who found it. A day later.
+==============================================
+Everything in WAM v0.1.14 was found by people outside the project.
+
+A node DoS. A miner killed by one line from a pool. A halving countdown a block early, by a man who rebuilt our Core and asked for nothing.
+
+Five findings, three people, 1,950 WAM paid.
+
+wamcoin.org/security
+==============================================
+
+POST 3 — the homes. Counted.
+==============================================
+WAM's source is in three places, at three companies:
+
+gitlab.com/WAMCoin/wam-coin
+github.com/wamcoin-Project/wam-coin
+gitea.com/WAMCoin/wam-coin
+
+Site wamcoin.org — and wamcoin.net, written down empty before it is needed.
+
+Questions: https://discord.gg/Gxvmrjy9Qb
+==============================================

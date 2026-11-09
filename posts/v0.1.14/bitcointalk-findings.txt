@@ -1,0 +1,66 @@
+BITCOINTALK — POST 2 of 2: what was found, what it cost, what was paid.
+Goes up after the release post in bitcointalk.txt, not with it.
+
+SUBJECT
+=======
+What was in v0.1.14, who found it, and what we paid for it
+
+BODY
+====
+[b]Everything fixed in v0.1.14 was reported by people outside this project.[/b] Five findings, three reporters, 1,950 WAM paid on 9 November in three transactions, all in block 38,089. A fourth reporter found one of them and asked for nothing.
+
+[b]A node could be made to work for a peer it had already punished — 400 WAM[/b]
+
+Verifying one block header costs this chain about twenty milliseconds of RandomX. The node discourages an address whose header fails, and then accepted that address's next connection anyway while an inbound slot was free. Reconnect, send ninety more bytes, buy another twenty milliseconds, without limit.
+
+Reported by bobbyning, from a read of the code, measured on his own isolated regtest instance at 725 headers in fifteen seconds with one core at 95 per cent. Nothing was run against the network.
+
+[b]A comment in the consensus file described the opposite of the value under it — 250 WAM[/b]
+
+The mainnet treasury address in src/wam/chainparams.cpp is right and has been since August; the sentence above it said something else. A consensus file is read by people deciding whether to trust a chain, and a comment that contradicts its own code reads as either a mistake or a trap. Reported by bobbyning.
+
+[b]One hostile field in a block template hung the solo miner — 250 WAM[/b]
+
+A JSON number was converted with a bare int64_t cast. Out of range that is undefined in C++, and on x86-64 the hardware returns INT64_MIN — so "height": 1e300 became a large negative number, and the loop that encodes it shifts right until it reaches zero, which a negative number never does. One field, one hung miner, memory climbing until the OOM killer arrives. Reported by bobbyning.
+
+It also produced the first fuzzer this project has ever run. gcc has had ASan and UBSan all along and nobody here had pointed them at anything; against the code of that morning it hung on case one.
+
+[b]The fix for that threw where nothing caught it, and one line from a pool ended the miner — 400 WAM[/b]
+
+Refusing an impossible number by throwing was right for the solo path, which catches. The stratum path caught nothing, and four call sites handed a pool's number straight into it. So {"id":1e300} reached std::terminate — and the reference miner speaks no TLS, so every connection it makes is plaintext and anyone on the path could send that line.
+
+Three of those four call sites had written down a fallback saying exactly what they wanted instead, and were thrown past anyway.
+
+Reported by Radenlingga (@stokraden45506) the morning after the fix that caused it reached main, by reading the fix. No release ever carried it.
+
+He also found that the Android copy of the miner still held the unfixed files — that tree keeps its own copy of the sources and nothing was diffing them. He did not claim it separately and nothing was added for it; a check now requires the two trees to be identical after two named differences.
+
+[b]The halving countdown reached zero a block early — 250 WAM, recorded, not claimed[/b]
+
+getsupplyinfo named the last block of the old epoch as the next halving. On regtest, standing at height 150 it said the halving was there while 150 still paid 50 WAM and 151 was the first to pay 25. On mainnet it named 200,000 where the subsidy falls at 200,001.
+
+Not a consensus or payout fault — what pays miners was always right. But the explorer serves that number and the announcement bot posts "next halving in N blocks" from it, so the wrong figure reached the channels rather than stopping at an RPC nobody calls by hand. When it was fixed, the same arithmetic turned out to be written out four more times, in the branches that run when the node cannot be asked.
+
+Found by dang150296 (Urriki1502), in a second independent review that rebuilt our patched Core from the tag and ran native regtest against it — and that published the list of what he had NOT executed beside what he had. He did not price it and no amount was paid. The rung is recorded, and it is his whenever he asks for it.
+
+[b]And six tests that were compiled into every binary and never run[/b]
+
+They put the founder reserve's time locks to the script interpreter: refused before each unlock date with the exact locktime error, accepted on it, and both known ways to defeat CLTV rejected. Every command in this repository that ran the unit tests named two suites and not that one. Reported by bobbyning. They run now, and they pass.
+
+[b]What was paid[/b]
+
+Each amount, each reason and each transaction id was in the public ledger before this post was written. The three transactions are in block 38,089.
+
+https://wamcoin.org/security
+
+The treasury's whole life is 750,000 WAM, of which one eighth — 93,750 — is this programme's share. 33,950 of it has been paid in the programme's first fifty-four days.
+
+[b]The source is in three places, at three companies:[/b]
+
+https://gitlab.com/WAMCoin/wam-coin
+https://github.com/wamcoin-Project/wam-coin
+https://gitea.com/WAMCoin/wam-coin
+
+Site https://wamcoin.org — and https://wamcoin.net, written down empty before it is needed.
+
+Questions: https://discord.gg/Gxvmrjy9Qb

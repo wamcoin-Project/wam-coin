@@ -1,0 +1,40 @@
+BITCOINTALK — POST 1 of 2: the release. Reply in the WAM thread. BBCode.
+Post 2, the findings, is in bitcointalk-findings.txt and goes up separately.
+
+SUBJECT
+=======
+v0.1.14 — a peer you have already punished cannot buy any more of your node's time
+
+BODY
+====
+[b]Update your node.[/b]
+
+Verifying one block header costs this chain about twenty milliseconds of RandomX, where Bitcoin spends a microsecond on a double-SHA256. Until this release a peer could buy that again and again for ninety bytes a time.
+
+The header only had to name our tip as its parent, which is public, and carry the difficulty anyone can compute. The node did punish the address — a bad header is Misbehaving, which discourages it — and then accepted its next connection anyway, because an inbound slot was free. Upstream means that leniency and it costs upstream a microsecond. It cost us the whole defence.
+
+Headers from a discouraged peer are now dropped before any proof of work is touched. Held down by a functional test that connects from an address the node will not call local, because a loopback peer is never discouraged and a test written on the loopback would have passed against the unfixed node for the wrong reason.
+
+The same release stops one line from a pool ending the reference miner, brings the Android copy of the miner back in step with the desktop one, corrects a halving figure that was published a block early, and runs six consensus tests that were compiled into every binary and never invoked. What each of those was, and who found it, is in the next post.
+
+[b]Downloads[/b] — node, miner and wallet, for Linux, Windows and macOS:
+
+https://wamcoin.org/downloads/
+
+Check what you downloaded before you run it:
+
+[code]bash scripts/verify_release.sh v0.1.14[/code]
+
+SHA256SUMS.asc is a signature over SHA256SUMS and nothing else. A file you downloaded that is not named in that list is covered by nothing.
+
+Nothing here changes a consensus rule. A node that stays on v0.1.13 is on the same chain and stays on it. It is simply reachable, and this release is why it should not stay that way.
+
+[b]The source is in three places, at three companies[/b], so that no one of them can end it:
+
+https://gitlab.com/WAMCoin/wam-coin
+https://github.com/wamcoin-Project/wam-coin
+https://gitea.com/WAMCoin/wam-coin
+
+Site https://wamcoin.org — and https://wamcoin.net, written down empty before it is needed.
+
+Questions: https://discord.gg/Gxvmrjy9Qb

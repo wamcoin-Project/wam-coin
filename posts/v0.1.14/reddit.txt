@@ -1,0 +1,47 @@
+REDDIT — one post. Reddit JOINS lines that are one newline apart, so every
+line below that must stand alone has a blank line after it or begins with
+`* `. Paste it as-is; do not re-wrap it.
+
+TITLE
+=====
+WAM v0.1.14: a peer you have already punished cannot buy any more of your node's time
+
+BODY
+====
+**Update your node.** Verifying one block header costs this chain about twenty milliseconds of RandomX, where Bitcoin spends a microsecond on a double-SHA256. Until this release a peer could buy that again and again for ninety bytes a time.
+
+The header only had to name our tip as its parent, which is public, and carry the difficulty anyone can compute. The node did punish the address — a bad header is Misbehaving, which discourages it — and then accepted its next connection anyway, because an inbound slot was free. Upstream means that leniency and it costs upstream a microsecond. It cost us the whole defence.
+
+Headers from a discouraged peer are now dropped before any proof of work is touched.
+
+**Everything in this release was reported by people outside the project.**
+
+* The node DoS above, found by reading the code, measured on the reporter's own regtest instance, nothing run against the network.
+
+* The reference miner would die on one line from a pool. A fix the day before stopped it reading an impossible number out of a template; the fix threw where nothing caught it, and four places on the stratum path handed a pool's number straight into it. This miner speaks no TLS, so anyone on the path could send that line. Found the next morning by reading the fix.
+
+* `getsupplyinfo` named the last block of the old epoch as the next halving, so the countdown reached zero a block early — on mainnet it said 200,000 where the subsidy falls at 200,001. Found by a reviewer who rebuilt our patched Core, ran native regtest against it, and published the list of what he had *not* tested alongside what he had. He asked for nothing.
+
+* Six tests that were compiled into every binary and never run. They put the founder reserve's time locks to the script interpreter. Every command in the repository named two suites and not that one.
+
+Five findings, three people, 1,950 WAM paid on 9 November — each amount, each reason and each transaction id published in the ledger before this post existed.
+
+**Downloads** — node, miner and wallet, for Linux, Windows and macOS:
+
+* https://wamcoin.org/downloads/
+
+Check what you downloaded before you run it. `SHA256SUMS.asc` is a signature over `SHA256SUMS` and nothing else; a file not named in that list is covered by nothing.
+
+**The source is in three places, at three companies:**
+
+* https://gitlab.com/WAMCoin/wam-coin
+
+* https://github.com/wamcoin-Project/wam-coin
+
+* https://gitea.com/WAMCoin/wam-coin
+
+Site https://wamcoin.org — and https://wamcoin.net, written down empty before it is needed.
+
+The bounty programme, its rungs and every finding it has paid: https://wamcoin.org/security
+
+Questions: https://discord.gg/Gxvmrjy9Qb

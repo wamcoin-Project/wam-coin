@@ -1,0 +1,83 @@
+DISCORD — FOUR SEPARATE MESSAGES, one per person, posted one after another.
+Do not merge them. Each person's work and each person's amount stands on its
+own; a total across two people is a sentence that belongs to neither.
+
+The first three were paid. The fourth was not, because he did not ask.
+
+Lines are NOT hand-wrapped: Discord keeps a single newline, so a wrapped
+paragraph arrives broken on a phone. Paste each block as it is.
+
+=============================================================================
+MESSAGE 1 — bobbyning, 900 WAM
+=============================================================================
+**Paid: 900 WAM to bobbyning**, for three findings accepted on 8 November. Each is a different component, a different root cause, and each was classified at the rung he named himself.
+
+400 — a node could be made to work for a peer it had already punished. Verifying one block header costs this chain about twenty milliseconds of RandomX; the node discourages an address whose header fails, then accepted its next connection anyway. Reconnect, ninety more bytes, another twenty milliseconds, without limit. He measured it on his own isolated regtest instance: 725 headers in fifteen seconds, one core at 95 per cent. Nothing was run against the network.
+
+250 — the comment above the mainnet treasury address in our consensus file described the opposite of the value underneath it. The value was always right. The sentence was not.
+
+250 — one hostile field in a block template hung the solo miner and grew its memory without bound. That one also produced the first fuzzer this project has ever run.
+
+All three are fixed and shipped in v0.1.14.
+
+One transaction, 362 inputs, in block 38,089:
+`262f1813d6483d5b1f7bec160d932f1120bf7bc4874d788edbdeef72e3361a0c`
+
+The amount, the reason and the txid are in the ledger, and were there before this message: https://wamcoin.org/security
+
+Source: https://gitlab.com/WAMCoin/wam-coin · https://github.com/wamcoin-Project/wam-coin · https://gitea.com/WAMCoin/wam-coin
+Site: https://wamcoin.org · https://wamcoin.net
+
+=============================================================================
+MESSAGE 2 — Radenlingga, 800 WAM
+=============================================================================
+**Paid: 800 WAM to Radenlingga** (@stokraden45506), for two findings, 400 each.
+
+The first: the pool committed a found block through four redis commands whose replies nobody read. A refused write could destroy the round — the only record of who had earned what — while the function reported success and the crash-recovery entry was released with it.
+
+The second, found the next morning: by reading our fix for the first one. The 8 November fix made the miner refuse an impossible number by throwing; the stratum path caught nothing, and four call sites handed a pool's number straight into it. One line from a hostile pool ended the miner, and this miner speaks no TLS, so anyone on the path could send it. Three of those four call sites had already written down what they wanted instead, and were thrown past anyway.
+
+He reproduced both against this repository's own code on 127.0.0.1. Nothing touched the live pool or the network.
+
+He also found that the Android copy of the miner still held the unfixed files. He did not claim it separately and nothing was added for it.
+
+One transaction, 322 inputs, in block 38,089:
+`c3429df273b5e5eb03cb4c35271e9396cd634498ab902196c72ede83cc08fd15`
+
+https://wamcoin.org/security
+
+Source: https://gitlab.com/WAMCoin/wam-coin · https://github.com/wamcoin-Project/wam-coin · https://gitea.com/WAMCoin/wam-coin
+Site: https://wamcoin.org · https://wamcoin.net
+
+=============================================================================
+MESSAGE 3 — 0xzerocomp, 250 WAM
+=============================================================================
+**Paid: 250 WAM to 0xzerocomp**, for the block spool emptied at the start of the window it exists to cover.
+
+The spool exists for one failure: dying between the node accepting a block and the payout being recorded. The code removed the entry the moment the node accepted the block — which is the beginning of that window, not the end. So the one crash it was built to survive lost the block anyway.
+
+Reported with a harness that drives the real JobManager. Fixed and live on the pool.
+
+One transaction, 102 inputs, in block 38,089:
+`1a5498938994237fe6ce9bc5c87767521bd52befc0b980a4e6563d1670ecdc33`
+
+https://wamcoin.org/security
+
+Source: https://gitlab.com/WAMCoin/wam-coin · https://github.com/wamcoin-Project/wam-coin · https://gitea.com/WAMCoin/wam-coin
+Site: https://wamcoin.org · https://wamcoin.net
+
+=============================================================================
+MESSAGE 4 — dang150296. The rung is 250 WAM and it was not paid, because he did not ask for it.
+=============================================================================
+**dang150296 (Urriki1502) found a fault in v0.1.14 and took nothing for it.**
+
+getsupplyinfo named the last block of the old epoch as the next halving, so the countdown reached zero a block early — on mainnet it said 200,000 where the subsidy actually falls at 200,001. Not a consensus or payout fault, but the explorer serves that number and the announcement bot posts "next halving in N blocks" from it, so the wrong figure reached these channels rather than stopping at an RPC nobody calls by hand.
+
+He found it in a second independent review that rebuilt our patched Core from the tag and ran native regtest against it — and that published the list of what he had NOT tested beside what he had. When the fix went in, he read it and found the same arithmetic written out four more times.
+
+He did not price it and no amount was paid. The rung is recorded at 250, and it is his whenever he asks for it.
+
+https://wamcoin.org/security
+
+Source: https://gitlab.com/WAMCoin/wam-coin · https://github.com/wamcoin-Project/wam-coin · https://gitea.com/WAMCoin/wam-coin
+Site: https://wamcoin.org · https://wamcoin.net

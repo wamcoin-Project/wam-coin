@@ -1,0 +1,17 @@
+BLUESKY — 300 characters. Counted below, not estimated.
+=======================================================
+WAM v0.1.14 — update your node.
+
+One block header costs this chain ~20ms of RandomX, where Bitcoin spends a microsecond. A peer could buy that again and again for 90 bytes, punished and then served anyway. Now dropped before any proof of work is touched.
+
+wamcoin.org/downloads/
+=======================================================
+
+SECOND POST — a day later.
+=======================================================
+Everything in WAM v0.1.14 was found by people outside the project: a node DoS, a miner killed by one line from a pool, a halving countdown a block early.
+
+Five findings, three people, 1,950 WAM paid. Every amount and txid published.
+
+wamcoin.org/security
+=======================================================
