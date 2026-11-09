@@ -339,6 +339,13 @@ run "no page promises and forgets"  "$PY" scripts/check_promises.py
 # docs/TREASURY_LEDGER.md.
 run "treasury claims match the ledger" "$PY" scripts/check_treasury_claims.py
 
+# And two plans cut in one sitting cannot take the same coin. --parts keeps
+# the parts of one payment apart; until 9 November nothing kept two separate
+# plans apart, and three people were owed that day. The failure would have
+# arrived at broadcast, after the key had been used.
+run "two plans cannot spend one output" \
+    "$PY" scripts/test/test_treasury_exclude.py
+
 # That one reads what we SAY about the money. This reads the LEDGER itself,
 # against the chain, and it is the half that was missing. docs/TREASURY_LEDGER.md
 # does not merely record the spends: it hands the reader an identity and tells

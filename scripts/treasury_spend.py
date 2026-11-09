@@ -211,6 +211,59 @@ def _verify_against_plan(plan, tx, where):
 # plan -- runs where the chain is
 # ---------------------------------------------------------------------------
 
+def drop_excluded(mature, paths):
+    """Remove the outputs an earlier plan in this sitting already took.
+
+    --parts solves this for one address: the parts come out of one pool and
+    the pool is consumed as they are cut. It cannot solve it for two
+    addresses, because a plan pays one address.
+
+    On 9 November 2026 three bounties were owed to three people in one
+    sitting. Planning them one after another, with nothing broadcast in
+    between, would have offered the same oldest outputs to all three -- the
+    mempool filter sees only what has already been sent, and nothing had
+    been. That is the 2 October fault arriving by a different road: two plans
+    spending one outpoint, discovered at broadcast, after the key was used.
+
+    So a plan can be told what an earlier plan already took. The check that
+    --parts performs between its own parts, this performs across separate
+    runs.
+
+    It is deliberately loud. An --exclude that removes nothing is a file that
+    is not what the operator believes it is, and continuing would be exactly
+    the silence this tool exists to refuse: a check that could not look,
+    reporting that it had looked.
+    """
+    for path in (paths or []):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                earlier = json.load(f)
+        except Exception as e:
+            die("cannot read the plan to exclude, %s (%s). Nothing was "
+                "planned." % (path, e))
+        taken = earlier.get("inputSet") if isinstance(earlier, dict) else None
+        if not isinstance(taken, list) or not taken:
+            die("%s has no inputSet, so it is not a plan this can exclude. "
+                "Nothing was planned." % path)
+        try:
+            outpoints = {(i["txid"], i["vout"]) for i in taken}
+        except (TypeError, KeyError) as e:
+            die("an input of %s cannot be read (%s). Nothing was planned."
+                % (path, e))
+        before = len(mature)
+        mature = [u for u in mature if (u["txid"], u["vout"]) not in outpoints]
+        removed = before - len(mature)
+        if removed == 0:
+            die("%s names %d outpoint(s) and this scan offered none of them. "
+                "Either it is a plan for another treasury or another chain, "
+                "or what it spends has already confirmed -- and either way "
+                "what you meant to exclude is not what was excluded. Nothing "
+                "was planned." % (path, len(outpoints)))
+        print("  already planned     %d output(s) taken by %s, left out"
+              % (removed, os.path.basename(path)))
+    return mature
+
+
 def cmd_plan(args):
     rpc = Rpc(args.conf, port=args.port)
     tip = rpc.call("getblockcount")
@@ -288,6 +341,26 @@ def cmd_plan(args):
         if held:
             print("  in the mempool      %d output(s) already spent by an "
                   "unconfirmed transaction, left out" % held)
+
+    # AND NOT THE ONES A PLAN WRITTEN MINUTES AGO HAS ALREADY TAKEN.
+    #
+    # --parts solves this for one address: the parts come out of one pool and
+    # the pool is consumed as they are cut. It cannot solve it for two
+    # addresses, because a plan pays one address.
+    #
+    # On 9 November 2026 three bounties were owed to three people in one
+    # sitting. Planning them one after another, with nothing broadcast in
+    # between, would have offered the same oldest outputs to all three: the
+    # mempool filter above sees only what has already been sent, and nothing
+    # had been. That is the 2 October fault with a different cause -- two
+    # plans spending one outpoint, found at broadcast, after the key was used.
+    #
+    # So a plan can be told what an earlier plan already took. The check that
+    # --parts does between its own parts, this does across separate runs, and
+    # it is deliberately loud: an --exclude that removes nothing is a file
+    # that is not what the operator thinks it is, and carrying on would be
+    # exactly the silence this tool exists to refuse.
+    mature = drop_excluded(mature, getattr(args, "exclude", None))
 
     print("  height              %d" % tip)
     print("  outputs             %d, totalling %s WAM" %
@@ -941,6 +1014,12 @@ def main():
     p.add_argument("--conf", default="/root/.wam-mainnet/wam.conf")
     p.add_argument("--port", type=int, default=9554)
     p.add_argument("--out", default="treasury-plan.json")
+    p.add_argument("--exclude", action="append", metavar="PLAN.JSON",
+                   help="a plan written earlier in this sitting whose inputs "
+                        "this one must not take. Repeat it once per plan. "
+                        "Use it when several people are paid before anything "
+                        "is broadcast, because until a transaction is sent "
+                        "the mempool cannot warn anybody about it.")
     p.add_argument("--parts", type=int, default=1,
                    help="cut the payment into N equal parts from ONE scan, "
                         "with no output offered twice; --amount is the "
