@@ -147,9 +147,10 @@ it contradicted. He was right and the file was wrong.
 **What has been paid is in the ledger, and nothing else has.** 10,000 WAM went
 to chovy on 1–2 October 2026, 10,000 to Alboy on 11 October, 1,000 to
 Smooth Jazz Crypto on 13 October, 250 to ahten on 15 October, and 10,250 to
-bobbyning on 8 November — 31,500 WAM to five people. Two are still unpaid: the
-1,000 for the pool API leak, and the 250 for the block spool, which is waiting
-on an address from the reporter. Until 2 October this paragraph opened
+bobbyning on 8 November — 31,500 WAM to five people. What has been accepted and
+not yet paid says so in its own entry below, with what it is waiting on. This
+sentence used to count them, and a count is wrong again by the next payment;
+the entries cannot be. Until 2 October this paragraph opened
 "nothing has been paid yet", which stayed after it stopped being true and
 contradicted the line further down this same file. Between 14 and 15 September
 it claimed the opposite error: that 1,000 WAM had already been paid to the reviewer who
@@ -448,7 +449,8 @@ which makes it the likelier of the two.
 Reported by bobbyning from a read of `pool/` at `6d613ae`, without running
 anything. Fixed in `pool/lib/shareProcessor.js`, `pool/lib/jobManager.js` and
 `pool/server.js`: the marker is read before every payment run and pauses the
-pool if it is there, every `exec()` is wrapped and its replies read, the
+pool if it is there, the payment commit and `recordShare` read what their
+`exec()` returns, the
 accounting is a MULTI, a duplicate share is answered with code 22 instead of
 "resubmit", and `_mature`'s `lrem` was moved outside its MULTI and gated on
 the replies — a MULTI is one unit against a lost connection but does not abort
@@ -465,6 +467,59 @@ and credited there, though his observation about `shutdown()` was new and is
 fixed with it. His appendix B, the block stranded in `blocks:maturing`, is
 fixed and credited to him by name; he did not price it and no amount was added
 for it.
+
+**400 WAM — a found block's payout table could be destroyed instead of written,
+and the pool would report success, accepted 9 November 2026, unpaid.**
+
+`recordBlock` committed a found block as four commands in a redis pipeline and
+never read the `[error, result]` pairs that `exec()` resolves with. A pipeline
+is a batch and not a transaction — this repository's own comments say so in
+three places — so when the first command was refused server-side, the three
+after it were applied anyway. That first command is the one that writes the
+payout table. The round, which is the only other statement of who had earned
+what, was deleted; the pool fee was booked for a block nobody would ever be
+paid for; and the function returned the record as though the block were
+settled. Because it did not throw, `pool/server.js` then released the
+block-spool entry, so the last copy that could have re-offered the block went
+with it. Nothing was logged.
+
+Reading the replies is not the fix, and that is the part worth writing down.
+By the time a reply can be read the round is already gone, and the retry it
+would trigger recomputes the payouts from an empty round. The order is the
+fix, and an order only means something if nothing can run between its parts.
+`wamRecordBlock` in `pool/lib/atomic.js` writes the table with `HSETNX` and
+lets nothing destructive run unless that succeeded. A refused table now costs
+nothing: the round stands, the spool keeps the block, and the retry rebuilds
+the same table from the same shares. The one command that can still fail after
+the table is written is the fee counter, which is last for that reason — a
+counter short by one block, repairable from `blocks:pending`, and loud.
+
+Reported by Radenlingga (@stokraden45506) on 9 November 2026 against
+`c10e015`, with a reproduction that drives this repository's own
+`ShareProcessor` over a double with real pipeline semantics. He ran nothing
+against the live pool, the explorer or the network. Held down by
+`pool/test/record-block-commit.test.js`, which was run against the old commit
+first: three of its five cases fail there.
+
+**He also corrected this file.** The entry above said of the 8 November fix
+that "every `exec()` is wrapped and its replies read". That was not true. It
+was true of the payment commit and of `recordShare`; this call site and
+`_orphan`'s bookkeeping were never touched, and the sentence covered them. He
+read the code against the claim and found the gap. The sentence now says what
+was actually done, `_orphan` reads its replies and logs them, and nothing in
+`pool/` calls `exec()` unread.
+
+Classified at 400 — the rung for denial of service against the pool — and said
+as a judgement rather than a reading of the wording. The reporter suggested
+1,000 by the precedent of the maturation gap above, with 250 as his own floor.
+The maturation entry was classified at 1,000 *because 1,000 was the
+denial-of-service rung* in the table of that day, in those words. That rung is
+400 in the table published on 8 November, the day before this report arrived.
+So the band is the same one and the precedent is kept rather than set aside.
+Not 250: this is not hardening, it is one block's payout table, which is the
+one thing here that cannot be rebuilt. And not read as a duplicate of the
+7 November report: the fix for that report is what he read, and what he found
+is where it stopped.
 
 **1,000 WAM — the pool API leak, accepted 13 September 2026, unpaid.** Three of
 four `/api/*` endpoints returned every miner's full payout address while the

@@ -59,6 +59,7 @@ const path = require('path');
 const BlockTemplate = require('../lib/blockTemplate');
 const ShareProcessor = require('../lib/shareProcessor');
 const { attachAtomic, attachUnsupported } = require('./fakeAtomic');
+const { RECORD_BLOCK } = require('../lib/atomic');
 const { attachMulti } = require('./fakeMulti');
 
 const GRN = '\x1b[32m', RED = '\x1b[31m', BLD = '\x1b[1m', OFF = '\x1b[0m';
@@ -355,12 +356,26 @@ function processor(redis) {
     });
 
     await test('the claim set is dropped with the round', () => {
-        const src = fs.readFileSync(require.resolve('../lib/shareProcessor'), 'utf8');
-        const roundDel = src.indexOf("del(this.k('round'))");
-        const powDel = src.indexOf("del(this.k('round:pow'))");
-        assert.ok(powDel > -1 && powDel - roundDel < 400 && powDel > roundDel,
-            'the proof-of-work set is not deleted where the round is, so it '
-            + 'grows without end');
+        // This used to search shareProcessor.js for the two literal strings
+        // "del(this.k('round'))" and "del(this.k('round:pow'))" and check they
+        // were within 400 characters of each other. It passed for a year over
+        // four lines that could lose a block's whole payout table, because a
+        // substring search cannot see what a command DOES -- and it broke the
+        // day those two lines moved into a script, which is the only honest
+        // thing it ever did.
+        //
+        // The behaviour is now asserted where behaviour belongs:
+        // record-block-commit.test.js drives recordBlock and reads the keys
+        // back. What is left here is the one structural fact this file is
+        // about -- the claim set is destroyed in the same breath as the round
+        // it belongs to, with nothing between them that could fail.
+        const del = RECORD_BLOCK.split('\n')
+            .find((line) => line.includes("'DEL'"));
+        assert.ok(del, 'the record-block script no longer deletes anything');
+        assert.ok(del.includes('KEYS[2]') && del.includes('KEYS[3]'),
+            'the round and the proof-of-work set are no longer deleted by one '
+            + 'command, so the claim set can outlive the round it belongs to '
+            + 'and grow without end');
     });
 
     console.log();

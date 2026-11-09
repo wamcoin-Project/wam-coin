@@ -32,20 +32,29 @@
 //  ever does reach maturation, it stops and says the double is the problem.
 // ===========================================================================
 
-const { CLAIM_AND_RECORD_NAME } = require('../lib/atomic');
+const { CLAIM_AND_RECORD_NAME, RECORD_BLOCK_NAME } = require('../lib/atomic');
 
 /**
- * Give a double the real command, over the maps it already uses.
+ * Give a double the real commands, over the maps it already uses.
  *
- * @param fake  the double
- * @param hash  (key) => Map, the double's own hash store
- * @param list  (key) => Array, the double's own list store
+ * @param fake    the double
+ * @param hash    (key) => Map, the double's own hash store
+ * @param list    (key) => Array, the double's own list store
+ * @param store   optional hooks for the keys wamRecordBlock destroys and
+ *                counts, for doubles that do not keep them as hashes:
  *
- * Atomic for free: there is no await inside, so nothing can interleave
- * between the delete and the push. That is exactly the property the Lua
- * script buys on a real server.
+ *                  drop(key)     remove a key from every store this double
+ *                                has. Default: hash(key).clear().
+ *                  fee(key, n)   add n to a plain integer key. Default:
+ *                                nothing, which is honest only because a
+ *                                double with no fee store has nothing that
+ *                                could read a fake answer back.
+ *
+ * Atomic for free: there is no await inside either of them, so nothing can
+ * interleave between the lines. That is exactly the property the Lua scripts
+ * buy on a real server, and it is the whole point of both.
  */
-function attachAtomic(fake, hash, list) {
+function attachAtomic(fake, hash, list, store) {
     if (typeof hash !== 'function' || typeof list !== 'function') {
         throw new Error('attachAtomic needs the double\'s hash and list accessors');
     }
@@ -55,23 +64,56 @@ function attachAtomic(fake, hash, list) {
             list(listKey).unshift(evidence);
             return 1;
         };
+
+    // WHAT THIS ONE IS STANDING IN FOR.
+    //
+    // Nothing in this directory had ever RUN recordBlock's commit. Two files
+    // call recordBlock and both are turned back by its idempotency checks
+    // before they reach it, and the pipeline double they share implements
+    // neither del nor incrby, so the commit would have died on "pipe.del is
+    // not a function" if either had got that far. The one test that claimed
+    // to be about those lines searched shareProcessor.js for two literal
+    // strings and checked they were near each other.
+    //
+    // So a fault lived in four lines for the whole life of this pool with a
+    // green suite over it, and an outsider found it by reading. The double
+    // below models the order the script fixes, and
+    // record-block-commit.test.js drives the failures through it.
+    const drop = (store && store.drop) || ((key) => hash(key).clear());
+    const fee = (store && store.fee) || (() => {});
+
+    fake[RECORD_BLOCK_NAME] =
+        async (pendingKey, roundKey, powKey, feeKey, field, record, amount) => {
+            if (hash(pendingKey).has(field)) return 0;
+            hash(pendingKey).set(field, record);
+            drop(roundKey);
+            drop(powKey);
+            fee(feeKey, Number(amount));
+            return 1;
+        };
     return fake;
 }
 
 /**
- * Give a double a command that refuses to pretend.
+ * Give a double commands that refuse to pretend.
  *
- * @param why  what this double does not model, in the error a reader sees
+ * @param why    what this double does not model, in the error a reader sees
+ * @param which  which commands to refuse; all of them by default
  */
-function attachUnsupported(fake, why) {
-    fake[CLAIM_AND_RECORD_NAME] = async () => {
-        throw new Error(
-            `${CLAIM_AND_RECORD_NAME} was called on a double that does not ` +
-            `model it: ${why}. Nothing was asserted. Use attachAtomic from ` +
-            'pool/test/fakeAtomic.js with this double\'s own stores, rather ' +
-            'than trusting whatever this call would have returned.');
-    };
+function attachUnsupported(fake, why, which) {
+    for (const name of which || [CLAIM_AND_RECORD_NAME, RECORD_BLOCK_NAME]) {
+        fake[name] = async () => {
+            throw new Error(
+                `${name} was called on a double that does not model it: ` +
+                `${why}. Nothing was asserted. Use attachAtomic from ` +
+                'pool/test/fakeAtomic.js with this double\'s own stores, ' +
+                'rather than trusting whatever this call would have returned.');
+        };
+    }
     return fake;
 }
 
-module.exports = { attachAtomic, attachUnsupported, CLAIM_AND_RECORD_NAME };
+module.exports = {
+    attachAtomic, attachUnsupported,
+    CLAIM_AND_RECORD_NAME, RECORD_BLOCK_NAME
+};
