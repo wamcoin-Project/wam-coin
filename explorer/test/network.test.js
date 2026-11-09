@@ -116,6 +116,43 @@ test('ipv6 is recognised, not counted as ipv4', () => {
     assert.strictEqual(net.classify('[2001:db8::1]:19555').kind, 'ipv6');
 });
 
+console.log('\n=== one subscriber is one machine ===');
+
+test('two addresses in one /64 are one machine, however they are written', () => {
+    // `2001:db8::1` and `2001:db8::abcd` are neighbours in the same /64:
+    // `::` stands for the zero groups between. Slicing the text at four
+    // groups counted them as two machines, on the page whose whole purpose
+    // is to undercount the network rather than overcount it.
+    assert.strictEqual(net.machineId('[2001:db8::1]:19555'),
+                       net.machineId('[2001:db8::abcd]:19555'));
+    assert.strictEqual(net.machineId('[2001:db8::1]:19555'),
+                       net.machineId('[2001:db8:0:0:0:0:0:2]:19555'));
+});
+
+test('a different /64 is a different machine', () => {
+    assert.notStrictEqual(net.machineId('[2001:db8::1]:19555'),
+                          net.machineId('[2001:db9::1]:19555'));
+});
+
+test('the port is never part of the identity', () => {
+    assert.strictEqual(net.machineId('203.0.113.42:19555'),
+                       net.machineId('203.0.113.42:56797'));
+    assert.strictEqual(net.machineId('[2001:db8::1]:19555'),
+                       net.machineId('[2001:db8::1]:19556'));
+});
+
+test('an IPv4 /24 is still one machine', () => {
+    assert.strictEqual(net.machineId('41.254.73.4:56797'),
+                       net.machineId('41.254.73.97:56797'));
+    assert.notStrictEqual(net.machineId('41.254.73.4:56797'),
+                          net.machineId('41.254.74.4:56797'));
+});
+
+test('an unparseable address is still counted, not dropped', () => {
+    assert.strictEqual(typeof net.machineId('not-an-address'), 'string');
+    assert.strictEqual(net.machineId('not-an-address').length, 16);
+});
+
 test('known addresses are reported separately from connected', () => {
     // The honest measure of network size: addresses this node has heard of,
     // whether or not anyone is online right now.
