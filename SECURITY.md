@@ -83,8 +83,8 @@ three, and they were studied from every side before anything was touched.
 
 *One. The treasury is finite, and we have now measured how fast it empties.*
 Consensus pays it 2.5 WAM a block until height 400,000 — 750,000 WAM for its
-whole life, of which one eighth, 93,750, is this programme's share. 31,500 of
-that is already paid, in the programme's first fifty-three days. Under the
+whole life, of which one eighth, 93,750, is this programme's share. 33,950 of
+that is already paid, in the programme's first fifty-four days. Under the
 old table a single inflation finding, at 50,000, was more than half of
 everything the programme had for its entire life. A table that one report can
 empty is not a commitment; it is a number waiting to be withdrawn. This one
@@ -147,7 +147,8 @@ it contradicted. He was right and the file was wrong.
 **What has been paid is in the ledger, and nothing else has.** 10,000 WAM went
 to chovy on 1–2 October 2026, 10,000 to Alboy on 11 October, 1,000 to
 Smooth Jazz Crypto on 13 October, 250 to ahten on 15 October, and 10,250 to
-bobbyning on 8 November — 31,500 WAM to five people. What has been accepted and
+bobbyning on 8 November, and 1,950 to three people on 9 November — 33,950 WAM
+in all. What has been accepted and
 not yet paid says so in its own entry below, with what it is waiting on. This
 sentence used to count them, and a count is wrong again by the next payment;
 the entries cannot be. Until 2 October this paragraph opened
@@ -207,9 +208,9 @@ running, which comes first, because a chain with no nodes has nothing worth
 securing.
 
 **This programme's share of it is one eighth: 93,750 WAM, for the whole life
-of the programme.** 31,500 of that has been paid against the findings below,
-leaving 62,250. One of every class in the table above comes to 8,750, so what
-is left pays the whole table seven times over — which is the test a promise
+of the programme.** 33,950 of that has been paid against the findings below,
+leaving 59,800. One of every class in the table above comes to 8,750, so what
+is left pays the whole table six times over — which is the test a promise
 has to pass before it is made. The table it replaced passed that test once.
 
 **When the eighth is spent, the programme closes and this file says so.** It
@@ -398,7 +399,12 @@ Classified at 250, the hardening rung, which is where the reporter classified
 it. Held down by `pool/test/address-validation.test.js`.
 
 **250 WAM — the block spool was emptied at the start of the window it exists
-for, accepted 6 November 2026, payable.** `drainSpool` says in its own comment
+for, accepted 6 November 2026, PAID 9 November 2026.** One transaction of 102
+inputs, txid
+`1a5498938994237fe6ce9bc5c87767521bd52befc0b980a4e6563d1670ecdc33`, in block
+38,089, and in `docs/TREASURY_LEDGER.md` with the rest. The address arrived on
+9 November, five days after the finding was accepted; nothing else was waiting
+on anything. `drainSpool` says in its own comment
 what the spool is for: dying between the node accepting a block and the payout
 being recorded. `_submitBlock` removed the entry the moment the node accepted
 the block — the first instant of that window rather than the last — and
@@ -469,7 +475,11 @@ fixed and credited to him by name; he did not price it and no amount was added
 for it.
 
 **400 WAM — a found block's payout table could be destroyed instead of written,
-and the pool would report success, accepted 9 November 2026, unpaid.**
+and the pool would report success, accepted 9 November 2026, PAID 9 November
+2026.** Paid together with the finding below it, in one transaction of 322
+inputs, txid
+`c3429df273b5e5eb03cb4c35271e9396cd634498ab902196c72ede83cc08fd15`, in block
+38,089.
 
 `recordBlock` committed a found block as four commands in a redis pipeline and
 never read the `[error, result]` pairs that `exec()` resolves with. A pipeline
@@ -520,6 +530,135 @@ Not 250: this is not hardening, it is one block's payout table, which is the
 one thing here that cannot be rebuilt. And not read as a duplicate of the
 7 November report: the fix for that report is what he read, and what he found
 is where it stopped.
+
+**400 WAM — a header a peer had already been punished for still bought twenty
+milliseconds of the node, accepted 8 November 2026, PAID 9 November 2026.**
+Paid with the two findings below it, in one transaction of 362 inputs, txid
+`262f1813d6483d5b1f7bec160d932f1120bf7bc4874d788edbdeef72e3361a0c`, in block
+38,089.
+
+Verifying one block header costs this chain about twenty milliseconds of
+RandomX light mode, against the microsecond a double-SHA256 costs Bitcoin, and
+WAM-010 made `CheckBlockHeader` a no-op while WAM-013 moved the proof of work
+into `ContextualCheckBlockHeader`, which holds `cs_main`. Forging a header that
+reaches that check costs nothing: the parent is our own tip, which is public,
+and `nBits` is `GetNextWorkRequired`, which anybody can compute.
+
+The node did punish it. A failed proof of work is `BLOCK_INVALID_HEADER`, which
+is `Misbehaving`, which discourages the address. What it did not do was stop
+SPENDING on an address it had already punished — `net.cpp` accepts a discouraged
+peer's next connection whenever the inbound slots are not nearly full. Upstream
+means that leniency and it costs upstream a microsecond. It cost us the whole
+defence: reconnect, send another ninety bytes, buy another twenty milliseconds,
+without limit.
+
+Reported by bobbyning on 8 November 2026, measured on an isolated regtest
+instance of his own at 725 headers in fifteen seconds with one core at 95 per
+cent. Nothing was run against the network. Fixed as WAM-027 in
+`scripts/patch_upstream.py`: headers from a discouraged peer are dropped before
+any proof of work is touched. Held down by
+`test/functional/feature_wam_header_dos.py`, which connects over this machine's
+ordinary address rather than the loopback, because
+`MaybeDiscourageAndDisconnect` refuses to discourage a local address — a test
+written on the loopback would have passed against the unfixed node for the
+wrong reason. Shipped in v0.1.14.
+
+Classified at 400, the denial-of-service rung, which is the rung the reporter
+named.
+
+**250 WAM — the treasury comment described the opposite of the value under it,
+accepted 8 November 2026, PAID 9 November 2026.** Part of the same transaction
+as the finding above.
+
+`src/wam/chainparams.cpp` carried a comment saying the mainnet treasury address
+was something other than what the line beneath it decodes to. The value is
+right, has been since `a79835e` on 23 August 2026, and is what every block has
+paid; the sentence above it was wrong. A consensus file is read by people
+deciding whether to trust a chain, and a comment that contradicts its own code
+is read as either a mistake or a trap. Reported by bobbyning.
+
+**250 WAM — one hostile field in a block template hung the solo miner, accepted
+8 November 2026, PAID 9 November 2026.** Part of the same transaction as the two
+findings above.
+
+`AsInt` converted a JSON number with a bare `int64_t(double)` cast. A double
+whose truncated value does not fit is undefined in C++, and on x86-64 the
+hardware hands back `0x8000000000000000`. So a node answering `"height": 1e300`
+produced `-9223372036854775808` from a field that is arithmetically positive,
+silently — and `HeightPush` then ran for ever on it, because an arithmetic right
+shift of a negative number never reaches zero. One hostile field, one hung
+miner, memory climbing until the OOM killer arrives. Reported by bobbyning.
+Fixed in `miner/src/json.h` and `miner/src/solo_template.h`, and held down by
+`miner/test/solo_template_test.cpp` — which hangs rather than fails against the
+old code, so the runner kills it at twenty seconds.
+
+It also produced the first fuzzer this project has ever run,
+`scripts/fuzz_miner.sh`. gcc has had ASan and UBSan all along and nothing here
+had ever been pointed at anything; against the code of that morning it hung on
+case one.
+
+**400 WAM — the fix for the finding above threw where nothing caught, and one
+line from a pool ended the miner, accepted 9 November 2026, PAID 9 November
+2026.** Paid with the `recordBlock` finding above, in the same transaction.
+
+Making `AsInt` refuse an impossible number was right. Refusing by throwing was
+right for the solo path, which catches. The stratum path caught nothing — not
+`HandleLine`, not the pool loop in `miner/src/main.cpp` — and four call sites
+handed a pool's number straight into it. So `{"id":1e300,"result":true}` reached
+`std::terminate`, and the reference miner speaks no TLS, so every one of its
+connections is plaintext and anyone on the path could send that line. Every
+miner on a pool, dead together, and dead again on each reconnect.
+
+Three of those four had written down a fallback saying exactly what they wanted
+instead, and were thrown past anyway. `AsInt` is two forms now: the one with no
+fallback throws, the one with a fallback returns it, and neither can produce a
+garbage integer. The stratum dispatch is also total, because the first fix
+depends on every future reader of that header choosing the right form.
+
+Reported by Radenlingga (@stokraden45506) on 9 November 2026, the morning after
+the fix that created it shipped to `main`, by reading the fix. No release
+carried it: v0.1.13 is from 31 October and the throw landed on 8 November.
+
+He also reported, and was right, that `contrib/wam-miner-android` still held the
+unfixed `json.h` and `solo_template.h`. That tree keeps its own copy of the
+miner's sources for the Gradle build, nothing was diffing them, and a fix
+applied to one of two copies is a fix that was announced and not made. He did
+not claim it separately and no amount was added for it;
+`scripts/check_android_miner.py` now requires the Android tree to be the desktop
+tree after two named edits, byte for byte. Held down by
+`miner/test/stratum_hostile_test.cpp`, which opens a pool on the loopback and
+drives `Poll()` the way `main.cpp` does, with no try/catch: against the old
+miner it does not fail, it aborts. Shipped in v0.1.14.
+
+**250 WAM — `getsupplyinfo` named the last block of the old epoch as the next
+halving, accepted 9 November 2026, recorded and not claimed.**
+
+`GetBlockSubsidy` counts halvings as `(nHeight - 1) / interval`, because block 0
+mints the premine and would otherwise sit inside epoch 0 and leave it one block
+short. So epoch *e* begins at `e * interval + 1`, and the RPC was missing that
+`+ 1`: on regtest, standing at height 150, it reported the halving as 150 while
+150 still paid 50 WAM and 151 was the first to pay 25. On mainnet it named
+200,000 when the subsidy falls at 200,001, and `blocks_until_halving` reached
+zero a block early.
+
+Not a consensus or payout fault — what pays miners was always right. It is a
+number we publish: `explorer/lib/collector.js` serves it and `bots/announce.js`
+posts "Next halving in N blocks" from it, so the wrong figure reached the
+channels and the explorer rather than stopping at an RPC nobody calls by hand.
+That is the rung for something we publish that misleads.
+
+Found by dang150296 (Urriki1502) in a second independent review that rebuilt the
+patched Core from the v0.1.13 tag and ran native regtest, and reported with the
+list of what he had NOT executed alongside what he had. When the RPC was fixed
+he read the fix and found the same arithmetic written out four more times — in
+the explorer and in the pool's API, in the branches that run when the node
+cannot be asked, which is exactly when nobody is comparing the number against
+anything. It is one function per package now rather than five copies of an
+expression, held down by `explorer/test/halving.test.js` and
+`pool/test/halving.test.js`.
+
+He did not price it and no amount was paid. The rung is recorded, and it is
+his whenever he asks for it.
 
 **1,000 WAM — the pool API leak, accepted 13 September 2026, unpaid.** Three of
 four `/api/*` endpoints returned every miner's full payout address while the
