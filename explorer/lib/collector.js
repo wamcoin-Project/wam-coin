@@ -23,7 +23,8 @@
 const {
     COIN, SUBSIDY_HALVING_INTERVAL, INITIAL_BLOCK_SUBSIDY_WAM, MAX_HALVINGS,
     MAX_MONEY_WAM, GENESIS_PREMINE_WAM, DEVFEE_PERCENT, DEVFEE_LAST_HEIGHT,
-    POW_TARGET_SPACING, PREMINE_TRANCHE_AMOUNT_WAM, PREMINE_UNLOCK_TIMES
+    POW_TARGET_SPACING, PREMINE_TRANCHE_AMOUNT_WAM, PREMINE_UNLOCK_TIMES,
+    nextHalvingHeight,
 } = require('./constants');
 
 const RECENT_BLOCKS = 25;
@@ -297,7 +298,7 @@ class Collector {
                 : Math.floor(subsidy * DEVFEE_PERCENT / 100);
             const nextHalving = has('next_halving_height')
                 ? supplyRpc.next_halving_height
-                : (Math.floor(Math.max(0, height - 1) / interval) + 1) * interval;
+                : nextHalvingHeight(height, interval);
             const blocksToHalving = has('blocks_until_halving')
                 ? supplyRpc.blocks_until_halving
                 : nextHalving - height;
@@ -328,7 +329,7 @@ class Collector {
         const treasuryActive = height >= 1 && height <= DEVFEE_LAST_HEIGHT;
         const treasury = treasuryActive ? Math.floor(subsidy * DEVFEE_PERCENT / 100) : 0;
 
-        const nextHalving = (epoch + 1) * SUBSIDY_HALVING_INTERVAL;
+        const nextHalving = nextHalvingHeight(height);
         const blocksToHalving = nextHalving - height;
 
         return {
