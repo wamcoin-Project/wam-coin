@@ -81,14 +81,10 @@ A programme that quietly starts paying less is a programme nobody trusts
 twice, so the reasons are here rather than left to be guessed at. There are
 three, and they were studied from every side before anything was touched.
 
-*One. The treasury is finite, and we have now measured how fast it empties.*
-Consensus pays it 2.5 WAM a block until height 400,000 — 750,000 WAM for its
-whole life, of which one eighth, 93,750, is this programme's share. 33,950 of
-that is already paid, in the programme's first fifty-four days. Under the
-old table a single inflation finding, at 50,000, was more than half of
-everything the programme had for its entire life. A table that one report can
-empty is not a commitment; it is a number waiting to be withdrawn. This one
-can be paid in full seven times over from what is left.
+*One. The treasury is finite.* It exists to keep this network running and to
+protect it, and a bounty table that one report could empty is not a
+commitment — it is a number waiting to be withdrawn. The old table had that
+shape. This one does not.
 
 *Two. A bounty is not only a cost. It is a distribution of coin that was
 never mined, and that is not a reading — we have watched it.* An earlier
@@ -147,8 +143,8 @@ it contradicted. He was right and the file was wrong.
 **What has been paid is in the ledger, and nothing else has.** 10,000 WAM went
 to chovy on 1–2 October 2026, 10,000 to Alboy on 11 October, 1,000 to
 Smooth Jazz Crypto on 13 October, 250 to ahten on 15 October, and 10,250 to
-bobbyning on 8 November, and 1,950 to three people on 9 November — 33,950 WAM
-in all. What has been accepted and
+bobbyning on 8 November, and 1,950 to three people on 9 November — 33,450 WAM
+in bounties. What has been accepted and
 not yet paid says so in its own entry below, with what it is waiting on. This
 sentence used to count them, and a count is wrong again by the next payment;
 the entries cannot be. Until 2 October this paragraph opened
@@ -177,12 +173,12 @@ Check it rather than believe it, from any node:
 At height 19,371 that returned 10,760 unspent outputs totalling
 26,927.24421040 WAM. One output per block, and it accrues 1,800 WAM per day.
 
-**It has moved twenty times, and every movement is a bounty or a test coin.**
+**Every coin that has ever left the treasury is a bounty or one test coin.**
 This paragraph said "the treasury has never moved a coin since block 1", and
 that was true until 2026-09-22, when 500 WAM went to a GLEEC maintainer so he
 could run an atomic-swap test on a pull request he had opened and fixed
 himself. Not a listing fee — none was asked for and none was paid. The
-nineteen movements since are the bounties below: two of them left in nine
+movements since are the bounties below: two of them left in nine
 instalments each, because the treasury is paid one 2.5 WAM output per block
 and never consolidated, so 10,000 WAM in a single transaction would be about
 4,000 inputs and six times what any node will relay. Every
@@ -201,21 +197,14 @@ Until 17 September this file said the new source "has not yet been decided"
 while the project was telling a reviewer by email that it was the treasury. He
 found the contradiction and asked for the public reference. He was right to.
 
-**The ceiling, and it is a number rather than a feeling.** The treasury is
-750,000 WAM over its entire life — 2.5 WAM a block to height 200,000 and 1.25
-to height 400,000 — and then nothing, ever. It also has to keep this network
-running, which comes first, because a chain with no nodes has nothing worth
-securing.
+**The treasury is finite, and it exists to keep this network running and to
+protect it.** Paying for the faults people find in it is part of protecting
+it. What has left the treasury is in `docs/TREASURY_LEDGER.md`, every coin of
+it, with the amount, the reason and the transaction id — and that file is the
+answer to any question about the money, because it is the only one the chain
+itself can be checked against.
 
-**This programme's share of it is one eighth: 93,750 WAM, for the whole life
-of the programme.** 33,950 of that has been paid against the findings below,
-leaving 59,800. One of every class in the table above comes to 8,750, so what
-is left pays the whole table six times over — which is the test a promise
-has to pass before it is made. The table it replaced passed that test once.
-
-**When the eighth is spent, the programme closes and this file says so.** It
-is not left open and unfunded. The ceiling can be raised later by announcement
-and will never be lowered for a finding already accepted.
+**A rung is never lowered for a finding already accepted.**
 
 **Priority is the order of validation** — first validated, first paid. A rule
 rather than a judgement, because the alternative is a queue whose order the

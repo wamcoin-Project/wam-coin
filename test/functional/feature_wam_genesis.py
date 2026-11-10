@@ -124,7 +124,19 @@ class WamGenesisTest(BitcoinTestFramework):
 
         self.log.info('the emission schedule the node reports is its own, not a guess')
         assert_greater_than(info['halving_interval'], 0)
-        assert_equal(info['next_halving_height'], info['halving_interval'])
+        # THE FIRST BLOCK THAT PAYS LESS, NOT THE LAST THAT PAYS FULL.
+        #
+        # This asserted next_halving_height == halving_interval, which is
+        # what the RPC said until 9 November 2026 and what it said wrongly:
+        # GetBlockSubsidy counts halvings as (height - 1) / interval, so
+        # epoch e begins at e * interval + 1 and the block AT the interval
+        # still pays the old subsidy. The test agreed with the defect, so it
+        # could not have found it -- and when the defect was fixed, this line
+        # was what failed.
+        #
+        # Reported by dang150296 (Urriki1502), who ran this test against the
+        # released v0.1.14 daemon and read the failure for what it was.
+        assert_equal(info['next_halving_height'], info['halving_interval'] + 1)
         self.log.info(f"  halving interval {info['halving_interval']}, "
                       f"next at {info['next_halving_height']}")
 

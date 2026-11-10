@@ -335,7 +335,19 @@ def _check_other_languages(P: dict) -> None:
              P.get("WAM_GENESIS_TIMESTAMP_PHRASE")),
         ]),
         (os.path.join(REPO, "pool", "lib", "constants.js"), [
-            ("halving interval", r"SUBSIDY_HALVING_INTERVAL:\s*([\d_]+)",
+            # EITHER FORM, BECAUSE THE FILE IS FREE TO DECLARE IT EITHER WAY.
+            #
+            # This read "SUBSIDY_HALVING_INTERVAL:" alone, which is the shape
+            # of an entry inside the exported object. On 9 November the same
+            # constant was also declared with `const` above that object, so
+            # that nextHalvingHeight() could default to it -- and this check
+            # stopped finding it and failed, on a file whose VALUE had not
+            # changed at all.
+            #
+            # A consensus check that depends on which side of a colon a
+            # number sits is checking the syntax, not the number.
+            ("halving interval",
+             r"SUBSIDY_HALVING_INTERVAL\s*[:=]\s*([\d_]+)",
              P["WAM_SUBSIDY_HALVING_INTERVAL"]),
             ("initial subsidy", r"INITIAL_BLOCK_SUBSIDY_WAM:\s*([\d_]+)",
              P["WAM_INITIAL_BLOCK_SUBSIDY"] // P["WAM_COIN"]),

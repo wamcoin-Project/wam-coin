@@ -207,6 +207,14 @@ run "the manifest describes the repository" "$PY" scripts/check_components.py
 run "no consensus field is unset" "$PY" scripts/check_consensus_params.py
 run "supply arithmetic"          "$PY" scripts/verify_supply.py
 
+# And the constants the pool and the explorer carry are the ones
+# consensus enforces. --check-constants existed and nothing ran it, so
+# when a declaration in pool/lib/constants.js changed shape on
+# 9 November the check went red and no gate noticed. An outside auditor
+# found it by running the project's own script.
+run "the published constants are the enforced ones" \
+    "$PY" scripts/verify_supply.py --check-constants
+
 # "Which script pays this address" is answered in three places: the pool in
 # JavaScript, the miner in C++, and the node, which is consensus. Nothing
 # compared them until 2026-10-15, and two of them had drifted -- the pool was
