@@ -32,7 +32,8 @@
 //  ever does reach maturation, it stops and says the double is the problem.
 // ===========================================================================
 
-const { CLAIM_AND_RECORD_NAME, RECORD_BLOCK_NAME } = require('../lib/atomic');
+const { CLAIM_AND_RECORD_NAME, RECORD_BLOCK_NAME,
+        CREDIT_MATURED_NAME } = require('../lib/atomic');
 
 /**
  * Give a double the real commands, over the maps it already uses.
@@ -55,6 +56,15 @@ const { CLAIM_AND_RECORD_NAME, RECORD_BLOCK_NAME } = require('../lib/atomic');
  * buy on a real server, and it is the whole point of both.
  */
 function attachAtomic(fake, hash, list, store) {
+    // The credit script touches a counter and a set that most doubles do
+    // not model. They are kept here so every double gets the behaviour
+    // without each one growing two more stores it never reads.
+    const counters = new Map();
+    const setStore = new Map();
+    const ownSets = (k) => {
+        if (!setStore.has(k)) setStore.set(k, new Set());
+        return setStore.get(k);
+    };
     if (typeof hash !== 'function' || typeof list !== 'function') {
         throw new Error('attachAtomic needs the double\'s hash and list accessors');
     }
@@ -81,6 +91,18 @@ function attachAtomic(fake, hash, list, store) {
     // record-block-commit.test.js drives the failures through it.
     const drop = (store && store.drop) || ((key) => hash(key).clear());
     const fee = (store && store.fee) || (() => {});
+    // members(key) must be THE DOUBLE'S OWN set, not one kept here. A private
+    // set lets the credit write a block hash that the double's own sismember
+    // cannot see, so a test asking "can this block be paid twice?" reads 0
+    // and passes for the wrong reason. maturation-claim.test.js caught that
+    // on the first run.
+    const sets = (store && store.members) || ownSets;
+    // bump(key) must be THE DOUBLE'S OWN counter, for the same reason: a
+    // private one lets the credit move blocks:confirmed:count where the
+    // double's incr cannot see it, and a test that reads the count then
+    // reads zero and believes nothing happened.
+    const bump = (store && store.count)
+        || ((key) => counters.set(key, (counters.get(key) || 0) + 1));
 
     fake[RECORD_BLOCK_NAME] =
         async (pendingKey, roundKey, powKey, feeKey, field, record, amount) => {
@@ -89,6 +111,44 @@ function attachAtomic(fake, hash, list, store) {
             drop(roundKey);
             drop(powKey);
             fee(feeKey, Number(amount));
+            return 1;
+        };
+
+    // THE MARKER IS TESTED HERE, NOT BY THE CALLER.
+    //
+    // The double must have the property the script has, or a test of "credit
+    // once" passes on a double that cannot count. A second call with the same
+    // block hash returns 0 and touches nothing, which is what a re-sent
+    // command gets on a real server.
+    const credited = new Set();
+    fake[CREDIT_MATURED_NAME] =
+        async (creditedKey, balancesKey, confirmedKey, countKey,
+               hashesKey, maturingKey, blockHash, evidence, limit,
+               ...payouts) => {
+            // A refusal the way the real script refuses: before anything is
+            // written, so the caller sees an error and the state is as it
+            // was. `_creditFails` replaces the old `_multiFails` for this
+            // path, because the credit is no longer a MULTI to fail inside.
+            if (fake._creditFails) {
+                throw new Error(typeof fake._creditFails === 'string'
+                    ? fake._creditFails : 'the credit was refused');
+            }
+            if (credited.has(blockHash)) return 0;
+            credited.add(blockHash);
+            for (let i = 0; i < payouts.length; i += 2) {
+                const who = payouts[i];
+                const amount = Number(payouts[i + 1]);
+                const held = Number(hash(balancesKey).get(who) || 0);
+                hash(balancesKey).set(who, String(held + amount));
+            }
+            list(confirmedKey).unshift(evidence);
+            list(confirmedKey).splice(Number(limit));
+            bump(countKey);
+            sets(hashesKey).add(blockHash);
+            const m = list(maturingKey);
+            for (let i = m.length - 1; i >= 0; i--) {
+                if (m[i] === evidence) m.splice(i, 1);
+            }
             return 1;
         };
     return fake;
@@ -101,7 +161,8 @@ function attachAtomic(fake, hash, list, store) {
  * @param which  which commands to refuse; all of them by default
  */
 function attachUnsupported(fake, why, which) {
-    for (const name of which || [CLAIM_AND_RECORD_NAME, RECORD_BLOCK_NAME]) {
+    for (const name of which ||
+         [CLAIM_AND_RECORD_NAME, RECORD_BLOCK_NAME, CREDIT_MATURED_NAME]) {
         fake[name] = async () => {
             throw new Error(
                 `${name} was called on a double that does not model it: ` +
@@ -115,5 +176,5 @@ function attachUnsupported(fake, why, which) {
 
 module.exports = {
     attachAtomic, attachUnsupported,
-    CLAIM_AND_RECORD_NAME, RECORD_BLOCK_NAME
+    CLAIM_AND_RECORD_NAME, RECORD_BLOCK_NAME, CREDIT_MATURED_NAME
 };

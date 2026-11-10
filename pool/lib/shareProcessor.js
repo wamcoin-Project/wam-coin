@@ -38,7 +38,14 @@ const EventEmitter = require('events');
 const { computeBlockRewards, estimateHashrate, pplnsWindowDifficulty } = require('./rewards');
 const { COIN, COINBASE_MATURITY } = require('./constants');
 const { defineAtomicCommands, CLAIM_AND_RECORD_NAME,
-        RECORD_BLOCK_NAME } = require('./atomic');
+        RECORD_BLOCK_NAME, CREDIT_MATURED_NAME } = require('./atomic');
+
+// blocks:confirmed is a sample, not a count: it is trimmed, and the count
+// lives in blocks:confirmed:count because a number is not a collection.
+// The limit was written out as 4999 inside the credit; it is a constant
+// now because the script needs it as an argument and two copies of a
+// bound is how one of them goes stale.
+const CONFIRMED_LIST_LIMIT = 5000;
 
 class ShareProcessor extends EventEmitter {
     /**
@@ -659,7 +666,39 @@ class ShareProcessor extends EventEmitter {
             let record;
             try {
                 record = JSON.parse(pending[hash]);
-            } catch {
+            } catch (err) {
+                // A RECORD WE CANNOT READ IS NOT A RECORD WE MAY DESTROY.
+                //
+                // This was `hdel` and nothing else: no log line, no copy, and
+                // the only statement of who was owed what for that block gone
+                // for good. The field is written by one place, recordBlock,
+                // and it writes JSON.stringify of a record it just built, so
+                // a field that will not parse means something else happened
+                // to the datastore -- which is exactly when the contents are
+                // worth keeping rather than tidying away.
+                //
+                // recordBlock already does the right thing with a block it
+                // cannot price: it parks it in blocks:failed for an operator.
+                // This now does the same, and only deletes the pending field
+                // once the copy is safe, so an interruption leaves the block
+                // in pending rather than nowhere.
+                //
+                // Reported by dang150296 (Urriki1502), 10 November 2026.
+                this.log.error(
+                    `block ${hash} has an unreadable payout record ` +
+                    `(${err.message}). It is moved to ` +
+                    `${this.k('blocks:failed')} for an operator to look at, ` +
+                    'not deleted.');
+                try {
+                    await this.redis.hset(this.k('blocks:failed'), hash,
+                                          pending[hash]);
+                } catch (saveErr) {
+                    this.log.error(
+                        `and the copy could not be written (${saveErr.message}), ` +
+                        'so it is left in pending untouched. Nothing was lost ' +
+                        'and nothing will be until somebody looks.');
+                    continue;
+                }
                 await this.redis.hdel(this.k('blocks:pending'), hash);
                 continue;
             }
@@ -844,100 +883,65 @@ class ShareProcessor extends EventEmitter {
             return;
         }
 
-        // multi(), not pipeline(), for the reason the payment commit states
-        // further down: an ioredis pipeline is a batch, not a transaction --
-        // the commands go out together and redis applies them one by one, so
-        // a connection lost halfway leaves the first few applied and the rest
-        // not. Here that means some miners credited and not others, or every
-        // balance credited while the lrem that ends the block's maturation
-        // never runs. The argument for MULTI was written for the payment
-        // deduction and was never carried to the credit, which is the same
-        // money moving the other way.
+        // ONE SCRIPT, AN APPLIED MARKER INSIDE IT, AND EVERY REFUSAL
+        // DECIDED BEFORE THE FIRST WRITE.
         //
-        // Reported by bobbyning, 2026-11-07.
-        const pipe = this.redis.multi();
-
+        // This was a MULTI whose replies were read afterwards. MULTI is one
+        // unit against a lost connection and is NOT one against a command
+        // that fails at run time: redis applies the rest and hands the error
+        // back. So a balance field holding a non-integer credited one miner,
+        // refused the next, and still marked the block confirmed -- while the
+        // message this code printed said the block was not marked confirmed.
+        //
+        // And reading replies cannot see the other half of it. ioredis, on
+        // its defaults, RE-SENDS commands whose reply never arrived when a
+        // connection drops. Every command here is an increment, so the second
+        // delivery doubled the balances and wrote the evidence twice, and the
+        // call returned success. Nothing in the pool could tell the two
+        // deliveries apart, because nothing recorded that the first had
+        // happened.
+        //
+        // wamCreditMatured does both: SADD on a set of credited blocks is the
+        // marker and it is tested inside the script, so a re-send credits
+        // nobody twice; and every type and every number that could be refused
+        // is checked before a single balance moves, so a refusal changes
+        // nothing at all.
+        //
+        // Reported by dang150296 (Urriki1502), 10 November 2026, reproduced
+        // against a real Redis with this pool's own sources.
+        const payouts = [];
         for (const [worker, amount] of Object.entries(record.payouts)) {
             if (amount <= 0) continue;
             // Workers authorize as "<address>.<label>"; balances are per address.
-            const address = worker.split('.')[0];
-            pipe.hincrby(this.k('balances'), address, amount);
+            payouts.push(worker.split('.')[0], String(amount));
         }
 
-        pipe.lpush(this.k('blocks:confirmed'), evidence);
-        pipe.ltrim(this.k('blocks:confirmed'), 0, 4999);
-        // A COUNT CANNOT COME OUT OF A LIST THAT IS TRIMMED.
-        //
-        // This is the third time this project has published a block count
-        // that stopped moving, and each time the count was the size of a
-        // bounded thing:
-        //
-        //   lrange(blocks:confirmed, 0, 49).length   froze at 50
-        //   llen(blocks:confirmed)                   froze at 5000, here
-        //
-        // llen was the right answer to the first bug and the wrong answer in
-        // general: it reports the length of a list that the line above
-        // deliberately caps. On 1 October the dashboard had read BLOCKS FOUND
-        // 5000 for two days while blocks kept arriving, and the founder saw it
-        // the same way he saw the first one -- by watching a number that
-        // should have moved.
-        //
-        // Raising the cap would put the same bug further away, which is the
-        // shape of fix this project does not accept. A counter is not a
-        // collection: it is incremented once per event and nothing trims it.
-        // The list stays, because the page also wants the recent blocks to
-        // show, and a sample and a count are two different questions.
-        pipe.incr(this.k('blocks:confirmed:count'));
-        // AND A SET OF THE HASHES, FOR THE QUESTION "WAS THIS ALREADY PAID?"
-        //
-        // The list above is trimmed at 5000 and the counter is a number, so
-        // neither can answer it. recordBlock has to be able to: the spool
-        // drain offers a recovered block for payout without knowing whether
-        // the crash happened before or after the original accounting, and
-        // "already in pending" only covers a block that has not matured yet.
-        // Without this, a block recovered after maturing would be paid twice.
-        //
-        // A set of 32-byte hex strings, one per block ever confirmed. At 720
-        // blocks a day that is about 1.7 MB a year, which is the cheapest
-        // honest answer available.
-        pipe.sadd(this.k('blocks:confirmed:hashes'), record.blockHash);
-
-        // THE EVIDENCE IS ERASED AFTER THE CREDIT, NOT WITH IT.
-        //
-        // The lrem used to be the last command in this transaction. MULTI
-        // makes the batch one unit against a lost connection, but it does
-        // NOT abort on a command that fails at run time -- redis applies the
-        // rest and hands the error back in the reply array. So a failing
-        // lpush followed by a succeeding lrem took the block out of
-        // blocks:maturing without ever putting it in blocks:confirmed, and
-        // the block was then in pending, maturing and confirmed: nowhere.
-        // The crash-window walk caught exactly that at position 5.
-        //
-        // Split, with the replies read in between. If any part of the credit
-        // failed, the evidence stays and this throws. If the credit went
-        // through and the process dies before the lrem, the block is in both
-        // confirmed and maturing -- refused twice over rather than lost,
-        // which is the direction that costs nobody money.
-        let replies;
+        let credited;
         try {
-            replies = await pipe.exec();
+            credited = Number(await this.redis[CREDIT_MATURED_NAME](
+                this.k('blocks:credited'), this.k('balances'),
+                this.k('blocks:confirmed'), this.k('blocks:confirmed:count'),
+                this.k('blocks:confirmed:hashes'), this.k('blocks:maturing'),
+                record.blockHash, evidence, String(CONFIRMED_LIST_LIMIT),
+                ...payouts));
         } catch (err) {
-            this.log.error(`the credit for block ${record.height} did not go ` +
-                           `through (${err.message}); the payout table is kept ` +
-                           `in ${this.k('blocks:maturing')}`);
+            this.log.error(`the credit for block ${record.height} was refused ` +
+                           `(${err.message}) and nothing was changed; the ` +
+                           `payout table is still in ${this.k('blocks:maturing')}`);
             throw err;
         }
-        const failed = (replies || []).filter((r) => Array.isArray(r) && r[0]);
-        if (failed.length) {
-            this.log.error(`${failed.length} of ${replies.length} commands in ` +
-                           `the credit for block ${record.height} failed ` +
-                           `(first: ${failed[0][0].message}); the payout table ` +
-                           `is kept in ${this.k('blocks:maturing')} and the ` +
-                           'block is not marked confirmed');
-            throw failed[0][0];
+
+        if (credited !== 1) {
+            // The marker was already there. Either another run did it, or this
+            // is the same command arriving a second time after a dropped
+            // connection. Both mean the money has moved once and must not
+            // move again.
+            this.log.info(`block ${record.height} was already credited; this ` +
+                          'call changed nothing');
+            return;
         }
 
-        try {
+                try {
             await this.redis.lrem(this.k('blocks:maturing'), 0, evidence);
         } catch (err) {
             this.log.warn(`block ${record.height} is credited and confirmed but ` +

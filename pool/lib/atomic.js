@@ -159,10 +159,103 @@ return 1
 /** The name the pool calls it by, on the client and on any test double. */
 const RECORD_BLOCK_NAME = 'wamRecordBlock';
 
+/**
+ * Credit a matured block, exactly once, or do nothing at all.
+ *
+ * KEYS[1]  the set of blocks already credited   (blocks:credited)
+ * KEYS[2]  balances
+ * KEYS[3]  blocks:confirmed
+ * KEYS[4]  blocks:confirmed:count
+ * KEYS[5]  blocks:confirmed:hashes
+ * KEYS[6]  blocks:maturing
+ * ARGV[1]  the block hash
+ * ARGV[2]  the evidence record, serialised
+ * ARGV[3]  how many entries blocks:confirmed keeps
+ * ARGV[4..] address, amount, address, amount, ...
+ *
+ * Returns 1 if this call credited it, 0 if it had already been credited.
+ *
+ * TWO PROPERTIES, AND THE SECOND ONE IS WHY THIS EXISTS.
+ *
+ * EXACTLY ONCE. SADD is the marker and it is tested here rather than by the
+ * caller, so a second run of the identical command credits nobody twice. That
+ * matters because the client re-sends: ioredis, on its defaults, replays
+ * commands whose reply never arrived after a connection drops, and every
+ * command below is an increment. Measured on 10 November 2026: balances
+ * doubled, two identical entries in blocks:confirmed, and the call reporting
+ * success. The claim script above could not see it -- it answered 0 the
+ * second time and the pool logged "already claimed by another run", leaving
+ * the block in blocks:maturing, uncredited, with no error.
+ *
+ * ALL OR NOTHING. Redis does not roll a script back when a command fails
+ * partway, so anything that can be refused is checked BEFORE the first write.
+ * A balance field holding a non-integer made HINCRBY fail in the middle of
+ * the loop: one miner credited, the next not, the block marked confirmed, and
+ * an operator message saying the block was not marked confirmed. Checking
+ * first turns that into a refusal that changes nothing.
+ *
+ * Reported by dang150296 (Urriki1502) on 10 November 2026, reproduced against
+ * a real Redis with the pool's own sources, three runs of three.
+ */
+const CREDIT_MATURED = `
+if redis.call('EXISTS', KEYS[1]) == 1 then
+  if redis.call('TYPE', KEYS[1])['ok'] ~= 'set' then
+    return redis.error_reply('credited-set is not a set')
+  end
+end
+if redis.call('SADD', KEYS[1], ARGV[1]) ~= 1 then
+  return 0
+end
+
+if redis.call('EXISTS', KEYS[2]) == 1 and redis.call('TYPE', KEYS[2])['ok'] ~= 'hash' then
+  return redis.error_reply('balances is not a hash')
+end
+if redis.call('EXISTS', KEYS[3]) == 1 and redis.call('TYPE', KEYS[3])['ok'] ~= 'list' then
+  return redis.error_reply('blocks:confirmed is not a list')
+end
+if redis.call('EXISTS', KEYS[5]) == 1 and redis.call('TYPE', KEYS[5])['ok'] ~= 'set' then
+  return redis.error_reply('blocks:confirmed:hashes is not a set')
+end
+if redis.call('EXISTS', KEYS[6]) == 1 and redis.call('TYPE', KEYS[6])['ok'] ~= 'list' then
+  return redis.error_reply('blocks:maturing is not a list')
+end
+
+local counter = redis.call('GET', KEYS[4])
+if counter and not string.match(counter, '^%-?%d+$') then
+  return redis.error_reply('blocks:confirmed:count is not an integer')
+end
+
+for i = 4, #ARGV, 2 do
+  local who = ARGV[i]
+  local amount = ARGV[i + 1]
+  if not string.match(amount, '^%-?%d+$') then
+    return redis.error_reply('payout amount for ' .. who .. ' is not an integer')
+  end
+  local held = redis.call('HGET', KEYS[2], who)
+  if held and not string.match(held, '^%-?%d+$') then
+    return redis.error_reply('balance for ' .. who .. ' is not an integer')
+  end
+end
+
+for i = 4, #ARGV, 2 do
+  redis.call('HINCRBY', KEYS[2], ARGV[i], ARGV[i + 1])
+end
+redis.call('LPUSH', KEYS[3], ARGV[2])
+redis.call('LTRIM', KEYS[3], 0, tonumber(ARGV[3]) - 1)
+redis.call('INCR', KEYS[4])
+redis.call('SADD', KEYS[5], ARGV[1])
+redis.call('LREM', KEYS[6], 0, ARGV[2])
+return 1
+`;
+
+/** The name the pool calls it by, on the client and on any test double. */
+const CREDIT_MATURED_NAME = 'wamCreditMatured';
+
 /** Every script this pool requires, with the key count each one takes. */
 const SCRIPTS = [
     { name: CLAIM_AND_RECORD_NAME, numberOfKeys: 2, lua: CLAIM_AND_RECORD },
-    { name: RECORD_BLOCK_NAME, numberOfKeys: 4, lua: RECORD_BLOCK }
+    { name: RECORD_BLOCK_NAME, numberOfKeys: 4, lua: RECORD_BLOCK },
+    { name: CREDIT_MATURED_NAME, numberOfKeys: 6, lua: CREDIT_MATURED }
 ];
 
 /**
@@ -200,5 +293,7 @@ module.exports = {
     CLAIM_AND_RECORD,
     CLAIM_AND_RECORD_NAME,
     RECORD_BLOCK,
-    RECORD_BLOCK_NAME
+    RECORD_BLOCK_NAME,
+    CREDIT_MATURED,
+    CREDIT_MATURED_NAME
 };

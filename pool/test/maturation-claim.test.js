@@ -133,7 +133,14 @@ function fakeRedis() {
         },
         _dump: { h, l }
     };
-    attachAtomic(ops, hash, list);
+    attachAtomic(ops, hash, list, {
+        // the credit script marks blocks:confirmed:hashes, and this
+        // double answers sismember from its own _sets
+        members(k) {
+            if (!ops._sets.has(k)) ops._sets.set(k, new Set());
+            return ops._sets.get(k);
+        }
+    });
     // _mature credits through MULTI now, not a pipeline: a connection lost
     // during the credit must leave no balance touched at all, rather than
     // the first few miners credited and the rest not.
@@ -211,9 +218,9 @@ function balances(redis) {
         const r = fakeRedis();
         await r.hset('wam:blocks:pending', 'H', JSON.stringify(RECORD));
         const sp = processorWith(r, 120);
-        r._multiFails = 'connection lost before EXEC';
+        r._creditFails = 'connection lost before the credit ran';
         await sp._mature('H', { ...RECORD }).catch(() => {});
-        r._multiFails = undefined;
+        r._creditFails = undefined;
 
         const maturing = r._dump.l.get('wam:blocks:maturing') || [];
         assert.strictEqual(maturing.length, 1,
@@ -246,9 +253,9 @@ function balances(redis) {
         await r.hset('wam:blocks:pending', 'H', JSON.stringify(RECORD));
         const sp = processorWith(r, 120);
 
-        r._multiFails = true;
+        r._creditFails = true;
         await sp._mature('H', { ...RECORD }).catch(() => {});
-        r._multiFails = undefined;
+        r._creditFails = undefined;
 
         assert.strictEqual((r._dump.l.get('wam:blocks:maturing') || []).length, 1,
             'the block must be sitting in maturing for this test to mean anything');

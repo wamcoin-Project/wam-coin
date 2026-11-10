@@ -98,7 +98,14 @@ function fakeRedis() {
         },
         _dump: { h, l }
     };
-    attachAtomic(ops, hash, list);
+    attachAtomic(ops, hash, list, {
+        // the credit script marks blocks:confirmed:hashes, and this
+        // double answers sismember from its own _sets
+        members(k) {
+            if (!ops._sets.has(k)) ops._sets.set(k, new Set());
+            return ops._sets.get(k);
+        }
+    });
     // The maturation credit is a MULTI now, not a pipeline.
     attachMulti(ops);
     return ops;
