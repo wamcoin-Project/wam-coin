@@ -58,7 +58,8 @@ const path = require('path');
 
 const BlockTemplate = require('../lib/blockTemplate');
 const ShareProcessor = require('../lib/shareProcessor');
-const { attachAtomic, attachUnsupported } = require('./fakeAtomic');
+const { attachAtomic, attachUnsupported, CLAIM_AND_RECORD_NAME,
+        RECORD_BLOCK_NAME, CREDIT_MATURED_NAME } = require('./fakeAtomic');
 const { RECORD_BLOCK } = require('../lib/atomic');
 const { attachMulti } = require('./fakeMulti');
 
@@ -155,8 +156,23 @@ function fakeRedis() {
             return s ? s.size : 0;
         }
     };
+    // The share accounting is a script now, and this file is the one that
+    // tests it, so the double gets the real behaviour over its own stores.
+    // Block accounting still refuses: nothing here models blocks:pending.
     attachUnsupported(api, 'it models the share-claim sets and nothing of ' +
-                           'block accounting');
+                           'block accounting',
+                      [CLAIM_AND_RECORD_NAME, RECORD_BLOCK_NAME,
+                       CREDIT_MATURED_NAME]);
+    attachAtomic(api,
+        (k) => { if (!hashes.has(k)) hashes.set(k, new Map()); return hashes.get(k); },
+        (k) => { if (!lists.has(k)) lists.set(k, []); return lists.get(k); },
+        {
+            members(k) {
+                if (!sets.has(k)) sets.set(k, new Set());
+                return sets.get(k);
+            },
+            zadd() { /* this file does not read the hash-rate set */ }
+        });
     attachMulti(api);
     return api;
 }
@@ -269,10 +285,10 @@ function processor(redis) {
         const share = { worker: 'w.1', difficulty: 0.000002, jobId: '1',
                         powHash: 'ef'.repeat(32) };
 
-        redis._multiFails = true;
+        redis._shareFails = true;
         await assert.rejects(() => sp.recordShare(share),
             'a share whose accounting failed must be refused, not resolved');
-        redis._multiFails = undefined;
+        redis._shareFails = undefined;
 
         assert.strictEqual(redis._powCount(), 0,
             'the claim must be given back when nothing was credited for it');
@@ -299,7 +315,11 @@ function processor(redis) {
 
     await test('a redis that cannot answer refuses the share, it does not wave it through', async () => {
         const redis = fakeRedis();
-        redis.sadd = async () => { throw new Error('connection lost'); };
+        // The claim lives inside wamCreditShare now, so a redis that cannot
+        // answer is a script that cannot run. The property is unchanged: a
+        // share whose proof could not be checked is refused, never credited
+        // blind.
+        redis._shareFails = 'connection lost';
         const sp = processor(redis);
         await assert.rejects(
             sp.recordShare({ worker: 'w.1', difficulty: 1, jobId: '1',

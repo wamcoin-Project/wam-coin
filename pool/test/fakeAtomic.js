@@ -33,7 +33,7 @@
 // ===========================================================================
 
 const { CLAIM_AND_RECORD_NAME, RECORD_BLOCK_NAME,
-        CREDIT_MATURED_NAME } = require('../lib/atomic');
+        CREDIT_MATURED_NAME, CREDIT_SHARE_NAME } = require('../lib/atomic');
 
 /**
  * Give a double the real commands, over the maps it already uses.
@@ -101,6 +101,10 @@ function attachAtomic(fake, hash, list, store) {
     // private one lets the credit move blocks:confirmed:count where the
     // double's incr cannot see it, and a test that reads the count then
     // reads zero and believes nothing happened.
+    const zadd = (store && store.zadd) || ((k, score, member) => {
+        if (!setStore.has('z:' + k)) setStore.set('z:' + k, new Set());
+        setStore.get('z:' + k).add(member);
+    });
     const bump = (store && store.count)
         || ((key) => counters.set(key, (counters.get(key) || 0) + 1));
 
@@ -151,6 +155,29 @@ function attachAtomic(fake, hash, list, store) {
             }
             return 1;
         };
+
+    // The claim is taken INSIDE this one, which is the whole point of it:
+    // a proof already counted returns 0 and writes nothing, whether it
+    // arrived twice from a miner, from a race, or from the client re-sending
+    // a command whose reply was lost.
+    fake[CREDIT_SHARE_NAME] =
+        async (powKey, roundKey, pplnsKey, hashrateKey,
+               proof, worker, difficulty, entry, windowSize, now) => {
+            if (fake._shareFails) {
+                throw new Error(typeof fake._shareFails === 'string'
+                    ? fake._shareFails : 'the share accounting was refused');
+            }
+            if (sets(powKey).has(proof)) return 0;
+            sets(powKey).add(proof);
+            // a number, not a string: this mirrors HINCRBYFLOAT, which is
+            // what the doubles that read this field implement themselves
+            const held = Number(hash(roundKey).get(worker) || 0);
+            hash(roundKey).set(worker, held + Number(difficulty));
+            list(pplnsKey).unshift(entry);
+            list(pplnsKey).splice(Number(windowSize));
+            zadd(hashrateKey, Number(now), entry);
+            return 1;
+        };
     return fake;
 }
 
@@ -162,7 +189,8 @@ function attachAtomic(fake, hash, list, store) {
  */
 function attachUnsupported(fake, why, which) {
     for (const name of which ||
-         [CLAIM_AND_RECORD_NAME, RECORD_BLOCK_NAME, CREDIT_MATURED_NAME]) {
+         [CLAIM_AND_RECORD_NAME, RECORD_BLOCK_NAME, CREDIT_MATURED_NAME,
+          CREDIT_SHARE_NAME]) {
         fake[name] = async () => {
             throw new Error(
                 `${name} was called on a double that does not model it: ` +
@@ -176,5 +204,6 @@ function attachUnsupported(fake, why, which) {
 
 module.exports = {
     attachAtomic, attachUnsupported,
-    CLAIM_AND_RECORD_NAME, RECORD_BLOCK_NAME, CREDIT_MATURED_NAME
+    CLAIM_AND_RECORD_NAME, RECORD_BLOCK_NAME, CREDIT_MATURED_NAME,
+    CREDIT_SHARE_NAME
 };

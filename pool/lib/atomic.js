@@ -251,11 +251,94 @@ return 1
 /** The name the pool calls it by, on the client and on any test double. */
 const CREDIT_MATURED_NAME = 'wamCreditMatured';
 
+/**
+ * Credit one share, exactly once, or credit nothing and keep no claim.
+ *
+ * KEYS[1]  round:pow     the set of proofs already counted this round
+ * KEYS[2]  round         worker -> difficulty credited
+ * KEYS[3]  pplns         the recent-share window
+ * KEYS[4]  hashrate      the sliding hash-rate set
+ * ARGV[1]  the proof-of-work hash
+ * ARGV[2]  the worker
+ * ARGV[3]  the difficulty
+ * ARGV[4]  the window entry
+ * ARGV[5]  how many entries the window keeps
+ * ARGV[6]  now, in milliseconds
+ *
+ * Returns 1 if this call credited it, 0 if the proof was already counted.
+ *
+ * THE CLAIM AND THE ACCOUNTING ARE ONE DECISION. THEY USED TO BE THREE.
+ *
+ * SADD took the claim, a MULTI did the accounting, and on any failure the
+ * claim was handed back so the miner could resubmit. Each of those is
+ * reasonable and together they paid for one proof five times:
+ *
+ *   The MULTI is not a unit against a command that fails at run time --
+ *   redis applies the rest and hands the error back. So with round, pplns or
+ *   hashrate holding the wrong type, the difficulty was credited, the window
+ *   entry written, the claim released, and the miner told to resubmit. He
+ *   did. Measured: five submissions of one proof credited 50 where 10 was
+ *   owed, and in PPLNS terms the resubmitting miner took 4,318,181,819 base
+ *   units against an honest miner's 431,818,181 for the same work.
+ *
+ *   And it needs no corruption at all. If only the EXEC reply is lost, the
+ *   accounting ran, the claim is released, and the resubmission is credited
+ *   again.
+ *
+ * The order here is the fix. Everything that can be refused is checked
+ * BEFORE the claim is taken, so a refusal leaves no claim and no credit and
+ * the miner may safely resubmit. The claim is then taken in the same script
+ * as the writes, so a proof already counted -- by a duplicate, by a race, or
+ * by the client re-sending a command whose reply was lost -- returns 0 and
+ * changes nothing.
+ *
+ * Reported by dang150296 (Urriki1502) on 10 November 2026 as manifestation B
+ * of one root cause, reproduced against a real Redis at four fault positions,
+ * three runs of three.
+ */
+const CREDIT_SHARE = `
+if redis.call('EXISTS', KEYS[1]) == 1 and redis.call('TYPE', KEYS[1])['ok'] ~= 'set' then
+  return redis.error_reply('round:pow is not a set')
+end
+if redis.call('EXISTS', KEYS[2]) == 1 and redis.call('TYPE', KEYS[2])['ok'] ~= 'hash' then
+  return redis.error_reply('round is not a hash')
+end
+if redis.call('EXISTS', KEYS[3]) == 1 and redis.call('TYPE', KEYS[3])['ok'] ~= 'list' then
+  return redis.error_reply('pplns is not a list')
+end
+if redis.call('EXISTS', KEYS[4]) == 1 and redis.call('TYPE', KEYS[4])['ok'] ~= 'zset' then
+  return redis.error_reply('hashrate is not a sorted set')
+end
+
+if tonumber(ARGV[3]) == nil then
+  return redis.error_reply('share difficulty is not a number')
+end
+
+local held = redis.call('HGET', KEYS[2], ARGV[2])
+if held and tonumber(held) == nil then
+  return redis.error_reply('round credit for ' .. ARGV[2] .. ' is not a number')
+end
+
+if redis.call('SADD', KEYS[1], ARGV[1]) ~= 1 then
+  return 0
+end
+
+redis.call('HINCRBYFLOAT', KEYS[2], ARGV[2], ARGV[3])
+redis.call('LPUSH', KEYS[3], ARGV[4])
+redis.call('LTRIM', KEYS[3], 0, tonumber(ARGV[5]) - 1)
+redis.call('ZADD', KEYS[4], ARGV[6], ARGV[4])
+return 1
+`;
+
+/** The name the pool calls it by, on the client and on any test double. */
+const CREDIT_SHARE_NAME = 'wamCreditShare';
+
 /** Every script this pool requires, with the key count each one takes. */
 const SCRIPTS = [
     { name: CLAIM_AND_RECORD_NAME, numberOfKeys: 2, lua: CLAIM_AND_RECORD },
     { name: RECORD_BLOCK_NAME, numberOfKeys: 4, lua: RECORD_BLOCK },
-    { name: CREDIT_MATURED_NAME, numberOfKeys: 6, lua: CREDIT_MATURED }
+    { name: CREDIT_MATURED_NAME, numberOfKeys: 6, lua: CREDIT_MATURED },
+    { name: CREDIT_SHARE_NAME, numberOfKeys: 4, lua: CREDIT_SHARE }
 ];
 
 /**
@@ -295,5 +378,7 @@ module.exports = {
     RECORD_BLOCK,
     RECORD_BLOCK_NAME,
     CREDIT_MATURED,
-    CREDIT_MATURED_NAME
+    CREDIT_MATURED_NAME,
+    CREDIT_SHARE,
+    CREDIT_SHARE_NAME
 };

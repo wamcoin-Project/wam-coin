@@ -38,7 +38,8 @@ const EventEmitter = require('events');
 const { computeBlockRewards, estimateHashrate, pplnsWindowDifficulty } = require('./rewards');
 const { COIN, COINBASE_MATURITY } = require('./constants');
 const { defineAtomicCommands, CLAIM_AND_RECORD_NAME,
-        RECORD_BLOCK_NAME, CREDIT_MATURED_NAME } = require('./atomic');
+        RECORD_BLOCK_NAME, CREDIT_MATURED_NAME,
+        CREDIT_SHARE_NAME } = require('./atomic');
 
 // blocks:confirmed is a sample, not a count: it is trimmed, and the count
 // lives in blocks:confirmed:count because a number is not a collection.
@@ -318,49 +319,23 @@ class ShareProcessor extends EventEmitter {
         //
         // Scoped to the round and deleted with it, so the set is bounded by
         // the shares in one block and never grows without end.
-        if (share.powHash) {
-            let fresh;
-            try {
-                fresh = await this.redis.sadd(this.k('round:pow'), share.powHash);
-            } catch (err) {
-                // A redis that cannot answer must not become a free pass: the
-                // share is refused rather than credited blind.
-                this.log.error(`could not check the proof of work for a share `
-                                  + `from ${share.worker}: ${err.message}`);
-                throw err;
-            }
-            if (fresh === 0) {
-                // A DUPLICATE IS A REFUSAL, AND IT USED TO RETURN LIKE A
-                // SUCCESS.
-                //
-                // This was a bare `return`, which resolves -- so processShare
-                // set `credited = true`, emitted 'share', and answered the
-                // miner `valid: true`. For work that went into neither the
-                // round nor the PPLNS window, with no error code and nothing
-                // in his logs. That is the exact failure the comment above
-                // the _record call in jobManager was written about: "the
-                // miner used to be told accepted while the redis write was
-                // still a promise nobody waited for" -- sitting on the dedup
-                // set instead.
-                //
-                // It is tagged rather than generic because the caller has to
-                // tell it apart from a redis failure: one means "this share
-                // is already counted, do not send it again", the other means
-                // "send it again". Answering the first with the second is how
-                // a miner ends up in a resubmission loop.
-                //
-                // Reported by bobbyning, 2026-11-07.
-                this.log.warn(`share from ${share.worker} carries a proof of `
-                                 + `work already credited this round `
-                                 + `(${share.powHash.slice(0, 16)}...) -- not `
-                                 + `credited again`);
-                this.stats = this.stats || {};
-                this.stats.replayedShares = (this.stats.replayedShares || 0) + 1;
-                throw Object.assign(
-                    new Error('proof of work already credited this round'),
-                    { duplicateShare: true });
-            }
-        }
+        // THE CLAIM IS TAKEN WHERE THE ACCOUNTING HAPPENS, NOT HERE.
+        //
+        // This used to SADD round:pow by itself and refuse a duplicate on
+        // the spot. That is correct about duplicates and wrong about
+        // failures: between this claim and the accounting that follows it
+        // there was a window in which the claim was held, the write refused,
+        // the claim handed back, and the miner invited to resubmit a proof
+        // that had already been credited. Five submissions, one proof, fifty
+        // credited where ten was owed.
+        //
+        // _record now takes the claim inside the same script that writes, so
+        // the window does not exist. A duplicate still throws with
+        // duplicateShare, from there instead of from here, and the caller
+        // cannot tell the difference.
+        //
+        // Reported by bobbyning (the two earlier routes) and by dang150296
+        // (the window), 2026-10-04, 2026-10-11 and 2026-11-10.
 
         const now = Math.floor(Date.now() / 1000);
         const entry = JSON.stringify({
@@ -395,23 +370,56 @@ class ShareProcessor extends EventEmitter {
         // on any failure so the resubmission can actually land.
         //
         // Reported by bobbyning, 2026-11-07.
-        const pipe = this.redis.multi();
-        pipe.hincrbyfloat(this.k('round'), share.worker, share.difficulty);
-        pipe.lpush(this.k('pplns'), entry);
-        pipe.ltrim(this.k('pplns'), 0, windowSize - 1);
-        pipe.zadd(this.k('hashrate'), now, entry);
-
-        let replies;
+        // THE CLAIM AND THE ACCOUNTING ARE ONE DECISION NOW.
+        //
+        // They were three: SADD took the claim above, this MULTI did the
+        // accounting, and any failure handed the claim back so the miner
+        // could resubmit. Each is reasonable and together they paid for one
+        // proof five times.
+        //
+        // A MULTI is one unit against a lost connection and no unit at all
+        // against a command refused at run time: redis applies the rest and
+        // returns the error. So with round, pplns or hashrate holding the
+        // wrong type, the difficulty was credited, the window entry written,
+        // the claim released, and the miner told to send it again. He did.
+        // Measured at four fault positions: five submissions of one proof
+        // credited 50 where 10 was owed.
+        //
+        // And it needs no corruption. If only the EXEC reply is lost, the
+        // accounting ran, the claim came back, and the resubmission was
+        // credited again.
+        //
+        // wamCreditShare checks everything refusable BEFORE taking the
+        // claim, so a refusal leaves no claim and no credit and the miner may
+        // safely resubmit; then it takes the claim and writes in the same
+        // script, so a proof already counted -- duplicate, race, or a
+        // re-sent command whose reply was lost -- returns 0 and changes
+        // nothing.
+        //
+        // Reported by dang150296 (Urriki1502), 10 November 2026.
+        let counted;
         try {
-            replies = await pipe.exec();
+            counted = Number(await this.redis[CREDIT_SHARE_NAME](
+                this.k('round:pow'), this.k('round'),
+                this.k('pplns'), this.k('hashrate'),
+                share.powHash || entry, share.worker, String(share.difficulty),
+                entry, String(windowSize), String(now)));
         } catch (err) {
-            await this._releasePowClaim(share);
+            // Nothing was written and no claim was taken, so "send it again"
+            // is the truth rather than an invitation to be paid twice.
             throw err;
         }
-        const failed = (replies || []).filter((r) => Array.isArray(r) && r[0]);
-        if (failed.length) {
-            await this._releasePowClaim(share);
-            throw failed[0][0];
+
+        if (counted !== 1) {
+            // Already counted this round. Not an error in the accounting --
+            // the work is simply not owed twice.
+            this.log.warn(`share from ${share.worker} carries a proof of work `
+                          + 'already credited this round -- not credited again');
+            this.stats = this.stats || {};
+            this.stats.replayedShares = (this.stats.replayedShares || 0) + 1;
+            throw Object.assign(
+                new Error('proof of work already credited this round'),
+                { duplicateShare: true });
         }
     }
 
