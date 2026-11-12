@@ -1913,14 +1913,83 @@ MAGIC_BYTES = {
                     "    // Initial sync is untouched -- a syncing node chooses its own\n"
                     "    // outbound peers and none of them is discouraged -- and NoBan peers\n"
                     "    // are exempt here as they are everywhere else.\n"
-                    "    if (!pfrom.HasPermission(NetPermissionFlags::NoBan) &&\n"
-                    "        m_banman && m_banman->IsDiscouraged(pfrom.addr)) {\n"
-                    "        LogPrint(BCLog::NET, \"ignoring %u header(s) from discouraged peer=%d\\n\",\n"
-                    "                 headers.size(), pfrom.GetId());\n"
-                    "        return;\n"
-                    "    }\n"
+                    "    //\n"
+                    "    // IT IS A HELPER BECAUSE THIS WAS NOT THE ONLY DOOR.\n"
+                    "    //\n"
+                    "    // The first version of this guard was written here, inside\n"
+                    "    // ProcessHeadersMessage, and that is one of TWO places a peer can\n"
+                    "    // hand us an arbitrary header. The CMPCTBLOCK handler calls\n"
+                    "    // ProcessNewBlockHeaders directly and never passes through this\n"
+                    "    // function, so a discouraged peer kept its twenty milliseconds by\n"
+                    "    // announcing a compact block instead of a header -- about a\n"
+                    "    // kilobyte, and the same cost to us. The two cheap checks on that\n"
+                    "    // path do not help: the parent is our own tip, which is public, and\n"
+                    "    // the anti-DoS work threshold only rejects forks far behind it.\n"
+                    "    //\n"
+                    "    // Reported by Radenlingga on 10 November 2026 against v0.1.14, two\n"
+                    "    // days after the first half of this shipped. A guard written at one\n"
+                    "    // call site is a guard the next call site does not have.\n"
+                    "    if (NoPoWForThisPeer(pfrom, headers.size())) return;\n"
                     "\n"
                     "    size_t nCount = headers.size();"),
+            ),
+            Edit(
+                file="src/net_processing.cpp",
+                description="the guard itself, as a member both paths call",
+                marker="bool PeerManagerImpl::NoPoWForThisPeer",
+                anchor=(
+                    "void PeerManagerImpl::ProcessHeadersMessage(CNode& pfrom, Peer& peer,\n"
+                    "                                            std::vector<CBlockHeader>&& headers,\n"
+                    "                                            bool via_compact_block)\n"
+                    "{"),
+                replacement=(
+                    "bool PeerManagerImpl::NoPoWForThisPeer(const CNode& pfrom, size_t count)\n"
+                    "{\n"
+                    "    if (pfrom.HasPermission(NetPermissionFlags::NoBan)) return false;\n"
+                    "    if (!m_banman || !m_banman->IsDiscouraged(pfrom.addr)) return false;\n"
+                    "    LogPrint(BCLog::NET, \"ignoring %u header(s) from discouraged peer=%d\\n\",\n"
+                    "             count, pfrom.GetId());\n"
+                    "    return true;\n"
+                    "}\n"
+                    "\n"
+                    "void PeerManagerImpl::ProcessHeadersMessage(CNode& pfrom, Peer& peer,\n"
+                    "                                            std::vector<CBlockHeader>&& headers,\n"
+                    "                                            bool via_compact_block)\n"
+                    "{"),
+            ),
+            Edit(
+                file="src/net_processing.cpp",
+                description="declare the guard on PeerManagerImpl",
+                marker="bool NoPoWForThisPeer(const CNode& pfrom, size_t count)",
+                anchor=(
+                    "    void ProcessHeadersMessage(CNode& pfrom, Peer& peer,\n"
+                    "                               std::vector<CBlockHeader>&& headers,\n"
+                    "                               bool via_compact_block)"),
+                replacement=(
+                    "    /** No proof of work is verified for an address we have punished.\n"
+                    "     *  Both announcement doors ask this: headers, and compact blocks. */\n"
+                    "    bool NoPoWForThisPeer(const CNode& pfrom, size_t count)\n"
+                    "        EXCLUSIVE_LOCKS_REQUIRED(::cs_main);\n"
+                    "\n"
+                    "    void ProcessHeadersMessage(CNode& pfrom, Peer& peer,\n"
+                    "                               std::vector<CBlockHeader>&& headers,\n"
+                    "                               bool via_compact_block)"),
+            ),
+            Edit(
+                file="src/net_processing.cpp",
+                description="the second door: a compact block announcement",
+                marker="WAM_NO_POW_FOR_A_DISCOURAGED_PEER (cmpctblock)",
+                anchor=(
+                    "        if (!m_chainman.ProcessNewBlockHeaders({cmpctblock.header}, /*min_pow_checked=*/true, state, &pindex)) {"),
+                replacement=(
+                    "        // WAM_NO_POW_FOR_A_DISCOURAGED_PEER (cmpctblock)\n"
+                    "        //\n"
+                    "        // The same twenty milliseconds, reached by the other door, for\n"
+                    "        // about a kilobyte instead of ninety bytes. The two checks above\n"
+                    "        // are cheap and neither stops it.\n"
+                    "        if (NoPoWForThisPeer(pfrom, 1)) return;\n"
+                    "\n"
+                    "        if (!m_chainman.ProcessNewBlockHeaders({cmpctblock.header}, /*min_pow_checked=*/true, state, &pindex)) {"),
             ),
         ],
     ))

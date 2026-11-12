@@ -51,7 +51,12 @@ something.
 import socket
 import time
 
-from test_framework.messages import CBlockHeader, msg_headers
+from test_framework.messages import (
+    CBlockHeader,
+    P2PHeaderAndShortIDs,
+    msg_cmpctblock,
+    msg_headers,
+)
 from test_framework.p2p import P2PInterface
 from test_framework.test_framework import BitcoinTestFramework
 from test_framework.util import assert_equal, p2p_port
@@ -186,7 +191,61 @@ class WamHeaderDosTest(BitcoinTestFramework):
         self.log.info("after the restart cleared the discouragement, headers "
                       "from the same address are read again")
 
+        # ---- four: and the other door -------------------------------------
+        #
+        # HEADERS is not the only way a peer hands us an arbitrary header.
+        # The CMPCTBLOCK handler calls ProcessNewBlockHeaders directly and
+        # never passes through ProcessHeadersMessage, so the first version of
+        # this guard -- written inside that function -- did not cover it. A
+        # discouraged peer kept its twenty milliseconds by announcing a
+        # compact block instead: about a kilobyte, the same cost to us.
+        #
+        # Its two cheap pre-checks do not help. The parent is the node's own
+        # tip, which is public, and the anti-DoS work threshold only rejects
+        # forks far behind that tip.
+        #
+        # This step is why the test exists in this shape at all: the first
+        # three steps pass against a node with the hole in it, because they
+        # only ever send msg_headers.
+        #
+        # Reported by Radenlingga on 10 November 2026, against v0.1.14.
+        #
+        # Step three already put the address back in the discouragement set --
+        # it sent a bad header and was disconnected for it -- so nothing has
+        # to punish it again here. Trying to would hang: a discouraged peer's
+        # headers are now ignored rather than judged, so there is no
+        # disconnection to wait for. That is the guard working, and it cost a
+        # thirty-second timeout to learn.
+        fifth = node.add_p2p_connection(P2PInterface(), dstaddr=addr)
+        tmpl = node.getblocktemplate({"rules": ["segwit"]})
+        started = time.time()
+        with node.assert_debug_log(
+                expected_msgs=["ignoring 1 header(s) from discouraged peer"],
+                unexpected_msgs=["high-hash"],
+                timeout=30):
+            fifth.send_and_ping(
+                msg_cmpctblock(self.compact(self.bad_header(tmpl, 5))))
+        self.log.info("the compact block was ignored in "
+                      f"{(time.time() - started) * 1000:.0f} ms, nothing verified")
+
         assert_equal(node.getblockcount(), 1)
+
+    def compact(self, header):
+        """The smallest compact-block announcement that carries a header.
+
+        No short ids and no prefilled transactions: the header is the whole
+        point of this test, because the header is what reaches
+        ProcessNewBlockHeaders and costs twenty milliseconds of RandomX. The
+        node never gets far enough to want the transactions.
+        """
+        cmpct = P2PHeaderAndShortIDs()
+        cmpct.header = header
+        cmpct.nonce = 1
+        cmpct.shortids_length = 0
+        cmpct.shortids = []
+        cmpct.prefilled_txn_length = 0
+        cmpct.prefilled_txn = []
+        return cmpct
 
 
 if __name__ == "__main__":
