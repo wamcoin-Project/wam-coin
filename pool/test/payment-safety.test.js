@@ -29,6 +29,9 @@
 
 const assert = require('assert');
 const EventEmitter = require('events');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
 const ShareProcessor = require('../lib/shareProcessor');
 const { attachAtomic, attachUnsupported,
         CLAIM_AND_RECORD_NAME, RECORD_BLOCK_NAME, CREDIT_MATURED_NAME,
@@ -37,6 +40,14 @@ const { attachAtomic, attachUnsupported,
 let pass = 0;
 const fail = [];
 const quiet = { info() {}, warn() {}, error() {}, debug() {} };
+
+// One throwaway directory for the payment journals these cases write. The
+// default is inside the pool's own tree, and a test suite must not write
+// there -- nor share one file between cases, since an unfinished payment in
+// the journal is exactly what stops the next run.
+const JOURNALS = fs.mkdtempSync(path.join(os.tmpdir(), 'wam-payment-safety-'));
+let journalSeq = 0;
+process.on('exit', () => fs.rmSync(JOURNALS, { recursive: true, force: true }));
 
 async function test(name, fn) {
     try { await fn(); pass++; console.log(`  \x1b[32mok\x1b[0m    ${name}`); }
@@ -59,7 +70,12 @@ function fakeRedis(initial = {}) {
         _lists: lists,
         _hashes: hashes,
         _sets: sets,
-        async sismember(k, v) { return sets[k] && sets[k].has(v) ? 1 : 0; }
+        // The payment journal belongs to the redis it is reconciled against:
+        // two ShareProcessors over the same double are a pool that restarted,
+        // and a restarted pool reads the same file. See pool/lib/journal.js.
+        _journalPath: path.join(JOURNALS, `j${++journalSeq}.journal`),
+        async sismember(k, v) { return sets[k] && sets[k].has(v) ? 1 : 0; },
+        async scard(k) { return sets[k] ? sets[k].size : 0; }
     };
 
     // THE COMMIT IS THE REAL ONE, OVER THIS DOUBLE'S OWN STORES.
@@ -140,7 +156,8 @@ function fakeDaemon(onBroadcast) {
 
 function make(redis, daemon, cfg = {}) {
     const sp = new ShareProcessor(redis, daemon, {
-        redisPrefix: 'wam', rewardMode: 'pplns', minimumPayoutWam: 1, ...cfg
+        redisPrefix: 'wam', rewardMode: 'pplns', minimumPayoutWam: 1,
+        paymentJournal: redis._journalPath, ...cfg
     }, quiet);
     Object.setPrototypeOf(sp, ShareProcessor.prototype);
     if (!(sp instanceof EventEmitter)) { /* constructed fine */ }

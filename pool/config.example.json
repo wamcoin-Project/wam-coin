@@ -32,6 +32,9 @@
   "_maxWamPerPaymentBatch": "Ceiling on the value of one payment transaction. Not a technical limit -- transaction size depends on the number of outputs, not the amount -- but it bounds what a single mistake or a single compromised run can move.",
   "maxWamPerPaymentBatch": 100000,
 
+  "_paymentJournal": "Where the record of what this pool has paid is kept, outside redis. Every other defence against paying twice -- the in-flight marker, the set of committed transaction ids, the balances themselves -- lives in redis, and redis on its defaults comes back from a crash, a power cut or a failover a few minutes younger than it was. That takes all of them together, so what comes back looks consistent and is simply older than the money. This file is appended and fsynced BEFORE each broadcast and reconciled against redis before every run, and the pool stops rather than pay while the two disagree. Put it on the same host as the pool and back it up with the config; deleting it does not stop payments, it blinds the only check that can see redis go backwards. Default: pool/state/payments.journal.",
+  "paymentJournal": null,
+
   "paymentIntervalSec": 600,
   "blockCheckIntervalSec": 60,
   "coinbaseMaturity": 100,

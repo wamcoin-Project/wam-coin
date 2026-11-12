@@ -34,8 +34,10 @@
 //  <p>:blocks:orphaned so the loss is auditable rather than silent.
 
 const EventEmitter = require('events');
+const path = require('path');
 
 const { computeBlockRewards, estimateHashrate, pplnsWindowDifficulty } = require('./rewards');
+const { PaymentJournal, reconcile } = require('./journal');
 const { COIN, COINBASE_MATURITY } = require('./constants');
 const { defineAtomicCommands, CLAIM_AND_RECORD_NAME,
         RECORD_BLOCK_NAME, CREDIT_MATURED_NAME,
@@ -69,6 +71,16 @@ class ShareProcessor extends EventEmitter {
         this.log = logger;
 
         this.prefix = config.redisPrefix || 'wam';
+
+        // The one record of what has been paid that redis cannot rewrite.
+        // Everything else the payment path relies on -- the in-flight
+        // marker, the committed txids, the balances -- is in redis, and
+        // redis on its defaults comes back from a crash a few minutes
+        // younger than it was. See pool/lib/journal.js.
+        this.journal = new PaymentJournal(
+            config.paymentJournal
+                || path.join(__dirname, '..', 'state', 'payments.journal'),
+            logger);
         this.mode = (config.rewardMode || 'pplns').toLowerCase();
         // ?? and not ||. A zero fee is a real configuration -- this pool
         // ran at 0% from launch night onward -- and `0 || 1` is 1, so the
@@ -189,7 +201,18 @@ class ShareProcessor extends EventEmitter {
 
     async startupReconcile() {
         const raw = await this.redis.get(this.k('payment:inflight'));
-        if (!raw) {
+
+        // THE MARKER IS NOT ENOUGH, BECAUSE THE MARKER IS IN REDIS.
+        //
+        // A restart after a crash is exactly the moment redis is most
+        // likely to have come back younger than the money: the snapshot on
+        // disk is minutes old, appendonly is off by default, and a failover
+        // picks a replica that was behind. The rollback takes the marker
+        // with it, so this check used to read nothing and release payments
+        // over balances that had already been paid.
+        const lost = await this._reconcileJournal(raw);
+
+        if (!raw && !lost) {
             // The only path that releases payments. start() pauses them before
             // calling this, so reaching here is the single proof that the last
             // run finished cleanly.
@@ -197,9 +220,74 @@ class ShareProcessor extends EventEmitter {
             return true;
         }
 
-        this._reportUnfinishedRun(raw);
+        if (raw) this._reportUnfinishedRun(raw);
         this.paused = true;
         return false;
+    }
+
+    /**
+     * Ask the journal whether redis still agrees with it.
+     *
+     * Returns true if something was found that payments must stop for. Every
+     * complaint is logged either way: the ones that are not fatal are how an
+     * operator learns the detector has gone blind, which is worth knowing
+     * before the day it is needed.
+     */
+    async _reconcileJournal(inflightRaw) {
+        let complaints;
+        try {
+            complaints = await reconcile(this.journal, this.redis,
+                                         this.k('payments:done'), inflightRaw);
+        } catch (err) {
+            // Not being able to ask is not an answer. The reconciliation is
+            // the only thing standing between a rolled-back redis and a
+            // second payment, so a failure to run it stops payments the same
+            // way a failure of the check itself would.
+            this.log.error('=========================================================');
+            this.log.error('THE PAYMENT JOURNAL COULD NOT BE READ.');
+            this.log.error(`  ${this.journal.path}`);
+            this.log.error(`  ${err.message}`);
+            this.log.error('');
+            this.log.error('  Payments stop here. The journal is what notices that');
+            this.log.error('  redis has gone back to an older state, and a check that');
+            this.log.error('  cannot run is not a check that passed.');
+            this.log.error('=========================================================');
+            return true;
+        }
+
+        let fatal = false;
+        for (const complaint of complaints) {
+            if (complaint.fatal) fatal = true;
+            else this.log.warn(complaint.text);
+        }
+        if (!fatal) return false;
+
+        this.log.error('=========================================================');
+        this.log.error('REDIS NO LONGER AGREES WITH THE PAYMENT JOURNAL.');
+        for (const complaint of complaints.filter((c) => c.fatal)) {
+            this.log.error(`  ${complaint.text}`);
+        }
+        this.log.error('');
+        this.log.error('  Redis is not durable on its defaults: a crash, a power');
+        this.log.error('  cut or a failover to a replica that was behind brings it');
+        this.log.error('  back as it was at the last save. That takes the balances,');
+        this.log.error('  the in-flight marker and the record of what was paid, all');
+        this.log.error('  together -- so what is left looks consistent and is simply');
+        this.log.error('  older than the money.');
+        this.log.error('');
+        this.log.error('  PAYMENTS ARE PAUSED. Compare the wallet against the');
+        this.log.error('  journal before anything else:');
+        this.log.error('');
+        this.log.error(`    tail -n 40 ${this.journal.path}`);
+        this.log.error('    wam-cli listtransactions "*" 50');
+        this.log.error(`    redis-cli HGETALL ${this.k('balances')}`);
+        this.log.error('');
+        this.log.error('  Every transaction the journal names and the wallet');
+        this.log.error('  confirms has been paid. Whatever redis still shows as');
+        this.log.error('  owed for those payouts is owed twice, and must be');
+        this.log.error('  deducted by hand before payments are released.');
+        this.log.error('=========================================================');
+        return true;
     }
 
     /**
@@ -1033,6 +1121,16 @@ class ShareProcessor extends EventEmitter {
                            'than run without knowing whether one is in flight');
             return;
         }
+        // And the same question the start-up check asks, asked again here,
+        // because the pool does not have to restart for redis to go back:
+        // a failover, a `redis-cli DEBUG RELOAD`, a restore while the pool
+        // keeps running, all leave this process connected to a server that
+        // has forgotten what it paid.
+        if (await this._reconcileJournal(inflight)) {
+            this.paused = true;
+            return;
+        }
+
         if (inflight) {
             this._reportUnfinishedRun(inflight);
             this.paused = true;
@@ -1195,6 +1293,29 @@ class ShareProcessor extends EventEmitter {
             intent.hex = signedHex;
             await this.redis.set(this.k('payment:inflight'), JSON.stringify(intent));
 
+            // And written down where redis cannot take it back, for the same
+            // reason and one step further: the line above is the record that
+            // a payment is in the air, and it lives in the one store that
+            // comes back from a crash younger than it was. This one is
+            // fsynced to disk before the money moves.
+            //
+            // Tagged as a refusal, not as an unknown. Nothing has been
+            // broadcast at this point, so the catch below must take the
+            // branch that clears the marker and leaves the balances alone --
+            // and must NOT take the branch that asks the node whether the
+            // transaction exists and re-sends it if not.
+            try {
+                this.journal.recordBroadcast(txid, batchTotal,
+                                             Object.fromEntries(batch));
+            } catch (err) {
+                throw Object.assign(
+                    new Error('the payment journal could not be written ' +
+                              `(${err.message}), so nothing was broadcast: ` +
+                              'a payment that cannot be recorded outside redis ' +
+                              'is a payment that cannot be proved once'),
+                    { ambiguous: false });
+            }
+
             await this.daemon.cmd('sendrawtransaction', [signedHex]);
         } catch (err) {
             // THIS BLOCK USED TO ASSUME. Its comment read "the call failed, so
@@ -1247,6 +1368,22 @@ class ShareProcessor extends EventEmitter {
                 // said no, so no transaction exists and the intent really is
                 // stale. Clearing it here is safe; leaving it would halt
                 // payments over a transient RPC error.
+                //
+                // The journal line was written before the broadcast, so a
+                // refusal leaves an entry for a transaction that never
+                // existed. Said so here, or every run from now on would read
+                // it as money in the air and stop.
+                if (txid) {
+                    try {
+                        this.journal.recordAbandoned(txid, err.message);
+                    } catch (e) {
+                        this.log.error(
+                            `${txid} was refused by the node and the journal ` +
+                            `could not be told (${e.message}). Payments will ` +
+                            'stop on the next run until the line is added or ' +
+                            'the entry removed by hand.');
+                    }
+                }
                 await this.redis.del(this.k('payment:inflight'));
                 this.log.error(`the payment was refused, balances left ` +
                                `untouched: ${err.message}`);
@@ -1363,6 +1500,19 @@ class ShareProcessor extends EventEmitter {
             // script rather than by this caller.
             this.log.warn(`the commit for ${txid} had already been applied; ` +
                           'this call changed nothing');
+        }
+
+        // The money is committed. A journal line that cannot be written now
+        // costs nothing in itself -- redis is ahead of the file, not behind
+        // it, so nothing can be paid twice by it -- and the next
+        // reconciliation sees a broadcast with no outcome, finds the txid in
+        // payments:done and writes the missing line itself.
+        try {
+            this.journal.recordCommitted(txid);
+        } catch (err) {
+            this.log.warn(`${txid} is committed and the journal could not be ` +
+                          `told (${err.message}). The next payment run will ` +
+                          'find it in payments:done and write the line.');
         }
 
         this.log.info(`payment sent, txid ${txid}`);

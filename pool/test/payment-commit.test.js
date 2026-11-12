@@ -39,6 +39,9 @@
 // ===========================================================================
 
 const assert = require('assert');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
 const ShareProcessor = require('../lib/shareProcessor');
 const { attachAtomic, attachUnsupported,
         CLAIM_AND_RECORD_NAME, RECORD_BLOCK_NAME, CREDIT_MATURED_NAME,
@@ -49,6 +52,12 @@ const GRN = '\x1b[32m', RED = '\x1b[31m', BLD = '\x1b[1m', OFF = '\x1b[0m';
 let pass = 0;
 const fail = [];
 const quiet = { info() {}, warn() {}, error() {}, debug() {} };
+
+// One throwaway directory for the payment journals, one file per double: the
+// default lives inside the pool's own tree and a suite must not write there.
+const JOURNALS = fs.mkdtempSync(path.join(os.tmpdir(), 'wam-payment-commit-'));
+let journalSeq = 0;
+process.on('exit', () => fs.rmSync(JOURNALS, { recursive: true, force: true }));
 
 async function test(name, fn) {
     try { await fn(); pass++; console.log(`  ${GRN}ok${OFF}    ${name}`); }
@@ -72,11 +81,13 @@ function fakeRedis(balances = {}) {
         _strings: strings,
         _lists: lists,
         _hashes: hashes,
+        _journalPath: path.join(JOURNALS, `j${++journalSeq}.journal`),
         async hgetall(k) { return { ...(hashes[k] || {}) }; },
         async get(k) { return strings[k] ?? null; },
         async set(k, v) { strings[k] = v; },
         async del(k) { delete strings[k]; },
         async sismember(k, v) { return sets[k] && sets[k].has(v) ? 1 : 0; },
+        async scard(k) { return sets[k] ? sets[k].size : 0; },
         // Redis counts the stop index from the end when it is negative, and
         // -1 means the last element. slice(a, -1 + 1) is the empty array,
         // which is how a double answers "nothing was written" to a question
@@ -186,7 +197,8 @@ function fakeDaemon() {
 
 function make(redis, daemon, cfg = {}) {
     return new ShareProcessor(redis, daemon, {
-        redisPrefix: 'wam', rewardMode: 'pplns', minimumPayoutWam: 1, ...cfg
+        redisPrefix: 'wam', rewardMode: 'pplns', minimumPayoutWam: 1,
+        paymentJournal: redis._journalPath, ...cfg
     }, quiet);
 }
 

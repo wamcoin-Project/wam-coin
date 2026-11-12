@@ -23,6 +23,9 @@
 // ---------------------------------------------------------------------------
 
 const assert = require('assert');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
 const ShareProcessor = require('../lib/shareProcessor');
 const { attachAtomic, attachUnsupported,
         CLAIM_AND_RECORD_NAME, RECORD_BLOCK_NAME, CREDIT_MATURED_NAME,
@@ -32,6 +35,12 @@ let pass = 0;
 const fail = [];
 const quiet = { info() {}, warn() {}, error() {}, debug() {} };
 const COIN = 100000000;
+
+// One throwaway directory for the payment journals, one file per double: the
+// default lives inside the pool's own tree and a suite must not write there.
+const JOURNALS = fs.mkdtempSync(path.join(os.tmpdir(), 'wam-payment-postponed-'));
+let journalSeq = 0;
+process.on('exit', () => fs.rmSync(JOURNALS, { recursive: true, force: true }));
 
 async function test(name, fn) {
     try { await fn(); pass++; console.log(`  \x1b[32mok\x1b[0m    ${name}`); }
@@ -43,8 +52,12 @@ function fakeRedis(balances = {}) {
     const hashes = { 'wam:balances': { ...balances }, 'wam:paid': {}, 'wam:blocks:pending': {} };
     const strings = {};
     const lists = { 'wam:payments': [], 'wam:blocks:confirmed': [], 'wam:blocks:orphaned': [] };
+    const sets = {};
     const r = {
         _strings: strings,
+        _journalPath: path.join(JOURNALS, `j${++journalSeq}.journal`),
+        async sismember(k, v) { return sets[k] && sets[k].has(v) ? 1 : 0; },
+        async scard(k) { return sets[k] ? sets[k].size : 0; },
         async hgetall(k) { return { ...(hashes[k] || {}) }; },
         async get(k) { return strings[k] ?? null; },
         async set(k, v) { strings[k] = v; },
@@ -71,7 +84,13 @@ function fakeRedis(balances = {}) {
     attachAtomic(r,
         (k) => asMap(hashes, k),
         (k) => (lists[k] = lists[k] || []),
-        { unset: (k) => { delete strings[k]; } });
+        {
+            members: (k) => {
+                if (!sets[k]) sets[k] = new Set();
+                return sets[k];
+            },
+            unset: (k) => { delete strings[k]; }
+        });
     attachUnsupported(r, 'it models balances and the payment batch, not block maturation',
                       [CLAIM_AND_RECORD_NAME, RECORD_BLOCK_NAME,
                        CREDIT_MATURED_NAME, CREDIT_SHARE_NAME]);
@@ -116,7 +135,8 @@ function fakeDaemon(balanceWam) {
 
 function make(redis, daemon, cfg = {}) {
     return new ShareProcessor(redis, daemon, {
-        redisPrefix: 'wam', rewardMode: 'pplns', minimumPayoutWam: 1, ...cfg
+        redisPrefix: 'wam', rewardMode: 'pplns', minimumPayoutWam: 1,
+        paymentJournal: redis._journalPath, ...cfg
     }, quiet);
 }
 

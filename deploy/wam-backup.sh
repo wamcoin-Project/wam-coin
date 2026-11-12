@@ -420,9 +420,26 @@ else
 fi
 
 # --- configuration, units, certificates ------------------------------------
+#
+# /opt/wam/pool/config.json is where the pool's configuration actually is,
+# and until 2026-11-12 the only pool path in this list was
+# /root/wam-pool/config.json, which exists on no host. The header above says
+# "config and certs ... irreplaceable in practice" and the one file that is
+# irreplaceable in practice -- the RPC and redis credentials, the pool's own
+# payout address -- was in no archive at all. The old path stays because a
+# path that is merely absent costs nothing, and because being wrong once
+# about where a thing lives is a reason to keep both, not to swap one guess
+# for another.
+#
+# pool/state/payments.journal is the record of what the pool has paid, kept
+# outside redis precisely because redis comes back from a crash younger than
+# it was. Restoring a host without it would restore the rolled-back redis
+# and throw away the only thing that could notice -- so it is backed up with
+# the ledger it exists to check.
 mkdir -p "$STAGE/config"
 for pattern in "$DATADIR/wam.conf" /etc/systemd/system/wam*.service \
                /etc/systemd/system/wam*.timer /etc/nginx /etc/letsencrypt \
+               /opt/wam/pool/config.json /opt/wam/pool/state/payments.journal \
                /root/wam-pool/config.json; do
     for f in $pattern; do
         [ -e "$f" ] || continue
@@ -448,6 +465,10 @@ From $(hostname), running $(wamd -version 2>/dev/null | head -1)
 
   config/
       mirrors absolute paths from /
+      including opt/wam/pool/config.json (credentials) and
+      opt/wam/pool/state/payments.journal -- restore the journal WITH the
+      redis dump above, never one without the other: the journal is what
+      notices that redis has come back older than the money.
 
 Chain data is deliberately NOT here. Re-sync it from any peer -- that is what
 a blockchain is for. Wallets and the share ledger are the part no peer can
