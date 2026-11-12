@@ -33,7 +33,8 @@
 // ===========================================================================
 
 const { CLAIM_AND_RECORD_NAME, RECORD_BLOCK_NAME,
-        CREDIT_MATURED_NAME, CREDIT_SHARE_NAME } = require('../lib/atomic');
+        CREDIT_MATURED_NAME, CREDIT_SHARE_NAME,
+        COMMIT_PAYMENT_NAME } = require('../lib/atomic');
 
 /**
  * Give a double the real commands, over the maps it already uses.
@@ -107,6 +108,12 @@ function attachAtomic(fake, hash, list, store) {
     });
     const bump = (store && store.count)
         || ((key) => counters.set(key, (counters.get(key) || 0) + 1));
+    // unset(key) deletes a plain string key -- payment:inflight and
+    // payment:postponed, which are not hashes and not lists. It must be THE
+    // DOUBLE'S OWN delete for the same reason as the two above: a test asking
+    // "did the marker survive the refusal?" reads it through the double's own
+    // get, and a private store would answer about nothing.
+    const unset = (store && store.unset) || drop;
 
     fake[RECORD_BLOCK_NAME] =
         async (pendingKey, roundKey, powKey, feeKey, field, record, amount) => {
@@ -178,6 +185,69 @@ function attachAtomic(fake, hash, list, store) {
             zadd(hashrateKey, Number(now), entry);
             return 1;
         };
+
+    // THE PAYMENT COMMIT, WITH THE TXID AS ITS IDENTITY.
+    //
+    // Two properties, and a double that has only the first one would let the
+    // fix pass while proving nothing:
+    //
+    //   A refusal is refused BEFORE anything is written, so the markers
+    //   survive it. The MULTI this replaced deleted payment:inflight in the
+    //   middle of itself, which is how a refused deduction and a cleared
+    //   marker happened together.
+    //
+    //   A second call with the same txid returns 0 and touches nothing --
+    //   what a re-sent command gets on a real server, where every write in
+    //   the script is an increment.
+    const committed = new Set();
+    fake[COMMIT_PAYMENT_NAME] =
+        async (doneKey, balancesKey, paidKey, journalKey, inflightKey,
+               postponedKey, txid, entry, limit, ...payouts) => {
+            if (fake._commitFails) {
+                throw new Error(typeof fake._commitFails === 'string'
+                    ? fake._commitFails : 'connection lost before EXEC');
+            }
+            // Refusing is modelled, not assumed. A double that could not
+            // refuse would let "the marker survives a refusal" pass without
+            // a refusal ever happening -- and the refusal is the whole case.
+            // These are the script's own checks, in the script's own order:
+            // all of them before the first write.
+            const whole = /^\d+$/;
+            const integer = /^-?\d+$/;
+            const refuse = (why) => {
+                throw new Error(`wamCommitPayment refused: ${why}`);
+            };
+            for (let i = 0; i < payouts.length; i += 2) {
+                const who = payouts[i];
+                if (!whole.test(String(payouts[i + 1]))) {
+                    refuse(`amount paid to ${who} is not a whole number of satoshi`);
+                }
+                const owed = hash(balancesKey).get(who);
+                if (owed !== undefined && !integer.test(String(owed))) {
+                    refuse(`balance for ${who} is not an integer`);
+                }
+                const sent = hash(paidKey).get(who);
+                if (sent !== undefined && !integer.test(String(sent))) {
+                    refuse(`paid total for ${who} is not an integer`);
+                }
+            }
+            if (sets(doneKey).has(txid)) return 0;
+            sets(doneKey).add(txid);
+            committed.add(txid);
+            for (let i = 0; i < payouts.length; i += 2) {
+                const who = payouts[i];
+                const amount = Number(payouts[i + 1]);
+                const owed = Number(hash(balancesKey).get(who) || 0);
+                hash(balancesKey).set(who, String(owed - amount));
+                const sent = Number(hash(paidKey).get(who) || 0);
+                hash(paidKey).set(who, String(sent + amount));
+            }
+            list(journalKey).unshift(entry);
+            list(journalKey).splice(Number(limit));
+            unset(inflightKey);
+            unset(postponedKey);
+            return 1;
+        };
     return fake;
 }
 
@@ -190,7 +260,7 @@ function attachAtomic(fake, hash, list, store) {
 function attachUnsupported(fake, why, which) {
     for (const name of which ||
          [CLAIM_AND_RECORD_NAME, RECORD_BLOCK_NAME, CREDIT_MATURED_NAME,
-          CREDIT_SHARE_NAME]) {
+          CREDIT_SHARE_NAME, COMMIT_PAYMENT_NAME]) {
         fake[name] = async () => {
             throw new Error(
                 `${name} was called on a double that does not model it: ` +
@@ -205,5 +275,5 @@ function attachUnsupported(fake, why, which) {
 module.exports = {
     attachAtomic, attachUnsupported,
     CLAIM_AND_RECORD_NAME, RECORD_BLOCK_NAME, CREDIT_MATURED_NAME,
-    CREDIT_SHARE_NAME
+    CREDIT_SHARE_NAME, COMMIT_PAYMENT_NAME
 };

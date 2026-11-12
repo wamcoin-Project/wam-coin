@@ -30,7 +30,9 @@
 const assert = require('assert');
 const EventEmitter = require('events');
 const ShareProcessor = require('../lib/shareProcessor');
-const { attachAtomic, attachUnsupported } = require('./fakeAtomic');
+const { attachAtomic, attachUnsupported,
+        CLAIM_AND_RECORD_NAME, RECORD_BLOCK_NAME, CREDIT_MATURED_NAME,
+        CREDIT_SHARE_NAME } = require('./fakeAtomic');
 
 let pass = 0;
 const fail = [];
@@ -46,6 +48,7 @@ function fakeRedis(initial = {}) {
     const hashes = { 'wam:balances': { ...initial } };
     const strings = {};
     const lists = {};
+    const sets = {};
     const r = {
         calls: [],
         async hgetall(k) { return { ...(hashes[k] || {}) }; },
@@ -53,51 +56,49 @@ function fakeRedis(initial = {}) {
         async set(k, v) { strings[k] = v; r.calls.push(['set', k]); },
         async del(k) { delete strings[k]; r.calls.push(['del', k]); },
         _strings: strings,
-        // multi() and pipeline() do the same work here, and the difference is
-        // recorded rather than simulated: a fake cannot lose a connection
-        // halfway, so it cannot show that a pipeline applies some commands and
-        // drops the rest. What it CAN hold down is that the money commit asks
-        // redis for a transaction and not a batch, which is the whole of the
-        // fix. The real guarantee lives in redis, not here.
-        multi() { r.calls.push(['multi']); return r.pipeline(); },
-        pipeline() {
-            const ops = [];
-            const p = {
-                hincrby(k, f, by) { ops.push(['hincrby', k, f, by]); return p; },
-                hincrbyfloat(k, f, by) { ops.push(['hincrbyfloat', k, f, by]); return p; },
-                hset(k, f, v) { ops.push(['hset', k, f, v]); return p; },
-                hdel(k, f) { ops.push(['hdel', k, f]); return p; },
-                lpush(k, v) { (lists[k] = lists[k] || []).unshift(v); return p; },
-                ltrim() { return p; },
-                del(k) { ops.push(['del', k]); return p; },
-                async exec() {
-                    // A COMMIT THAT DOES NOT ANSWER.
-                    //
-                    // The one failure this file had no case for, which is how
-                    // it came to be the one that paid twice: the broadcast
-                    // succeeded and exec() rejected. A rejected EXEC is not
-                    // proof it did not apply, so nothing is applied here and
-                    // nothing is assumed about redis either -- the test is
-                    // about what the POOL does next.
-                    if (r._commitFails) {
-                        throw new Error('connection lost before EXEC');
-                    }
-                    for (const [op, k, f, by] of ops) {
-                        if (op === 'hincrby') {
-                            hashes[k] = hashes[k] || {};
-                            hashes[k][f] = String((parseInt(hashes[k][f] || '0', 10)) + by);
-                        } else if (op === 'del') {
-                            delete strings[k];
-                            r.calls.push(['del', k]);
-                        }
-                    }
-                    return [];
-                }
-            };
-            return p;
-        }
+        _lists: lists,
+        _hashes: hashes,
+        _sets: sets,
+        async sismember(k, v) { return sets[k] && sets[k].has(v) ? 1 : 0; }
     };
-    attachUnsupported(r, 'it models balances and the payment batch, not block maturation');
+
+    // THE COMMIT IS THE REAL ONE, OVER THIS DOUBLE'S OWN STORES.
+    //
+    // It used to be a hand-written MULTI here, and that is how this file came
+    // to hold eight cases about a commit while modelling the one thing the
+    // commit could not do: refuse halfway. The double applied `hincrby` and
+    // `del` in a loop that could not fail, so the shape that paid a man twice
+    // -- a deduction refused and the marker deleted anyway -- had nowhere to
+    // appear. attachAtomic runs the same definition the pool requires, and
+    // `_commitFails` injects the refusal before any of it.
+    const asMap = (bag, k) => {
+        bag[k] = bag[k] || {};
+        return {
+            get: (f) => bag[k][f],
+            set: (f, v) => { bag[k][f] = String(v); },
+            has: (f) => Object.prototype.hasOwnProperty.call(bag[k], f),
+            delete: (f) => delete bag[k][f],
+            clear: () => { bag[k] = {}; }
+        };
+    };
+    attachAtomic(r,
+        (k) => asMap(hashes, k),
+        (k) => (lists[k] = lists[k] || []),
+        {
+            members: (k) => {
+                if (!sets[k]) sets[k] = new Set();
+                return sets[k];
+            },
+            // The double's own del, so a test can ask through its own get
+            // whether the marker survived -- and so the call is recorded.
+            unset: (k) => { r.del(k); }
+        });
+    // Everything except the commit: this double models balances and the
+    // payment batch, and a stub that quietly returned 1 for block maturation
+    // would let a test pass while proving nothing.
+    attachUnsupported(r, 'it models balances and the payment batch, not block maturation',
+                      [CLAIM_AND_RECORD_NAME, RECORD_BLOCK_NAME,
+                       CREDIT_MATURED_NAME, CREDIT_SHARE_NAME]);
     return r;
 }
 
@@ -320,13 +321,21 @@ function make(redis, daemon, cfg = {}) {
         assert.strictEqual(sp.paused, true, 'uncertainty did not stop the pool');
     });
 
-    await test('the money commit is a transaction, not a batch', async () => {
+    await test('the money commit is one script, and the txid is its name', async () => {
+        // It was a pipeline, then a MULTI, and neither is a unit against a
+        // command refused at run time. What the commit has to be is one
+        // server-side operation whose identity is the transaction, so that a
+        // re-sent command cannot deduct twice.
         const redis = fakeRedis({ addr1: '500000000' });
         const sp = make(redis, fakeDaemon());
         await sp.processPayments();
-        assert.ok(redis.calls.some(([op]) => op === 'multi'),
-            'balances, journal and intent were committed as a pipeline, which ' +
-            'redis may apply only in part');
+        assert.strictEqual(await redis.sismember('wam:payments:done', 'txid-1'), 1,
+            'the commit left no record of which transaction it was for, so a '
+            + 're-sent command cannot be told from a second payment');
+        assert.strictEqual((await redis.hgetall('wam:balances')).addr1, '0',
+            'the balance was not deducted');
+        assert.strictEqual((await redis.hgetall('wam:paid')).addr1, '500000000',
+            'the paid total was not credited');
     });
 
     await test('payments are paused until the start-up check has finished', async () => {

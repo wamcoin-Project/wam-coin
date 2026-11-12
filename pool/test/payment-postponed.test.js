@@ -24,7 +24,9 @@
 
 const assert = require('assert');
 const ShareProcessor = require('../lib/shareProcessor');
-const { attachAtomic, attachUnsupported } = require('./fakeAtomic');
+const { attachAtomic, attachUnsupported,
+        CLAIM_AND_RECORD_NAME, RECORD_BLOCK_NAME, CREDIT_MATURED_NAME,
+        CREDIT_SHARE_NAME } = require('./fakeAtomic');
 
 let pass = 0;
 const fail = [];
@@ -48,39 +50,31 @@ function fakeRedis(balances = {}) {
         async set(k, v) { strings[k] = v; },
         async del(k) { delete strings[k]; },
         async lrange(k, a, b) { return (lists[k] || []).slice(a, b + 1); },
-        async llen(k) { return (lists[k] || []).length; },
-        // The money commit is a MULTI, not a pipeline -- see
-        // daemon-money-failover.test.js and payment-safety.test.js. Same work
-        // in a fake; the difference it stands for only exists in redis.
-        multi() { return r.pipeline(); },
-        pipeline() {
-            const ops = [];
-            const p = {
-                hincrby(k, f, by) { ops.push(['hincrby', k, f, by]); return p; },
-                hincrbyfloat() { return p; },
-                hset() { return p; },
-                hdel() { return p; },
-                incrby() { return p; },
-                decrby() { return p; },
-                lpush(k, v) { (lists[k] = lists[k] || []).unshift(v); return p; },
-                ltrim() { return p; },
-                del(k) { ops.push(['del', k]); return p; },
-                async exec() {
-                    for (const [op, k, f, by] of ops) {
-                        if (op === 'hincrby') {
-                            hashes[k] = hashes[k] || {};
-                            hashes[k][f] = String(parseInt(hashes[k][f] || '0', 10) + by);
-                        } else if (op === 'del') {
-                            delete strings[k];
-                        }
-                    }
-                    return [];
-                }
-            };
-            return p;
-        }
+        async llen(k) { return (lists[k] || []).length; }
     };
-    attachUnsupported(r, 'it models balances and the payment batch, not block maturation');
+
+    // The money commit is one script -- see payment-commit.test.js, which is
+    // about what happens when it refuses. Here it is only the thing that has
+    // to run for the postponement record to be cleared, so it runs the real
+    // definition over this double's own stores rather than a hand-written
+    // copy of what it is believed to do.
+    const asMap = (bag, k) => {
+        bag[k] = bag[k] || {};
+        return {
+            get: (f) => bag[k][f],
+            set: (f, v) => { bag[k][f] = String(v); },
+            has: (f) => Object.prototype.hasOwnProperty.call(bag[k], f),
+            delete: (f) => delete bag[k][f],
+            clear: () => { bag[k] = {}; }
+        };
+    };
+    attachAtomic(r,
+        (k) => asMap(hashes, k),
+        (k) => (lists[k] = lists[k] || []),
+        { unset: (k) => { delete strings[k]; } });
+    attachUnsupported(r, 'it models balances and the payment batch, not block maturation',
+                      [CLAIM_AND_RECORD_NAME, RECORD_BLOCK_NAME,
+                       CREDIT_MATURED_NAME, CREDIT_SHARE_NAME]);
     return r;
 }
 
