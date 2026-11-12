@@ -54,9 +54,11 @@ import time
 from test_framework.messages import (
     CBlockHeader,
     P2PHeaderAndShortIDs,
+    msg_block,
     msg_cmpctblock,
     msg_headers,
 )
+from test_framework.blocktools import create_block, create_coinbase
 from test_framework.p2p import P2PInterface
 from test_framework.test_framework import BitcoinTestFramework
 from test_framework.util import assert_equal, p2p_port
@@ -228,7 +230,83 @@ class WamHeaderDosTest(BitcoinTestFramework):
         self.log.info("the compact block was ignored in "
                       f"{(time.time() - started) * 1000:.0f} ms, nothing verified")
 
-        assert_equal(node.getblockcount(), 1)
+        # ---- five: and the block message is a third door -------------------
+        #
+        # HEADERS and CMPCTBLOCK are two ways a peer hands us a header; the
+        # BLOCK message is the third. Every block carries a header, and the
+        # handler hands the whole block to ProcessBlock, which verifies that
+        # header's proof of work with no guard in front of it. A discouraged
+        # peer reconnects and buys the twenty milliseconds with a block
+        # instead of an announcement: one header and one coinbase, about two
+        # hundred bytes. Against a node where
+        # the first two doors are guarded but this one is not, this step
+        # fails exactly as the compact-block step does against the first
+        # version of the fix: "time-too-old" appears and the "ignoring 1
+        # block" line does not.
+        sixth = node.add_p2p_connection(P2PInterface(), dstaddr=addr)
+        tmpl = node.getblocktemplate({"rules": ["segwit"]})
+        tip_height = tmpl["height"] - 1
+        started = time.time()
+        with node.assert_debug_log(
+                expected_msgs=["ignoring 1 block from discouraged peer"],
+                unexpected_msgs=["time-too-old"],
+                timeout=30):
+            sixth.send_and_ping(
+                msg_block(self.bad_block(tmpl, tmpl["previousblockhash"],
+                                         tip_height + 1, ntime=1)))
+        self.log.info("the block message was ignored in "
+                      f"{(time.time() - started) * 1000:.0f} ms, nothing verified")
+
+        # ---- six: and on this door the threshold was checked after the cost
+        #
+        # The BLOCK handler computes the anti-DoS work threshold, but on this
+        # path the computed value was only forwarded into AcceptBlockHeader,
+        # which enforces it after ContextualCheckBlockHeader has already run
+        # -- that is, after the twenty milliseconds. The compact-block
+        # handler refuses a low-work header before computing anything, and
+        # upstream could afford not to bother here because CheckBlockHeader's
+        # SHA256d check rejected garbage first; WAM-010 removed exactly that
+        # check, and this door is where the loss came due. Any peer -- not a
+        # punished one, any peer -- could buy the computation with a
+        # well-formed header built on a parent deep behind the tip. 200
+        # regtest blocks put the threshold at the tip's work minus 144 block
+        # proofs, so a block whose parent sits at height 10 claims far less
+        # than that, and a peer nobody has punished is still told no -- before
+        # the computation, not after it. A low-work refusal never punishes:
+        # the restart above cleared the discouragement, and this peer stays
+        # connected.
+        self.restart_node(0)
+        self.generate(node, 200, sync_fun=self.no_op)
+        tmpl = node.getblocktemplate({"rules": ["segwit"]})
+        deep_hash = node.getblockhash(10)
+        deep_time = node.getblock(deep_hash)["time"]
+        seventh = node.add_p2p_connection(P2PInterface(), dstaddr=addr)
+        with node.assert_debug_log(
+                expected_msgs=["Ignoring low-work block from peer"],
+                unexpected_msgs=["high-hash"],
+                timeout=30):
+            seventh.send_and_ping(
+                msg_block(self.bad_block(tmpl, deep_hash, 11,
+                                         ntime=deep_time + 600)))
+        self.log.info("the low-work block was refused before any proof of "
+                      "work was computed")
+
+        assert_equal(node.getblockcount(), 201)
+
+    def bad_block(self, tmpl, prev_hash, height, ntime):
+        """A block whose header the node must refuse, with a body that holds.
+
+        create_block gives it a real merkle root and a real coinbase, so if
+        the body is ever reached it passes -- which keeps whatever goes wrong
+        in the steps below a header failure, the thing under test. An ntime
+        of 1 makes the header certain to fail the median-time test rather
+        than lose a coin toss at the proof of work, for the same reason
+        bad_header uses it.
+        """
+        b = create_block(int(prev_hash, 16), create_coinbase(height),
+                         ntime=ntime, tmpl={"version": tmpl["version"],
+                                            "bits": tmpl["bits"]})
+        return b
 
     def compact(self, header):
         """The smallest compact-block announcement that carries a header.

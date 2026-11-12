@@ -1943,12 +1943,13 @@ MAGIC_BYTES = {
                     "                                            bool via_compact_block)\n"
                     "{"),
                 replacement=(
-                    "bool PeerManagerImpl::NoPoWForThisPeer(const CNode& pfrom, size_t count)\n"
+                    "bool PeerManagerImpl::NoPoWForThisPeer(const CNode& pfrom, size_t count,\n"
+                    "                                       const char* what)\n"
                     "{\n"
                     "    if (pfrom.HasPermission(NetPermissionFlags::NoBan)) return false;\n"
                     "    if (!m_banman || !m_banman->IsDiscouraged(pfrom.addr)) return false;\n"
-                    "    LogPrint(BCLog::NET, \"ignoring %u header(s) from discouraged peer=%d\\n\",\n"
-                    "             count, pfrom.GetId());\n"
+                    "    LogPrint(BCLog::NET, \"ignoring %u %s from discouraged peer=%d\\n\",\n"
+                    "             count, what, pfrom.GetId());\n"
                     "    return true;\n"
                     "}\n"
                     "\n"
@@ -1967,8 +1968,10 @@ MAGIC_BYTES = {
                     "                               bool via_compact_block)"),
                 replacement=(
                     "    /** No proof of work is verified for an address we have punished.\n"
-                    "     *  Both announcement doors ask this: headers, and compact blocks. */\n"
-                    "    bool NoPoWForThisPeer(const CNode& pfrom, size_t count)\n"
+                    "     *  Every door that hands us a header asks this: the headers\n"
+                    "     *  message, a compact block, and the block message itself. */\n"
+                    "    bool NoPoWForThisPeer(const CNode& pfrom, size_t count,\n"
+                    "                          const char* what = \"header(s)\")\n"
                     "        EXCLUSIVE_LOCKS_REQUIRED(::cs_main);\n"
                     "\n"
                     "    void ProcessHeadersMessage(CNode& pfrom, Peer& peer,\n"
@@ -1990,6 +1993,65 @@ MAGIC_BYTES = {
                     "        if (NoPoWForThisPeer(pfrom, 1)) return;\n"
                     "\n"
                     "        if (!m_chainman.ProcessNewBlockHeaders({cmpctblock.header}, /*min_pow_checked=*/true, state, &pindex)) {"),
+            ),
+            Edit(
+                file="src/net_processing.cpp",
+                description="the third door: the block message itself",
+                marker="WAM_NO_POW_FOR_A_DISCOURAGED_PEER (block message)",
+                anchor=(
+                    "            // Check claimed work on this block against our anti-dos thresholds.\n"
+                    "            if (prev_block && prev_block->nChainWork + CalculateClaimedHeadersWork({pblock->GetBlockHeader()}) >= GetAntiDoSWorkThreshold()) {\n"
+                    "                min_pow_checked = true;\n"
+                    "            }\n"
+                    "        }\n"
+                ),
+                replacement=(
+                    "            // Check claimed work on this block against our anti-dos thresholds.\n"
+                    "            if (prev_block && prev_block->nChainWork + CalculateClaimedHeadersWork({pblock->GetBlockHeader()}) >= GetAntiDoSWorkThreshold()) {\n"
+                    "                min_pow_checked = true;\n"
+                    "            } else if (prev_block) {\n"
+                    "                // WAM_BLOCK_DOS_THRESHOLD_BEFORE_COST\n"
+                    "                //\n"
+                    "                // Upstream enforces this threshold in AcceptBlockHeader, after\n"
+                    "                // CheckBlockHeader -- whose proof-of-work check cost Bitcoin a\n"
+                    "                // microsecond, so checking it late cost upstream nothing. WAM-010\n"
+                    "                // moved the only proof-of-work check into\n"
+                    "                // ContextualCheckBlockHeader, where it costs about twenty\n"
+                    "                // milliseconds of RandomX with cs_main held, and on this path\n"
+                    "                // that ordering left the threshold enforced after the money was\n"
+                    "                // spent. Upstream could afford the loose order here because\n"
+                    "                // CheckBlockHeader rejected garbage first; WAM-010 removed\n"
+                    "                // exactly that check. The compact-block handler refuses a\n"
+                    "                // low-work header before any proof of work is computed; this\n"
+                    "                // door now does too. Same refusal, same no punishment -- a\n"
+                    "                // claim we did not try to process was never punished -- and\n"
+                    "                // the mapBlockSource entry this handler wrote is erased, since\n"
+                    "                // ProcessBlock, which used to erase it, is not reached.\n"
+                    "                mapBlockSource.erase(hash);\n"
+                    "                LogPrint(BCLog::NET, \"Ignoring low-work block from peer %d\\n\", pfrom.GetId());\n"
+                    "                return;\n"
+                    "            }\n"
+                    "\n"
+                    "            // WAM_NO_POW_FOR_A_DISCOURAGED_PEER (block message)\n"
+                    "            //\n"
+                    "            // A header arrives three ways: the headers message, a compact\n"
+                    "            // block, and inside every block message. This handler hands the\n"
+                    "            // whole block to ProcessBlock, which verifies that header's\n"
+                    "            // RandomX proof with no guard in front of it, so a discouraged\n"
+                    "            // peer reconnects and buys the twenty milliseconds with a block\n"
+                    "            // instead of an announcement -- a header and one coinbase, a\n"
+                    "            // couple of hundred bytes. The two cheap checks above do not\n"
+                    "            // stop it: the parent is our own\n"
+                    "            // tip, which is public, and the threshold test above passes for\n"
+                    "            // a tip-extending header carrying the publicly computable\n"
+                    "            // nBits. The entry this handler wrote into mapBlockSource is\n"
+                    "            // erased for the same reason as the branch above.\n"
+                    "            if (NoPoWForThisPeer(pfrom, 1, \"block\")) {\n"
+                    "                mapBlockSource.erase(hash);\n"
+                    "                return;\n"
+                    "            }\n"
+                    "        }\n"
+                ),
             ),
         ],
     ))
