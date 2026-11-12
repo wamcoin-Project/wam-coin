@@ -64,7 +64,19 @@ class StratumClient extends EventEmitter {
 
         socket.on('data', (chunk) => this._onData(chunk));
         socket.on('error', (err) => this._onError(err));
-        socket.on('close', () => this.emit('close'));
+        // The timer goes when the socket does. It was only ever cleared in
+        // disconnect() and on a successful authorize, so a connection that
+        // opened and closed on its own -- a port scanner, a miner whose
+        // network dropped, anything that hangs up before authorizing -- left
+        // a live 30-second timer holding this client, its socket and its
+        // buffer. Bounded and small, and one per connection, from a stranger
+        // who never authenticated. Found while writing the test above, where
+        // it kept the process alive for thirty seconds after everything had
+        // been shut down.
+        socket.on('close', () => {
+            clearTimeout(this._authTimer);
+            this.emit('close');
+        });
 
         // A connection that never authorizes is a scanner, not a miner.
         this._authTimer = setTimeout(() => {
@@ -177,13 +189,35 @@ class StratumClient extends EventEmitter {
         const check = this.server.validateMinerAddress(address);
         if (!check.ok) {
             this.reply(id, false);
+            // JSON.stringify, not the bare string: it quotes, it escapes, and
+            // it is the one function in the language whose whole job is to
+            // render an arbitrary string as text that cannot be mistaken for
+            // anything around it. Logger will not let this become a second
+            // line either; both are here because this is the call site a
+            // stranger reaches without authenticating, and a defence that
+            // exists in one place is a defence that moved there by accident.
             this.log.warn(`${this.ip} tried to authorize with an invalid address ` +
-                          `'${address}': ${check.reason}`);
+                          `${JSON.stringify(address.slice(0, 120))}: ${check.reason}`);
             return this.disconnect();
         }
 
+        // A RIG NAME, AND NOTHING THAT IS NOT ONE.
+        //
+        // The label was sliced to 32 characters and otherwise taken as it
+        // came. 32 characters is enough for a newline and a convincing
+        // timestamp, and the label is written to the operator's log, to the
+        // PPLNS window, to redis field names and to the dashboard. Logger now
+        // refuses to let any of it become a second log line -- that is the
+        // fix, and it is one layer.
+        //
+        // This is the other: a worker label names a machine, and a machine's
+        // name is letters, digits, and the three separators people actually
+        // use. Everything else is dropped rather than refused, because a
+        // miner whose config has an accented rig name should mine, not be
+        // disconnected and left guessing.
         this.address = address;
-        this.workerName = worker ? `${address}.${worker.slice(0, 32)}` : address;
+        const label = worker ? worker.replace(/[^A-Za-z0-9_-]/g, '').slice(0, 32) : '';
+        this.workerName = label ? `${address}.${label}` : address;
         this.authorized = true;
         clearTimeout(this._authTimer);
 
