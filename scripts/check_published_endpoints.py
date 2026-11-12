@@ -81,6 +81,7 @@ import re
 import socket
 import ssl
 import sys
+import time
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent / "lib"))
 import quoted  # noqa: E402
@@ -207,6 +208,43 @@ EXAMPLE = re.compile(r"(^|\.)(example\.(com|org|net)|invalid|test|localhost)$")
 
 TIMEOUT = 12
 
+# ONE TIMEOUT IS NOT AN OUTAGE.
+#
+# This dialled every published host:port once, with a twelve-second timeout,
+# and called a single OSError a failure. On 12 November it reported another
+# operator's pool -- wampool.vslabs.co.in, on 3333 and 3334 -- as not
+# answering, twice. Both ports were open when they were dialled again a few
+# minutes later, from the same machine, and so were 80 and 443. What the
+# check had measured was one slow moment on a link to another continent,
+# while this laptop was compiling.
+#
+# The cost of that is not the wrong line. It is that the operator learns the
+# red line means nothing, and is not looking on the day it means something.
+# This project already has that lesson written down in
+# pool/test/payment-postponed.test.js, about a monitor that reported a
+# postponed payment run as a stoppage: "a monitor that reports the safe case
+# as an emergency does more harm than no monitor at all."
+#
+# So a connection that fails is tried again before it is believed. Only the
+# connection: a certificate a wallet would refuse, or a TLS handshake that
+# fails on its merits, is a verdict and not weather, and is reported the
+# first time.
+ATTEMPTS = 3
+RETRY_PAUSE = 2.0
+
+
+def _connect(host, port):
+    """A connected socket, after up to ATTEMPTS tries. Raises the last error."""
+    last = None
+    for attempt in range(ATTEMPTS):
+        try:
+            return socket.create_connection((host, port), timeout=TIMEOUT)
+        except OSError as err:
+            last = err
+            if attempt + 1 < ATTEMPTS:
+                time.sleep(RETRY_PAUSE)
+    raise last
+
 
 def endpoints_in(text):
     """[(host, port)] a page names, in the order they are written.
@@ -285,7 +323,7 @@ def tls(host, port):
     point."""
     ctx = ssl.create_default_context()
     try:
-        with socket.create_connection((host, port), timeout=TIMEOUT) as raw:
+        with _connect(host, port) as raw:
             with ctx.wrap_socket(raw, server_hostname=host) as s:
                 cert = s.getpeercert()
     except ssl.SSLCertVerificationError as e:
@@ -295,7 +333,7 @@ def tls(host, port):
     except ssl.SSLError as e:
         return "fail", f"TLS handshake failed: {str(e)[:60]}", 1
     except OSError as e:
-        return "fail", type(e).__name__, 0
+        return "fail", f"{type(e).__name__} -- no answer in {ATTEMPTS} attempts", 0
 
     when = expiry_of(cert)
     if when is None:
@@ -315,7 +353,7 @@ def dial(host, port):
     if port in TLS_PORTS:
         return tls(host, port)
     try:
-        with socket.create_connection((host, port), timeout=TIMEOUT) as s:
+        with _connect(host, port) as s:
             if port in QUIET_PORTS:
                 return "ok", "open (plain text, says nothing unasked)", 1
             s.sendall(json.dumps({"id": 1, "method": "mining.subscribe",
@@ -333,7 +371,7 @@ def dial(host, port):
                 return "ok", "answers stratum", 1
             return "ok", f"open, replied {reply[:40]!r}", 1
     except OSError as e:
-        return "fail", type(e).__name__, 0
+        return "fail", f"{type(e).__name__} -- no answer in {ATTEMPTS} attempts", 0
 
 
 def main() -> int:
