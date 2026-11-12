@@ -50,6 +50,25 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 CONF = ROOT / "share" / "examples" / "wam.conf"
 MARKER = "EVERY OPTION THE BINARY ACCEPTS"
 
+# AND THE CONFIGURATION WE ACTUALLY WRITE ON SOMEBODY'S MACHINE.
+#
+# share/examples/wam.conf is generated and therefore could not go stale in
+# the one direction that matters. install.sh is hand-written, is run by every
+# operator who follows the README, and nothing compared it to anything.
+#
+# It carried `randomxmining=0` from the beginning, with two lines of comment
+# explaining when to set it to 1. There is no such option. In wam.conf the
+# node ignores it with one line in debug.log; on the command line it refuses
+# to start with "Invalid parameter". So every node installed this way has a
+# setting in its configuration that does nothing, and its operator has a
+# written instruction for switching on a mode the software does not have.
+#
+# Found by Radenlingga (Discord) on 10 November 2026 -- as a dead function in
+# the node, which is the same fact seen from the other end.
+INSTALLER = ROOT / "install.sh"
+INSTALL_CONF_BEGIN = re.compile(r'^\s*cat > "\$CONF" <<EOF\s*$')
+INSTALL_CONF_END = re.compile(r"^EOF\s*$")
+
 for _stream in (sys.stdout, sys.stderr):
     try:
         _stream.reconfigure(encoding="utf-8", errors="replace")
@@ -75,6 +94,33 @@ def options_in_file(text):
         if m:
             names.append(m.group(1))
     return names
+
+
+def options_in_installer(text):
+    """The settings install.sh writes into an operator's wam.conf.
+
+    Returns a list of (name, line number), or None if the heredoc that
+    writes the file is no longer where this expects it -- which must be
+    reported rather than read as "nothing to check".
+    """
+    lines = text.splitlines()
+    start = None
+    for i, line in enumerate(lines):
+        if INSTALL_CONF_BEGIN.match(line):
+            start = i + 1
+            break
+    if start is None:
+        return None
+
+    names = []
+    for i in range(start, len(lines)):
+        line = lines[i]
+        if INSTALL_CONF_END.match(line):
+            return names
+        m = re.match(r"^([a-z][a-z0-9]*)=", line)
+        if m:
+            names.append((m.group(1), i + 1))
+    return None        # ran off the end: the heredoc is not closed as expected
 
 
 def options_from_binary(wamd):
@@ -145,6 +191,29 @@ def main() -> int:
     print(f"  file   {len(listed)} option(s) in {CONF.relative_to(ROOT)}")
     print(f"  binary {len(actual)} option(s) from {wamd}\n")
 
+    # The configuration install.sh writes, which is the one that ends up on
+    # a stranger's machine. Only one direction is a fault here: install.sh
+    # writes a chosen few settings and is not meant to list them all.
+    installer_bad = []
+    if INSTALLER.is_file():
+        written = options_in_installer(
+            INSTALLER.read_text(encoding="utf-8", errors="replace"))
+        if written is None:
+            print(f"  {RED}FAIL{OFF}  install.sh no longer writes wam.conf where "
+                  f"this can read it.\n          The heredoc after "
+                  f"'cat > \"$CONF\" <<EOF' is what is checked; if it moved, "
+                  f"this\n          check is looking at nothing and must say so "
+                  f"rather than pass.")
+            installer_bad = [("<not found>", 0)]
+        else:
+            print(f"  writes {len(written)} setting(s) into wam.conf "
+                  f"(install.sh)\n")
+            installer_bad = [(n, ln) for n, ln in written if n not in set(actual)]
+            for name, ln in installer_bad[:12]:
+                print(f"  {RED}FAIL{OFF}  install.sh:{ln} writes {name}= into "
+                      f"every operator's wam.conf\n          and the node does "
+                      f"not accept -{name}")
+
     missing = [o for o in actual if o not in set(listed)]
     extra = [o for o in listed if o not in set(actual)]
 
@@ -160,6 +229,13 @@ def main() -> int:
         print(f"          ... and {len(extra) - 12} more")
 
     print()
+    if installer_bad:
+        print(f"  {RED}{BLD}install.sh writes a setting the node does not "
+              f"have{OFF}")
+        print("  Remove it, with whatever comment above it explains when to")
+        print("  use it. An option the node ignores is a line the operator")
+        print("  believes is doing something.\n")
+        return 1
     if extra and not missing:
         # THE FILE KNOWS SOMETHING THIS BINARY DOES NOT, AND THAT IS USUALLY
         # THE BINARY'S FAULT.

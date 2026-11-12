@@ -481,8 +481,16 @@ public:
         //
         // nTime  : 2026-09-15 00:00:00 UTC
         // nBits  : 0x1e0ffff0, matching powLimit above
-        // nNonce : mined 2026-08-18 by genesis/genesis_generator.py, 1,258,094
-        //          RandomX hashes against the key "WAM/RandomX/epoch-0/2026".
+        // nNonce : mined 2026-08-18 by genesis/genesis_generator.py against
+        //          the key "WAM/RandomX/epoch-0/2026", in 1,258,094 RandomX
+        //          hashes. That count is the total across the mining threads
+        //          and is not the nonce: the workers stride the nonce space,
+        //          so the winning nonce is reached while the others are still
+        //          slightly behind it, and the two numbers are a few thousand
+        //          apart by construction. Said here because the gap reads
+        //          like drift otherwise -- it was read that way on
+        //          10 November 2026 by somebody auditing this file, which is
+        //          the only reader a comment is written for.
         //
         // The merkle root below is the one check that proves the premine is
         // what it claims to be: it commits to all five outputs and their
@@ -749,9 +757,26 @@ public:
         // have worked. The original comment claimed "set by the test harness";
         // nothing set it.
         //
-        // The testnet burn address (hash160 = 20 zero bytes) is used so regtest
-        // exercises the identical code path as a live network while the coins
-        // it pays are provably unspendable.
+        // The testnet treasury address is used so regtest exercises the
+        // identical code path as a live network.
+        //
+        // This comment said "the testnet burn address (hash160 = 20 zero
+        // bytes)" and therefore that the coins it pays are provably
+        // unspendable. Neither half was true of the value beneath it:
+        // WAM_TREASURY_ADDRESS_TESTNET decodes to version 65, hash160
+        // a21b54367f4bd15b9b33e6e9e8b87c5b2fab5c16 -- an ordinary address
+        // with a key behind it. The burn address this described is
+        // WNg2svm2qApxheBKndKGQ9sRwporvRgRpT, version 73, hash160 twenty
+        // zero bytes, and it is not what is set here.
+        //
+        // It costs nothing on regtest, where the coins exist for the length
+        // of one test. It is recorded because a comment that describes the
+        // opposite of the value under it has been a paid finding in this
+        // file once already, and a reader checking the treasury rule should
+        // not have to decode an address to find out which sentence is the
+        // true one.
+        //
+        // Reported by Radenlingga (Discord), 10 November 2026.
         consensus.devFeeAddress           = WAM_TREASURY_ADDRESS_TESTNET;
         consensus.nCoinbaseMaturity       = 100;
 
@@ -959,9 +984,15 @@ std::vector<int> CChainParams::GetAvailableSnapshotHeights() const
  * Reverse-lookup of a network from its P2P message prefix.
  *
  * Deliberately checks only WAM's three networks. Upstream also probes
- * TestNet4() and SigNet(), which throw here -- and this function runs while
- * deserializing an untrusted UTXO snapshot header, where an exception would be
- * a denial-of-service rather than a diagnostic.
+ * TestNet4() and SigNet(), which WAM does not run: the two now construct a
+ * CUnusedNetParams rather than throwing, so this is a question of what the
+ * answer should be and no longer one of avoiding an exception. Naming a
+ * network nobody runs would be a wrong answer rather than no answer, and
+ * this function deserializes an untrusted UTXO snapshot header.
+ *
+ * The sentence above said they "throw here" for as long as it took them to
+ * stop throwing, and it is corrected rather than deleted because the reason
+ * it gave was once the real one.
  */
 std::optional<ChainType> GetNetworkForMagic(const MessageStartChars& message)
 {

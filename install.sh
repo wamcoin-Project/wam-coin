@@ -399,9 +399,12 @@ rpcallowip=127.0.0.1
 listen=1
 maxconnections=125
 
-# RandomX validation uses light mode (~256 MiB). Set randomxmining=1 only if
-# this node will also mine, which needs roughly 2.1 GiB more.
-randomxmining=0
+# RandomX validation uses light mode (~256 MiB) and there is nothing to set:
+# a node verifies, and the 2 GiB dataset belongs to wam-miner, in its own
+# process. These three lines used to write randomxmining=0 here and tell the
+# operator to set it to 1 for a node that also mines. No such option exists:
+# wamd ignores it in this file with one line in debug.log, and refuses to
+# start if it is passed on the command line.
 
 dbcache=450
 

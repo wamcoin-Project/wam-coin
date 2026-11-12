@@ -13,19 +13,38 @@
 #include <wam/consensus/subsidy.h>
 #include <wam/wam-params.h>
 
+#include <map>
 #include <mutex>
+#include <string>
 
 namespace wam {
 
 namespace {
 
 // The treasury script never changes for the lifetime of a chain, and
-// CheckDevFeeOutput() runs for every connected block, so we build the script
-// once and hand out a const reference thereafter.
-std::once_flag g_devfee_script_once;
-CScript g_devfee_script;
+// CheckDevFeeOutput() runs for every connected block, so it is built once per
+// chain and a const reference is handed out thereafter.
+//
+// ONCE PER CHAIN, NOT ONCE PER PROCESS.
+//
+// This was a std::once_flag and a single CScript, so the FIRST parameters a
+// process touched won for its lifetime. In production that is harmless --
+// one chain per process -- and the argument "harmless in production" is the
+// one this project has been wrong about most often. A unit-test process that
+// constructs more than one network, or any future tool that does, would be
+// served another chain's treasury script and told it was this one's.
+//
+// The map is never erased from, and std::map keeps references to its
+// elements valid across every insertion, so the const reference handed out
+// here stays valid for the life of the process even while another thread
+// adds a different chain. The lock covers the lookup and the insert; the
+// cost is one uncontended mutex per connected block.
+//
+// Reported by Radenlingga (Discord), 10 November 2026.
+std::mutex g_devfee_mutex;
+std::map<std::string, CScript> g_devfee_scripts;
 
-void BuildDevFeeScript(const Consensus::Params& consensusParams)
+CScript BuildDevFeeScript(const Consensus::Params& consensusParams)
 {
     const CTxDestination dest = DecodeDestination(consensusParams.devFeeAddress);
 
@@ -40,15 +59,20 @@ void BuildDevFeeScript(const Consensus::Params& consensusParams)
             consensusParams.devFeeAddress));
     }
 
-    g_devfee_script = GetScriptForDestination(dest);
+    return GetScriptForDestination(dest);
 }
 
 } // namespace
 
 const CScript& DevFeeScript(const Consensus::Params& consensusParams)
 {
-    std::call_once(g_devfee_script_once, BuildDevFeeScript, std::cref(consensusParams));
-    return g_devfee_script;
+    std::lock_guard<std::mutex> lock(g_devfee_mutex);
+    auto it = g_devfee_scripts.find(consensusParams.devFeeAddress);
+    if (it == g_devfee_scripts.end()) {
+        it = g_devfee_scripts.emplace(consensusParams.devFeeAddress,
+                                      BuildDevFeeScript(consensusParams)).first;
+    }
+    return it->second;
 }
 
 CAmount GetPaidDevFee(const CTransaction& coinbase, const Consensus::Params& consensusParams)

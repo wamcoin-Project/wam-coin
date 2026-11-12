@@ -137,6 +137,48 @@ class Patcher:
                 f"  Looking for: {needle[:120]!r}\n"
                 "  Extend the anchor with more surrounding context.")
 
+    @staticmethod
+    def _require_no_duplicate_lines(out: str, edit: "Edit") -> None:
+        """Nothing this insert just wrote may appear in the file twice.
+
+        A MARKER THAT CHANGES TURNS AN INSERT INTO A SECOND COPY.
+
+        The marker is what makes an edit idempotent: present means done. So
+        when a marker is updated -- which it must be whenever the insert's
+        CONTENT changes, since a marker has to describe the output and not
+        the family -- the edit stops recognising its own earlier work. On a
+        pristine clone that is correct and invisible. On a tree that was
+        already patched it inserts the whole block a second time, on top of
+        the first, and nothing says a word.
+
+        On 12 November 2026 that put every wam_* suite into BITCOIN_TESTS
+        twice. The compile was clean; the LINK failed, with forty lines of
+        'multiple definition of wam_vesting_tests::...; first defined here'
+        naming the same object file on both sides. That is a long way from
+        the cause, and it is the good case: an insert that duplicated a
+        configuration line rather than a translation unit would have linked
+        and run.
+
+        fetch-upstream.sh already warns that a tree patched at one WAM
+        version cannot be re-patched at a later one, and it is right. What it
+        could not do is notice. Anchors fail loudly when upstream moves --
+        the anchor is simply gone. Inserts had no equivalent, and this is it.
+        """
+        for line in edit.insert_text.splitlines():
+            text = line.strip()
+            if len(text) < 4:
+                continue          # a brace or a continuation proves nothing
+            if out.count(text) > 1:
+                raise PatchError(
+                    f"{edit.file}: inserting '{edit.description}' leaves\n"
+                    f"  {text[:100]!r}\n"
+                    f"  in the file {out.count(text)} times.\n"
+                    "  This tree has almost certainly been patched already, and the\n"
+                    "  marker changed since, so the edit did not recognise its own\n"
+                    "  earlier work. Do not edit around it: delete the tree and let\n"
+                    "  fetch-upstream.sh clone it again. A half-patched tree is the\n"
+                    "  one state you must never build from.")
+
     # -- application --------------------------------------------------------
 
     def apply_change(self, change: Change) -> None:
@@ -181,6 +223,7 @@ class Patcher:
             self._require_unique(src, edit.insert_after, edit.file, edit.description)
             out = src.replace(edit.insert_after,
                               edit.insert_after + edit.insert_text, 1)
+            self._require_no_duplicate_lines(out, edit)
         else:
             raise PatchError(f"{change.id}: edit for {edit.file} is malformed")
 
@@ -324,6 +367,7 @@ def build_changes() -> list[Change]:
             ("src/wam/test/wam_monetary_tests.cpp",  "src/test/wam_monetary_tests.cpp"),
             ("src/wam/test/wam_devfee_tests.cpp",    "src/test/wam_devfee_tests.cpp"),
             ("src/wam/test/wam_vesting_tests.cpp",   "src/test/wam_vesting_tests.cpp"),
+            ("src/wam/test/wam_pow_tests.cpp",       "src/test/wam_pow_tests.cpp"),
 
             # Functional tests. These drive a real node over RPC, which is the
             # only way to catch a rule that is implemented but never reached --
@@ -504,9 +548,14 @@ def build_changes() -> list[Change]:
                 "    // there, so those coins MUST enter the UTXO set or the entire premine is\n"
                 "    // burned at launch, with no way to undo it afterwards.\n"
                 "    //\n"
-                "    // ALL FIVE vesting outputs are added, not just the liquid one: a coin\n"
-                "    // that is not in the set cannot later become spendable when its CLTV\n"
-                "    // deadline passes.\n"
+                "    // ALL FIVE vesting outputs are added. None of them is spendable on the\n"
+                "    // day the chain starts -- every one carries its own CLTV deadline, the\n"
+                "    // earliest in 2027 -- and that is the reason they must all enter the\n"
+                "    // set now: a coin that is not in the UTXO set cannot later become\n"
+                "    // spendable when its deadline passes. This read \"not just the liquid\n"
+                "    // one\" until 2026-11-12, which described a schedule with an unlocked\n"
+                "    // first tranche. There is no such tranche and there never was one on\n"
+                "    // this chain.\n"
                 "    //\n"
                 "    // The coins remain subject to normal coinbase maturity (100 blocks) and\n"
                 "    // to the OP_CHECKLOCKTIMEVERIFY locks carried in their own scripts.\n"
@@ -1504,6 +1553,46 @@ MAGIC_BYTES = {
                     "    if (!ContextualCheckBlockHeader(block, state, chainstate.m_blockman, "
                     "chainstate.m_chainman, pindexPrev, fCheckPOW)) {"),
             ),
+            Edit(
+                file="src/validation.cpp",
+                description="do not pay for a header this function is about to refuse",
+                marker="/*fCheckPOW=*/min_pow_checked)",
+                anchor=(
+                    "        if (!ContextualCheckBlockHeader(block, state, m_blockman, *this, pindexPrev)) {"),
+                replacement=(
+                    "        // WAM_NO_POW_FOR_A_HEADER_WE_WILL_REFUSE\n"
+                    "        //\n"
+                    "        // Forty-four lines below this one, AcceptBlockHeader refuses any\n"
+                    "        // header whose caller did not vouch for its claimed work:\n"
+                    "        //\n"
+                    "        //     if (!min_pow_checked) { ... BLOCK_HEADER_LOW_WORK ... }\n"
+                    "        //\n"
+                    "        // Upstream put that test after the contextual checks because the\n"
+                    "        // only expensive thing in front of it, CheckBlockHeader's SHA256d\n"
+                    "        // proof-of-work test, cost a microsecond. WAM-010 moved WAM's\n"
+                    "        // proof of work INTO the function on this line, where it costs\n"
+                    "        // about twenty milliseconds of RandomX with cs_main held. So the\n"
+                    "        // node pays for every header it is already certain to throw away.\n"
+                    "        //\n"
+                    "        // This is the generalisation of a finding, and it is here rather\n"
+                    "        // than at a door on purpose. The guard WAM-027 added at the\n"
+                    "        // headers message did not cover compact blocks; the one added for\n"
+                    "        // compact blocks did not cover block messages; each was found by\n"
+                    "        // somebody outside, one door at a time. Every one of those doors\n"
+                    "        // reaches the cost through this line and no other -- the only\n"
+                    "        // other caller of ContextualCheckBlockHeader is TestBlockValidity,\n"
+                    "        // which already passes fCheckPOW=false -- so refusing to pay here\n"
+                    "        // closes the doors that exist and the ones nobody has written yet.\n"
+                    "        //\n"
+                    "        // Nothing else changes. A header we already hold returned at the\n"
+                    "        // duplicate check above and never reached this line; a vouched\n"
+                    "        // header passes min_pow_checked=true and is verified exactly as\n"
+                    "        // before; an unvouched one is refused below, as it was, having\n"
+                    "        // cost nothing. Every side effect upstream performs between the\n"
+                    "        // two lines still happens in the same order.\n"
+                    "        if (!ContextualCheckBlockHeader(block, state, m_blockman, *this, pindexPrev,\n"
+                    "                                       /*fCheckPOW=*/min_pow_checked)) {"),
+            ),
         ]))
 
     # -----------------------------------------------------------------------
@@ -1669,12 +1758,20 @@ MAGIC_BYTES = {
             Edit(
                 file="src/Makefile.test.include",
                 description="add the WAM consensus tests to BITCOIN_TESTS",
-                marker="test/wam_monetary_tests.cpp",
+                # The marker names the LAST line this inserts, not the first.
+                # It used to name wam_monetary_tests.cpp, which is already
+                # present the moment the first of these is added -- so adding
+                # a fourth suite to this list would have been reported as
+                # "already applied" and the suite would have been copied into
+                # the tree and compiled into nothing. The file's own history
+                # has this lesson in it twice already.
+                marker="test/wam_pow_tests.cpp",
                 insert_after="BITCOIN_TESTS =\\\n",
                 insert_text=(
                     "  test/wam_monetary_tests.cpp \\\n"
                     "  test/wam_devfee_tests.cpp \\\n"
-                    "  test/wam_vesting_tests.cpp \\\n"),
+                    "  test/wam_vesting_tests.cpp \\\n"
+                    "  test/wam_pow_tests.cpp \\\n"),
             ),
         ]))
 
@@ -1943,12 +2040,13 @@ MAGIC_BYTES = {
                     "                                            bool via_compact_block)\n"
                     "{"),
                 replacement=(
-                    "bool PeerManagerImpl::NoPoWForThisPeer(const CNode& pfrom, size_t count)\n"
+                    "bool PeerManagerImpl::NoPoWForThisPeer(const CNode& pfrom, size_t count,\n"
+                    "                                       const char* what)\n"
                     "{\n"
                     "    if (pfrom.HasPermission(NetPermissionFlags::NoBan)) return false;\n"
                     "    if (!m_banman || !m_banman->IsDiscouraged(pfrom.addr)) return false;\n"
-                    "    LogPrint(BCLog::NET, \"ignoring %u header(s) from discouraged peer=%d\\n\",\n"
-                    "             count, pfrom.GetId());\n"
+                    "    LogPrint(BCLog::NET, \"ignoring %u %s from discouraged peer=%d\\n\",\n"
+                    "             count, what, pfrom.GetId());\n"
                     "    return true;\n"
                     "}\n"
                     "\n"
@@ -1960,15 +2058,17 @@ MAGIC_BYTES = {
             Edit(
                 file="src/net_processing.cpp",
                 description="declare the guard on PeerManagerImpl",
-                marker="bool NoPoWForThisPeer(const CNode& pfrom, size_t count)",
+                marker="bool NoPoWForThisPeer(const CNode& pfrom, size_t count,",
                 anchor=(
                     "    void ProcessHeadersMessage(CNode& pfrom, Peer& peer,\n"
                     "                               std::vector<CBlockHeader>&& headers,\n"
                     "                               bool via_compact_block)"),
                 replacement=(
                     "    /** No proof of work is verified for an address we have punished.\n"
-                    "     *  Both announcement doors ask this: headers, and compact blocks. */\n"
-                    "    bool NoPoWForThisPeer(const CNode& pfrom, size_t count)\n"
+                    "     *  Every door that hands us a header asks this: the headers\n"
+                    "     *  message, a compact block, and the block message itself. */\n"
+                    "    bool NoPoWForThisPeer(const CNode& pfrom, size_t count,\n"
+                    "                          const char* what = \"header(s)\")\n"
                     "        EXCLUSIVE_LOCKS_REQUIRED(::cs_main);\n"
                     "\n"
                     "    void ProcessHeadersMessage(CNode& pfrom, Peer& peer,\n"
@@ -1990,6 +2090,81 @@ MAGIC_BYTES = {
                     "        if (NoPoWForThisPeer(pfrom, 1)) return;\n"
                     "\n"
                     "        if (!m_chainman.ProcessNewBlockHeaders({cmpctblock.header}, /*min_pow_checked=*/true, state, &pindex)) {"),
+            ),
+            Edit(
+                file="src/net_processing.cpp",
+                description="the third door: the block message itself",
+                marker="WAM_NO_POW_FOR_A_DISCOURAGED_PEER (block message)",
+                anchor=(
+                    "            // Check claimed work on this block against our anti-dos thresholds.\n"
+                    "            if (prev_block && prev_block->nChainWork + CalculateClaimedHeadersWork({pblock->GetBlockHeader()}) >= GetAntiDoSWorkThreshold()) {\n"
+                    "                min_pow_checked = true;\n"
+                    "            }\n"
+                    "        }\n"),
+                replacement=(
+                    "            // Check claimed work on this block against our anti-dos thresholds.\n"
+                    "            if (prev_block && prev_block->nChainWork + CalculateClaimedHeadersWork({pblock->GetBlockHeader()}) >= GetAntiDoSWorkThreshold()) {\n"
+                    "                min_pow_checked = true;\n"
+                    "            } else if (prev_block && !forceProcessing &&\n"
+                    "                       !m_chainman.m_blockman.LookupBlockIndex(hash)) {\n"
+                    "                // WAM_BLOCK_DOS_THRESHOLD_BEFORE_COST\n"
+                    "                //\n"
+                    "                // Upstream enforces this threshold in AcceptBlockHeader, after\n"
+                    "                // CheckBlockHeader -- whose proof-of-work check cost Bitcoin a\n"
+                    "                // microsecond, so enforcing it late cost upstream nothing.\n"
+                    "                // WAM-010 moved the only proof-of-work check into\n"
+                    "                // ContextualCheckBlockHeader, where it costs about twenty\n"
+                    "                // milliseconds of RandomX with cs_main held, and on this path\n"
+                    "                // that ordering leaves the threshold enforced after the money\n"
+                    "                // has been spent: validation.cpp runs the check at the top of\n"
+                    "                // AcceptBlockHeader and tests min_pow_checked forty-four\n"
+                    "                // lines below it. Upstream could afford the loose order here\n"
+                    "                // because CheckBlockHeader rejected garbage first, and\n"
+                    "                // WAM-010 removed exactly that check -- so ANY peer, not only\n"
+                    "                // a punished one, could buy the computation with a\n"
+                    "                // well-formed header built on a parent well behind the tip.\n"
+                    "                // The compact-block handler already refuses a low-work header\n"
+                    "                // before computing anything; this door now does too, with the\n"
+                    "                // same absence of punishment, since a claim we declined to\n"
+                    "                // process was never punished.\n"
+                    "                //\n"
+                    "                // AND THE TWO CONDITIONS BESIDE IT ARE NOT DECORATION.\n"
+                    "                //\n"
+                    "                // forceProcessing means we asked for this block, and a known\n"
+                    "                // hash means we already hold its header. In both cases\n"
+                    "                // upstream processes the block whatever the threshold says:\n"
+                    "                // AcceptBlockHeader returns true at its duplicate check,\n"
+                    "                // before min_pow_checked is ever read. Refusing here without\n"
+                    "                // them would drop a block we had requested ourselves -- the\n"
+                    "                // first block of a reorg deeper than the 144-block buffer,\n"
+                    "                // whose request was erased by RemoveBlockRequest two lines\n"
+                    "                // above and would not be made again. An attacker loses\n"
+                    "                // nothing by them: his header is new and nobody asked for it.\n"
+                    "                //\n"
+                    "                // The mapBlockSource entry this handler wrote is erased,\n"
+                    "                // since ProcessBlock, which used to erase it, is not reached.\n"
+                    "                mapBlockSource.erase(hash);\n"
+                    "                LogPrint(BCLog::NET, \"Ignoring low-work block from peer %d\\n\", pfrom.GetId());\n"
+                    "                return;\n"
+                    "            }\n"
+                    "\n"
+                    "            // WAM_NO_POW_FOR_A_DISCOURAGED_PEER (block message)\n"
+                    "            //\n"
+                    "            // A header arrives three ways: the headers message, a compact\n"
+                    "            // block, and inside every block message. This handler hands the\n"
+                    "            // whole block to ProcessBlock, which verifies that header's\n"
+                    "            // RandomX proof with no guard in front of it, so a discouraged\n"
+                    "            // peer reconnects and buys the twenty milliseconds with a block\n"
+                    "            // instead of an announcement -- one header and one coinbase, a\n"
+                    "            // couple of hundred bytes. Neither cheap check above stops it:\n"
+                    "            // the parent is our own tip, which is public, and the threshold\n"
+                    "            // is met by a tip-extending header carrying the publicly\n"
+                    "            // computable nBits.\n"
+                    "            if (NoPoWForThisPeer(pfrom, 1, \"block\")) {\n"
+                    "                mapBlockSource.erase(hash);\n"
+                    "                return;\n"
+                    "            }\n"
+                    "        }\n"),
             ),
         ],
     ))

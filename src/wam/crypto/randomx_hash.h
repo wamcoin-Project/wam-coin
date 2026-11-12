@@ -98,18 +98,31 @@ uint256 GetRandomXPoWHash(const CBlockHeader& header, const uint256& seed);
  */
 uint256 GetRandomXHashRaw(const unsigned char* input, size_t len, const uint256& seed);
 
-/**
- * Switch the process into full-dataset (mining) mode. Costs ~2 GiB per seed
- * and blocks for several seconds while the dataset is built. Called by wamd
- * only when `-randomxmining=1` is set; never by a plain validating node.
- */
-void SetRandomXMiningMode(bool fMining);
-
-/** Release every cached VM, cache and dataset. Called on shutdown. */
-void FlushRandomXCaches();
-
 /** Bytes currently held by RandomX structures; surfaced by `getrandomxinfo`. */
 size_t GetRandomXMemoryUsage();
+
+// WHAT USED TO BE DECLARED HERE, AND WHY IT IS NOT.
+//
+//     void SetRandomXMiningMode(bool fMining);   // full-dataset mode
+//     void FlushRandomXCaches();                 // "called on shutdown"
+//
+// Neither had a caller anywhere in this repository, and the switch they
+// existed for -- `-randomxmining=1`, described in their own comments, in
+// README.md, in docs/BUILD.md and written into every operator's wam.conf by
+// install.sh -- is not an option this software has. wamd ignores it in the
+// configuration file and refuses to start if it is passed on the command
+// line, so the mode could never be entered and the ~2 GiB dataset path
+// below them could never run.
+//
+// Removed rather than wired up, because a node verifies and a miner mines:
+// the dataset belongs to wam-miner, which has its own RandomX in its own
+// process. Keeping a mode switch that no option reaches means keeping a
+// function which, if ever called, drops every cached verification context
+// and makes the next header pay for a 256 MiB cache rebuild while holding
+// cs_main.
+//
+// Reported as dead code by Radenlingga (Discord), 10 November 2026. The
+// documentation it contradicted is corrected in the same change.
 
 } // namespace wam
 

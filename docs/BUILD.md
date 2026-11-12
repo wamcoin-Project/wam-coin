@@ -349,8 +349,11 @@ Re-run `genesis/genesis_generator.py --patch`.
 §"Launching a real chain" in the README.
 
 **`randomx_alloc_dataset failed`**
-Full-dataset mode needs ~2.1 GiB free. Set `randomxmining=0` (validation only needs
-256 MiB), or use `--light` in the genesis generator.
+Full-dataset mode needs ~2.1 GiB free, and only two programs here ask for it: the
+miner and the genesis generator. Pass `--light` to either and both use the 256 MiB
+cache instead. The node never allocates a dataset — it verifies in light mode and has
+no option to do anything else. This entry used to say `randomxmining=0`, which is not
+an option the node has.
 
 **The build OOMs**
 Lower the job count. `make -j2` on 4 GB, `-j4` on 8 GB.

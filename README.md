@@ -293,8 +293,11 @@ wam-cli getrandomxinfo         # current key, blocks until rotation
 wam-cli getemissionschedule    # the full halving table
 ```
 
-Validation runs RandomX in light mode (~256 MiB). Set `randomxmining=1` only if the node
-will also mine; that needs ~2.1 GiB more.
+Validation runs RandomX in light mode (~256 MiB), and there is no setting that changes
+it. A node verifies; the 2 GiB dataset belongs to mining, which `wam-miner` does in its
+own process. These lines used to say `randomxmining=1`, which is not an option this
+software has: on the command line the node refuses to start with *Invalid parameter*,
+and in `wam.conf` it is ignored with one line in `debug.log`.
 
 ---
 

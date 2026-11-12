@@ -199,7 +199,7 @@ bash scripts/build_macos.sh</code></pre>
 <p><strong><code>undefined reference to randomx_calculate_hash</code></strong> <code>librandomx.a</code> is missing from <code>LIBS</code>, or it appears <em>before</em> the objects that use it. Static archives must come after their consumers on the link line.</p>
 <p><strong><code>assert(consensus.hashGenesisBlock == uint256S("0x0000..."))</code> fails at startup</strong> The genesis block has not been mined yet, or <code>chainparams.cpp</code> was edited after mining. Re-run <code>genesis/genesis_generator.py --patch</code>.</p>
 <p><strong><code>the founder address is not a valid base58check address</code></strong> <code>WAM_FOUNDER_ADDRESS_MAINNET</code> is still the placeholder. This is intentional — see §"Launching a real chain" in the README.</p>
-<p><strong><code>randomx_alloc_dataset failed</code></strong> Full-dataset mode needs ~2.1 GiB free. Set <code>randomxmining=0</code> (validation only needs 256 MiB), or use <code>--light</code> in the genesis generator.</p>
+<p><strong><code>randomx_alloc_dataset failed</code></strong> Full-dataset mode needs ~2.1 GiB free, and only two programs here ask for it: the miner and the genesis generator. Pass <code>--light</code> to either and both use the 256 MiB cache instead. The node never allocates a dataset — it verifies in light mode and has no option to do anything else. This entry used to say <code>randomxmining=0</code>, which is not an option the node has.</p>
 <p><strong>The build OOMs</strong> Lower the job count. <code>make -j2</code> on 4 GB, <code>-j4</code> on 8 GB.</p>
 <p class="foot">This page is generated from docs/BUILD.md in the repository. It is the same text; nothing here is written twice.</p>
 </main>

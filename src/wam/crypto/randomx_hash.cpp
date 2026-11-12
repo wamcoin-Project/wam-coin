@@ -10,18 +10,14 @@
 #include <primitives/block.h>
 #include <streams.h>
 #include <sync.h>
-#include <util/thread.h>
 #include <wam/wam-params.h>
 
 #include <randomx.h>
 
 #include <cstring>
 #include <list>
-#include <map>
 #include <memory>
 #include <stdexcept>
-#include <thread>
-#include <vector>
 
 namespace wam {
 
@@ -46,10 +42,12 @@ randomx_flags GetVerifyFlags()
                                       ~static_cast<int>(RANDOMX_FLAG_FULL_MEM));
 }
 
-randomx_flags GetMiningFlags()
-{
-    return randomx_get_flags() | RANDOMX_FLAG_FULL_MEM;
-}
+// There is no GetMiningFlags() here any more, and no full-dataset path below
+// it. See the note in randomx_hash.h: the switch that reached them was
+// `-randomxmining`, which is not an option this node has, so the ~2 GiB
+// dataset, its parallel initialisation and the mode flag that selected them
+// were unreachable from the first commit. A node verifies; wam-miner mines,
+// in its own process, with its own RandomX.
 
 // ---------------------------------------------------------------------------
 // One initialised RandomX context for a single seed
@@ -58,13 +56,11 @@ randomx_flags GetMiningFlags()
 struct RandomXContext {
     uint256 seed;
     randomx_cache* cache{nullptr};
-    randomx_dataset* dataset{nullptr};
     randomx_vm* vm{nullptr};
-    bool mining{false};
 
-    RandomXContext(const uint256& seedIn, bool fMining) : seed(seedIn), mining(fMining)
+    explicit RandomXContext(const uint256& seedIn) : seed(seedIn)
     {
-        const randomx_flags flags = fMining ? GetMiningFlags() : GetVerifyFlags();
+        const randomx_flags flags = GetVerifyFlags();
 
         cache = randomx_alloc_cache(flags);
         if (cache == nullptr) {
@@ -72,20 +68,8 @@ struct RandomXContext {
         }
         randomx_init_cache(cache, seed.begin(), seed.size());
 
-        if (fMining) {
-            dataset = randomx_alloc_dataset(flags);
-            if (dataset == nullptr) {
-                randomx_release_cache(cache);
-                throw std::runtime_error(
-                    "randomx_alloc_dataset failed: mining mode needs ~2 GiB of free RAM. "
-                    "Restart without -randomxmining to validate in light mode.");
-            }
-            InitDatasetParallel(flags);
-        }
-
-        vm = randomx_create_vm(flags, cache, dataset);
+        vm = randomx_create_vm(flags, cache, /*dataset=*/nullptr);
         if (vm == nullptr) {
-            if (dataset) randomx_release_dataset(dataset);
             randomx_release_cache(cache);
             throw std::runtime_error("randomx_create_vm failed");
         }
@@ -94,7 +78,6 @@ struct RandomXContext {
     ~RandomXContext()
     {
         if (vm) randomx_destroy_vm(vm);
-        if (dataset) randomx_release_dataset(dataset);
         if (cache) randomx_release_cache(cache);
     }
 
@@ -104,6 +87,9 @@ struct RandomXContext {
     /** Approximate resident bytes, for the `getrandomxinfo` RPC only. */
     size_t MemoryUsage() const
     {
+        // One number, because there is one kind of context. This used to add
+        // the dataset's size when one was held, and no context ever held
+        // one.
         // librandomx's public header exposes only RANDOMX_HASH_SIZE,
         // RANDOMX_DATASET_ITEM_SIZE and randomx_dataset_item_count(). The cache
         // size (RANDOMX_ARGON_MEMORY, 262144 KiB) lives in the library's
@@ -115,44 +101,7 @@ struct RandomXContext {
         // #include would not be.
         static constexpr size_t RANDOMX_CACHE_BYTES = 256u * 1024u * 1024u;
 
-        size_t bytes = RANDOMX_CACHE_BYTES;
-        if (dataset) {
-            bytes += static_cast<size_t>(randomx_dataset_item_count())
-                   * RANDOMX_DATASET_ITEM_SIZE;
-        }
-        return bytes;
-    }
-
-private:
-    // Dataset initialisation is embarrassingly parallel and single-threaded it
-    // takes well over a minute on a laptop. Split it across the machine.
-    void InitDatasetParallel(randomx_flags /*flags*/)
-    {
-        const unsigned long itemCount = randomx_dataset_item_count();
-        unsigned nThreads = std::thread::hardware_concurrency();
-        if (nThreads == 0) nThreads = 1;
-
-        LogPrintf("RandomX: building 2 GiB dataset for seed %s using %u threads...\n",
-                  seed.ToString(), nThreads);
-
-        std::vector<std::thread> workers;
-        workers.reserve(nThreads);
-
-        const unsigned long perThread = itemCount / nThreads;
-        unsigned long start = 0;
-
-        for (unsigned i = 0; i < nThreads; ++i) {
-            const unsigned long count = (i == nThreads - 1) ? (itemCount - start) : perThread;
-            randomx_cache* c = cache;
-            randomx_dataset* d = dataset;
-            workers.emplace_back([c, d, start, count] {
-                randomx_init_dataset(d, c, start, count);
-            });
-            start += count;
-        }
-        for (auto& t : workers) t.join();
-
-        LogPrintf("RandomX: dataset ready.\n");
+        return RANDOMX_CACHE_BYTES;
     }
 };
 
@@ -169,12 +118,11 @@ constexpr size_t MAX_CACHED_CONTEXTS = 2;
 
 Mutex g_randomx_mutex;
 std::list<std::shared_ptr<RandomXContext>> g_contexts GUARDED_BY(g_randomx_mutex);
-bool g_mining_mode GUARDED_BY(g_randomx_mutex){false};
 
 std::shared_ptr<RandomXContext> GetContext(const uint256& seed) EXCLUSIVE_LOCKS_REQUIRED(g_randomx_mutex)
 {
     for (auto it = g_contexts.begin(); it != g_contexts.end(); ++it) {
-        if ((*it)->seed == seed && (*it)->mining == g_mining_mode) {
+        if ((*it)->seed == seed) {
             // Promote to front (most-recently-used).
             auto ctx = *it;
             g_contexts.erase(it);
@@ -183,10 +131,10 @@ std::shared_ptr<RandomXContext> GetContext(const uint256& seed) EXCLUSIVE_LOCKS_
         }
     }
 
-    LogPrintf("RandomX: initialising %s context for seed %s\n",
-              g_mining_mode ? "mining" : "verification", seed.ToString());
+    LogPrintf("RandomX: initialising verification context for seed %s\n",
+              seed.ToString());
 
-    auto ctx = std::make_shared<RandomXContext>(seed, g_mining_mode);
+    auto ctx = std::make_shared<RandomXContext>(seed);
     g_contexts.push_front(ctx);
 
     while (g_contexts.size() > MAX_CACHED_CONTEXTS) {
@@ -288,23 +236,6 @@ uint256 GetRandomXPoWHash(const CBlockHeader& header, const uint256& seed)
 
     return GetRandomXHashRaw(reinterpret_cast<const unsigned char*>(ss.data()),
                              ss.size(), seed);
-}
-
-void SetRandomXMiningMode(bool fMining)
-{
-    LOCK(g_randomx_mutex);
-    if (g_mining_mode == fMining) return;
-
-    g_mining_mode = fMining;
-    g_contexts.clear(); // mode change invalidates every cached VM
-    LogPrintf("RandomX: switched to %s mode\n", fMining ? "mining (full dataset)"
-                                                        : "verification (light)");
-}
-
-void FlushRandomXCaches()
-{
-    LOCK(g_randomx_mutex);
-    g_contexts.clear();
 }
 
 size_t GetRandomXMemoryUsage()
