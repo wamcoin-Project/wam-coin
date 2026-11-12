@@ -44,12 +44,37 @@ cd "$HERE"
 
 GRN=$'\033[32m'; RED=$'\033[31m'; YLW=$'\033[33m'; BLD=$'\033[1m'; DIM=$'\033[2m'; OFF=$'\033[0m'
 
-command -v g++ >/dev/null 2>&1 || {
+if ! command -v g++ >/dev/null 2>&1; then
+    # ON WINDOWS, GO AND FIND ONE INSTEAD OF REPORTING THAT NONE WAS FOUND.
+    #
+    # Git Bash has no compiler and WSL does -- and WSL is where the node is
+    # built on this machine, so the compiler was always a command away. The
+    # line below used to say "on Windows this runs under WSL" and then exit
+    # 2, which is honest and useless: the sweep printed "the miner's unit
+    # tests -- could not check" on the one machine where the miner's code is
+    # actually written, every single run, and nobody ran these three suites
+    # from one month to the next.
+    #
+    # Exit 2 is still right when there is genuinely no compiler anywhere.
+    # What was wrong was calling it that before looking.
+    if command -v wsl.exe >/dev/null 2>&1 \
+       && wsl.exe -e bash -lc 'command -v g++ >/dev/null' >/dev/null 2>&1; then
+        win="$(pwd -W 2>/dev/null || pwd)"
+        inside="$(wsl.exe -e wslpath -a "$win" 2>/dev/null | tr -d '\r')"
+        if [ -n "$inside" ]; then
+            printf '\n  %sno g++ in this shell; running the suites under WSL%s\n' \
+                   "$DIM" "$OFF"
+            # No recursion: inside WSL g++ exists, so this branch is not
+            # taken again.
+            exec wsl.exe -e bash -c "cd '$inside' && bash scripts/test_miner.sh"
+        fi
+    fi
+
     printf '\n  %sno g++ here, so nothing was compiled and nothing was checked%s\n' \
            "$YLW" "$OFF"
     printf '  On Windows this runs under WSL, where the node is built too.\n\n'
     exit 2
-}
+fi
 
 OUT="${MINER_TEST_OUT:-$(mktemp -d)}"
 mkdir -p "$OUT"
