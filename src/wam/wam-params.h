@@ -21,13 +21,25 @@
 //        sum over epochs e = 0..32 of
 //        200,000 blocks * (50 WAM >> e)
 //      = 200,000 * 50 * 2  (geometric series, exact in the limit)
-//      = 20,000,000 WAM    (19,999,999.99 WAM after integer truncation)
+//      = 20,000,000 WAM    (19,999,999.978 WAM once the integer shift has
+//                            truncated every epoch: exactly
+//                            1,999,999,997,800,000 base units)
 //                                     ------------------
 //    Absolute maximum ................ 22,000,000 WAM
+//    Terminal supply ................. 21,999,999.978 WAM
 //
-//  The emission terminates completely at height 200,000 * 33 = 6,600,000
-//  (~25.1 years at 120 s/block), after which the subsidy is exactly zero and
-//  miners are compensated by transaction fees only.
+//  The last block to pay anything is height 6,600,000, which pays one base
+//  unit; from 6,600,001 the subsidy is exactly zero and miners are
+//  compensated by transaction fees only. That height is epoch 33 --
+//  nHalvings is (nHeight - 1) / 200,000, so epoch e covers heights
+//  200,000*e + 1 through 200,000*(e+1) -- and ~25.1 years at the 120 s target
+//  spacing.
+//
+//  The truncation figure was published as 19,999,999.99 for the life of the  // wam:quote-line
+//  chain, which is wrong by 0.012 WAM: it is the limit of the series rounded,
+//  not the sum of the truncated epochs. Reported 13 November 2026.
+//  scripts/verify_supply.py computes it, and scripts/check_published_counts.py
+//  now compares every published copy of it against that computation.
 //
 //  MAX_MONEY below is a *strict* upper bound used by the sanity checks in
 //  MoneyRange(); the real terminal supply is marginally lower because of the

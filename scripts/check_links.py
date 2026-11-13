@@ -48,6 +48,7 @@
 #  right page.
 # ===========================================================================
 
+import os
 import pathlib
 import re
 import subprocess
@@ -93,6 +94,43 @@ def tracked_markdown():
     return sorted(out)
 
 
+def tracked_paths():
+    """Every path git serves, plus every directory on the way to one.
+
+    THE DIFFERENCE BETWEEN "IT IS HERE" AND "A READER CAN OPEN IT".
+
+    This check asked the filesystem. `review/REVIEW_RESPONSE.md` is on this
+    machine and is in .gitignore -- deliberately, it is a named reviewer's
+    correspondence and his to publish -- and README.md linked to it twice, in
+    the status table and in the paragraph under it. Both resolved here and
+    both were 404 for every reader of the repository, from the day the
+    directory was ignored until 13 November 2026, when an outside reader
+    followed them and said so.
+
+    Worse, the old code went on to SKIP a target that `git check-ignore`
+    matched, as though being ignored were a reason the link was fine. It is
+    the reason the link is broken: the file is not served to anyone but us.
+
+    It is the same mistake `public()` in check_published_claims.py was
+    written to document -- audit_repo.sh asking whether a file happened to
+    exist on this machine -- made one script along.
+
+    Directories are included because a link may point at one, and a directory
+    is not itself an entry in the index.
+    """
+    out = subprocess.run(["git", "ls-files", "-z"], cwd=str(REPO),
+                         capture_output=True, text=True).stdout
+    paths = set()
+    for rel in out.split("\0"):
+        if not rel:
+            continue
+        paths.add(rel)
+        parts = rel.split("/")
+        for i in range(1, len(parts)):
+            paths.add("/".join(parts[:i]))
+    return paths
+
+
 def targets(text):
     """Every local path a document points at, with its line number."""
     found = []
@@ -108,6 +146,12 @@ def main():
     docs = tracked_markdown()
     if not docs:
         print(f"  {RED}FAIL{OFF}  no markdown was found -- this proves nothing")
+        print()
+        return 2
+
+    served = tracked_paths()
+    if not served:
+        print(f"  {RED}FAIL{OFF}  git listed no files -- nothing was compared")
         print()
         return 2
 
@@ -127,18 +171,27 @@ def main():
             if EXPECTED_ABSENT.search(target):
                 continue
             # Relative to the document that writes it -- which is the point.
-            resolved = (path.parent / target).resolve()
+            # Asked of the index, not of this disk: every document scanned
+            # here is one git serves, so every path it points at has to be
+            # one git serves too.
             checked += 1
-            if resolved.exists():
+            here = pathlib.PurePosixPath(rel).parent
+            forms = {
+                os.path.normpath(str(here / target)).replace("\\", "/"),
+                target.lstrip("/").rstrip("/"),
+            }
+            if any(f.rstrip("/") in served for f in forms):
                 continue
-            # A repository-root path written without a leading ./ is the other
-            # common form, so it is tried before anything is called broken.
-            if (REPO / target.lstrip("/")).exists():
-                continue
-            if subprocess.run(["git", "check-ignore", "-q", target],
-                              cwd=str(REPO)).returncode == 0:
-                continue
-            broken.append((rel, line_no, target))
+            # Why it is broken, which is not the same answer every time: a
+            # file that is here and ignored reads as fine to anybody checking
+            # by hand on this machine, and that is exactly how two of them
+            # survived for months.
+            on_disk = (path.parent / target).exists() \
+                or (REPO / target.lstrip("/")).exists()
+            broken.append((rel, line_no, target,
+                           "it is on this machine but .gitignore keeps it out "
+                           "of the repository, so it is 404 for every reader"
+                           if on_disk else "there is no such path"))
 
     if checked == 0:
         print(f"  {RED}FAIL{OFF}  no link was resolved at all -- this proves nothing")
@@ -146,9 +199,10 @@ def main():
         return 2
 
     if broken:
-        print(f"  {RED}FAIL{OFF}  {len(broken)} link(s) point at nothing")
-        for rel, line_no, target in broken[:12]:
+        print(f"  {RED}FAIL{OFF}  {len(broken)} link(s) a reader cannot follow")
+        for rel, line_no, target, why in broken[:12]:
             print(f"          {rel}:{line_no}  ->  {target}")
+            print(f"              {why}")
         if len(broken) > 12:
             print(f"          ... and {len(broken) - 12} more")
         print()
@@ -157,9 +211,10 @@ def main():
         print()
         return 1
 
-    print(f"  {GRN}ok{OFF}    {checked} link(s) in {len(docs)} document(s) resolve")
+    print(f"  {GRN}ok{OFF}    {checked} link(s) in {len(docs)} document(s) are "
+          f"served by git")
     print()
-    print(f"  {GRN}{BLD}nothing points at a file that is not here{OFF}\n")
+    print(f"  {GRN}{BLD}every link points at something a reader can open{OFF}\n")
     return 0
 
 

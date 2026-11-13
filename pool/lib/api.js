@@ -96,6 +96,63 @@ function redactIdentities(value, keyName = null) {
     return value;
 }
 
+// A REQUEST BUDGET PER CALLER, BECAUSE THE CACHE ONLY BOUNDED MEMORY.
+//
+// _cacheSet keeps a million distinct /api/miner?address=... keys from eating
+// the process. It does nothing about rate: every miss is a redis round trip,
+// and a caller who asks for a million DIFFERENT addresses gets a million
+// misses as fast as the socket will carry them.
+//
+// That is not only load. The page built from docs/POOL_OPERATOR.md says
+// "knowing an address finds its row, and nothing enumerates the others", and
+// the pool's own /api/payments hands out the txids of every payment it has
+// made. Those are on a public chain: read the outputs and you have the
+// addresses, then ask this endpoint about each one. The chain is the
+// enumeration and we cannot close it -- what we can do is make walking it
+// through this endpoint slow, visible and attributable, instead of free.
+//
+// Two buckets, because the endpoints are not alike: a dashboard polls
+// /api/stats on a timer and must not be throttled, while nothing legitimate
+// asks about hundreds of addresses.
+//
+// Reported 13 November 2026.
+class RateLimiter {
+    constructor({ perMinute, lookupsPerMinute, maxCallers, log }) {
+        this.perMinute = perMinute;
+        this.lookupsPerMinute = lookupsPerMinute;
+        this.maxCallers = maxCallers;
+        this.log = log;
+        this.callers = new Map();        // caller -> {windowAt, all, lookups}
+    }
+
+    /** null if allowed, else the seconds to wait. */
+    take(caller, isLookup) {
+        const now = Date.now();
+        let rec = this.callers.get(caller);
+        if (!rec || now - rec.windowAt >= 60000) {
+            rec = { windowAt: now, all: 0, lookups: 0 };
+            // The same lesson as the response cache: a map keyed on something
+            // a stranger chooses has to have a ceiling, or the defence is the
+            // attack. Oldest first, which is insertion order in a Map.
+            if (this.callers.size >= this.maxCallers) {
+                for (const [k, v] of this.callers) {
+                    if (now - v.windowAt >= 60000) this.callers.delete(k);
+                }
+                while (this.callers.size >= this.maxCallers) {
+                    this.callers.delete(this.callers.keys().next().value);
+                }
+            }
+            this.callers.set(caller, rec);
+        }
+        rec.all++;
+        if (isLookup) rec.lookups++;
+        const over = rec.all > this.perMinute
+            || (isLookup && rec.lookups > this.lookupsPerMinute);
+        if (!over) return null;
+        return Math.max(1, Math.ceil((rec.windowAt + 60000 - now) / 1000));
+    }
+}
+
 class ApiServer {
     constructor({ config, logger, jobManager, stratumServer, shareProcessor, daemon }) {
         this.config = config;
@@ -108,6 +165,51 @@ class ApiServer {
         this.webRoot = path.join(__dirname, '..', 'web');
         this.cache = new Map();          // endpoint -> {at, body}
         this.cacheMs = config.apiCacheMs ?? 3000;
+
+        this.limiter = new RateLimiter({
+            perMinute: config.apiRequestsPerMinute ?? 240,
+            lookupsPerMinute: config.apiLookupsPerMinute ?? 30,
+            maxCallers: config.apiRateCallers ?? 4096,
+            log: logger
+        });
+        this._warnedAboutProxy = false;
+    }
+
+    /**
+     * Who to charge this request to.
+     *
+     * Behind a reverse proxy every request arrives from the proxy, so the
+     * socket address is the same for everybody and a per-caller limit on it
+     * would throttle the whole pool for one abuser. X-Forwarded-For has the
+     * real client, and it is also a header anyone can write -- so it is read
+     * only when the operator has said there IS a proxy, and then only its
+     * LAST entry, which is the one the proxy itself appended
+     * (`$proxy_add_x_forwarded_for`). A client can prepend as many lies as it
+     * likes and cannot remove that one.
+     *
+     * When a proxy is declared and sends no such header, the requests are not
+     * attributable to anybody. Limiting them would punish every miner for one
+     * caller, so they are let through and the operator is told once: a limit
+     * that cannot tell callers apart must not pretend it can.
+     */
+    _caller(req) {
+        const socketIp = (req.socket && req.socket.remoteAddress) || '?';
+        if (!this.config.apiTrustProxy) return socketIp;
+        const fwd = req.headers['x-forwarded-for'];
+        if (fwd) {
+            const hops = String(fwd).split(',').map((s) => s.trim()).filter(Boolean);
+            if (hops.length) return hops[hops.length - 1];
+        }
+        if (!this._warnedAboutProxy) {
+            this._warnedAboutProxy = true;
+            this.log.warn(
+                'apiTrustProxy is set but requests carry no X-Forwarded-For, ' +
+                'so callers cannot be told apart and the API rate limit is ' +
+                'not being applied. Add ' +
+                'proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for; ' +
+                'to the proxy, or unset apiTrustProxy.');
+        }
+        return null;
     }
 
     listen() {
@@ -151,11 +253,40 @@ class ApiServer {
         }
         const pathname = parsed.pathname.replace(/\/+$/, '') || '/';
 
-        res.setHeader('Access-Control-Allow-Origin', this.config.apiCorsOrigin || '*');
+        // SAME ORIGIN UNLESS THE OPERATOR SAYS OTHERWISE.
+        //
+        // This sent `Access-Control-Allow-Origin: *` on every response by
+        // default. The dashboard this server also serves is same-origin and
+        // never needed it, and nothing in this repository fetches the API
+        // from another origin -- the documentation tells a miner to OPEN the
+        // URL, which is a navigation and not subject to CORS at all.
+        //
+        // What the wildcard did grant: any web page the operator or a miner
+        // visits could read this API through THEIR browser, from THEIR
+        // address. With apiBind at 127.0.0.1 that is a page reaching a
+        // service it could not reach itself, and on a pool bound to a LAN
+        // address it is any website reading a machine inside that LAN.
+        //
+        // Set apiCorsOrigin when a separate front end genuinely needs it.
+        if (this.config.apiCorsOrigin) {
+            res.setHeader('Access-Control-Allow-Origin', this.config.apiCorsOrigin);
+            res.setHeader('Vary', 'Origin');
+        }
         res.setHeader('X-Content-Type-Options', 'nosniff');
         res.setHeader('Referrer-Policy', 'no-referrer');
 
         if (pathname.startsWith('/api/')) {
+            const caller = this._caller(req);
+            if (caller !== null) {
+                const wait = this.limiter.take(caller, pathname === '/api/miner');
+                if (wait !== null) {
+                    res.setHeader('Retry-After', String(wait));
+                    return this._json(res, 429, {
+                        error: 'too many requests',
+                        retryAfterSec: wait
+                    });
+                }
+            }
             return this._api(pathname, parsed.searchParams, res);
         }
         return this._static(pathname, res);

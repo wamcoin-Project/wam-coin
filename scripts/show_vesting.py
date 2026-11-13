@@ -38,15 +38,35 @@ NET_PORT = {"mainnet": 9554, "testnet": 19554, "regtest": 29554}
 
 
 def cli(args_ns, *params):
+    """One wam-cli call, with the RPC password off the command line.
+
+    This put the password option in argv, and a reader asking what the
+    founder reserve looks like will point it at a mainnet node with real
+    credentials. /proc/<pid>/cmdline is world-readable on Linux by default,
+    so every call leaked the password to any other account on the machine for
+    as long as it ran.
+
+    -stdinrpcpass takes it as the first line of standard input instead. With
+    no password given, nothing is passed and wam-cli reads the node's own
+    cookie file.
+
+    Found while fixing the same shape in treasury_spend.py and
+    import_founder_key.sh, 13 November 2026.
+    """
     cmd = [args_ns.cli]
     flag = NET_FLAG[args_ns.network]
     if flag:
         cmd.append(flag)
-    cmd += [f"-datadir={args_ns.datadir}", f"-rpcport={args_ns.rpcport}",
-            f"-rpcuser={args_ns.rpcuser}", f"-rpcpassword={args_ns.rpcpassword}"]
+    cmd += [f"-datadir={args_ns.datadir}", f"-rpcport={args_ns.rpcport}"]
+    if args_ns.rpcuser:
+        cmd.append(f"-rpcuser={args_ns.rpcuser}")
+    stdin = None
+    if args_ns.rpcpassword:
+        cmd.append("-stdinrpcpass")
+        stdin = args_ns.rpcpassword + "\n"
     cmd += [str(p) for p in params]
 
-    proc = subprocess.run(cmd, capture_output=True, text=True)
+    proc = subprocess.run(cmd, input=stdin, capture_output=True, text=True)
     if proc.returncode != 0:
         raise RuntimeError((proc.stderr or proc.stdout).strip())
     out = proc.stdout.strip()
@@ -73,8 +93,12 @@ def main() -> int:
     ap.add_argument("--cli", default="./src/wam-cli")
     ap.add_argument("--datadir", required=True)
     ap.add_argument("--rpcport", type=int, default=None)
-    ap.add_argument("--rpcuser", default="t")
-    ap.add_argument("--rpcpassword", default="t")
+    # Empty by default, so wam-cli falls back to the node's cookie file.
+    # The old defaults were "t"/"t", which works on a throwaway regtest
+    # node and silently fails on any real one -- and taught whoever hit
+    # that failure to pass the real password on the command line.
+    ap.add_argument("--rpcuser", default="")
+    ap.add_argument("--rpcpassword", default="")
     args = ap.parse_args()
 
     if args.rpcport is None:

@@ -235,9 +235,12 @@ A miner who omits or reduces the output produces a block that no node will accep
 *more* than the required amount is allowed, so that pools which merge outputs, and anyone
 who wishes to donate, are not penalised.
 
-Once the subsidy has decayed so far that 5% truncates to zero base units (epoch 26 onward),
-the rule stops requiring an output rather than demanding a zero-value one that would only
-bloat the UTXO set.
+The rule also demands nothing when 5% of the subsidy truncates to zero base units, rather
+than requiring a zero-value output that would only bloat the UTXO set. On this chain that
+branch is never reached: 5% first truncates to zero in epoch 28, at a subsidy of 18 base
+units, and the window closes at height 400,000 — the last block of epoch 1, where the
+subsidy is still 25 WAM. The guard is there because a consensus rule should not rest on
+arithmetic it does not check.
 
 Anyone can audit any block:
 
@@ -560,8 +563,11 @@ Nothing in this document asks for trust. Each claim has a corresponding check:
 | Live supply on a running node | `wam-cli getsupplyinfo` |
 | A specific block paid the treasury | `wam-cli getdevfeeinfo "<hash>"` |
 
-`install.sh` runs the first four of these *before* it compiles anything. If the arithmetic
-does not hold, there is no point building the binary.
+`install.sh` runs `verify_supply.py`, `gen_founder_key.py --selftest` and
+`genesis/test_serialization.py` *before* it compiles anything (`install.sh:206-210`): if the
+arithmetic or the serialization does not hold, there is no point building the binary. The
+pool suite is the one exception — it needs the pool's native RandomX addon, so it runs once
+that is built (`install.sh:524`).
 
 ---
 

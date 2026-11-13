@@ -21,10 +21,44 @@
 // ---------------------------------------------------------------------------
 
 const assert = require('assert');
+const crypto = require('crypto');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
 const net = require('../lib/network');
 
 let pass = 0;
 const fail = [];
+
+// A fresh copy of the module over its own state directory, which is how a
+// second installation -- or the same one after a deploy -- is modelled. The
+// salt is read once per process, so the cache entry has to go with it.
+const strays = [];
+
+function run(addrs, dir, saltFile) {
+    const d = dir || fs.mkdtempSync(path.join(os.tmpdir(), 'wam-seen-'));
+    if (!dir) strays.push(d);
+    const keep = [process.env.WAM_SEEN_FILE, process.env.WAM_SEEN_SALT];
+    process.env.WAM_SEEN_FILE = path.join(d, 'seen.json');
+    process.env.WAM_SEEN_SALT = saltFile || path.join(d, 'seen.salt');
+    const where = require.resolve('../lib/network');
+    delete require.cache[where];
+    try {
+        return require(where).machineId(addrs[0]);
+    } finally {
+        delete require.cache[where];
+        if (keep[0] === undefined) delete process.env.WAM_SEEN_FILE;
+        else process.env.WAM_SEEN_FILE = keep[0];
+        if (keep[1] === undefined) delete process.env.WAM_SEEN_SALT;
+        else process.env.WAM_SEEN_SALT = keep[1];
+    }
+}
+
+process.on('exit', () => {
+    for (const d of strays) {
+        try { fs.rmSync(d, { recursive: true, force: true }); } catch { /* going away */ }
+    }
+});
 
 function test(name, fn) {
     try { fn(); pass++; console.log(`  \x1b[32mok\x1b[0m    ${name}`); }
@@ -36,7 +70,7 @@ const now = () => Math.floor(Date.now() / 1000);
 const PEERS = [
     { addr: '169.58.159.165:19555', inbound: false, subver: '/WAM:0.1.0/', conntime: now() - 7200 },
     { addr: '5.223.52.200:19555',   inbound: false, subver: '/WAM:0.1.0/', conntime: now() - 3600 },
-    { addr: '41.254.73.73:56797',   inbound: true,  subver: '/WAM:0.1.0/', conntime: now() - 600 },
+    { addr: '198.51.100.73:56797',   inbound: true,  subver: '/WAM:0.1.0/', conntime: now() - 600 },
     { addr: '203.0.113.42:19555',   inbound: true,  subver: '/WAM:0.1.0/', conntime: now() - 60 },
     { addr: '[2001:db8::dead]:19555', inbound: true, subver: '/WAM:0.2.0/', conntime: now() - 30 },
     { addr: 'abcdefghijklmnop.onion:19555', inbound: false, subver: '/WAM:0.1.0/', conntime: now() - 10 }
@@ -46,7 +80,7 @@ console.log('\n=== nothing leaks ===');
 
 test('no third-party address appears anywhere in the payload', () => {
     const out = JSON.stringify(net.build(PEERS, new Array(50), null));
-    for (const secret of ['41.254.73.73', '203.0.113.42', '2001:db8::dead',
+    for (const secret of ['198.51.100.73', '203.0.113.42', '2001:db8::dead',
                           'abcdefghijklmnop.onion']) {
         assert.ok(!out.includes(secret), `payload contains ${secret}`);
     }
@@ -142,15 +176,71 @@ test('the port is never part of the identity', () => {
 });
 
 test('an IPv4 /24 is still one machine', () => {
-    assert.strictEqual(net.machineId('41.254.73.4:56797'),
-                       net.machineId('41.254.73.97:56797'));
-    assert.notStrictEqual(net.machineId('41.254.73.4:56797'),
+    assert.strictEqual(net.machineId('198.51.100.4:56797'),
+                       net.machineId('198.51.100.97:56797'));
+    assert.notStrictEqual(net.machineId('198.51.100.4:56797'),
                           net.machineId('41.254.74.4:56797'));
 });
 
 test('an unparseable address is still counted, not dropped', () => {
     assert.strictEqual(typeof net.machineId('not-an-address'), 'string');
     assert.strictEqual(net.machineId('not-an-address').length, 16);
+});
+
+console.log('\n=== the id cannot be turned back into an address ===');
+
+test('the id is not the bare hash of the /24 anybody can tabulate', () => {
+    // THE WHOLE POINT, AND IT WAS MISSING.
+    //
+    // The id was SHA256(networkOf(host)) truncated, with nothing secret in
+    // it. There are 2^24 IPv4 /24 blocks: hashing every one of them and
+    // looking an id up in the table takes seconds, so seen.json held the
+    // list of networks running a node in an encoding that inverts. The file
+    // this module writes is the list it exists to avoid being able to write.
+    //
+    // Reported 13 November 2026. The guard is this: the id must not be
+    // reproducible by anyone who only knows the address.
+    const guessable = crypto.createHash('sha256')
+        .update(net.networkOf('203.0.113.42')).digest('hex').slice(0, 16);
+    assert.notStrictEqual(net.machineId('203.0.113.42:19555'), guessable,
+        'the id is SHA256 of the /24 with no secret in it: hash all 2^24 '
+        + 'blocks once and seen.json becomes a list of operators');
+});
+
+test('two installations give the same address different ids', () => {
+    // Two explorers' files cannot be joined, and ours cannot be joined
+    // against a table built by anybody else.
+    const first = run(['203.0.113.42:19555']);
+    const second = run(['203.0.113.42:19555']);
+    assert.strictEqual(first.length, 16);
+    assert.notStrictEqual(first, second,
+        'the same address hashes the same everywhere, so the salt is either '
+        + 'absent or shared');
+});
+
+test('one installation gives the same id after a restart', () => {
+    // The salt is persisted for exactly this: the seven-day memory is the
+    // reason this module keeps a file at all.
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'wam-seen-'));
+    const once = run(['203.0.113.42:19555'], dir);
+    const twice = run(['203.0.113.42:19555'], dir);
+    assert.strictEqual(once, twice,
+        'the id changed between two runs over the same state directory, so '
+        + 'the week-long memory resets on every deploy');
+    fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('an unwritable state directory salts in memory rather than not at all', () => {
+    // A read-only filesystem must cost the measurement, never the privacy.
+    const missing = path.join(os.tmpdir(),
+        'wam-no-such-dir-' + Math.random().toString(36).slice(2), 'deep', 'x');
+    const id = run(['203.0.113.42:19555'], null, missing);
+    const guessable = crypto.createHash('sha256')
+        .update('203.0.113.0/24').digest('hex').slice(0, 16);
+    assert.strictEqual(id.length, 16, 'it stopped working instead');
+    assert.notStrictEqual(id, guessable,
+        'with nowhere to keep a salt it fell back to the hash anyone can '
+        + 'tabulate, which is the failure this is about');
 });
 
 test('known addresses are reported separately from connected', () => {

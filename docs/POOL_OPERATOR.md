@@ -300,8 +300,30 @@ older than 120 seconds (the daemon is wedged or unreachable), and zero connected
 because an address on a public chain reveals everything it has ever received,
 and a list of them is a list of who mines here and what each one earned. A
 miner reads his own figures by giving his own address to
-`/api/miner?address=…` — knowing an address finds its row, and nothing
-enumerates the others.
+`/api/miner?address=…`: knowing an address finds its row.
+
+**That is not the same as the addresses being secret, and this page said it
+was.** It read "nothing enumerates the others" until 2026-11-13. The
+enumeration is the chain. `/api/payments` returns the txid of every payment
+this pool has made, those transactions name every recipient, and then
+`/api/miner` will answer about each one. Truncation stops the API handing out
+a ready-made list; it does not and cannot make a public ledger private, and a
+sentence saying otherwise is the kind this project has been wrong with before.
+
+What the pool can do, and now does, is stop that walk being free:
+`apiLookupsPerMinute` caps `/api/miner` per caller — 30 a minute by default,
+against `apiRequestsPerMinute` 240 for everything else, so a dashboard on a
+timer is untouched. Behind a reverse proxy, set `apiTrustProxy` and have the
+proxy send `X-Forwarded-For`, or every request arrives from the proxy and one
+caller's budget is everybody's. If that header is missing the pool says so in
+its log once and applies no limit, because a limit that cannot tell callers
+apart would punish every miner for one.
+
+`apiCorsOrigin` is empty by default, which means same origin only. It was `*`
+until 2026-11-13: the dashboard this server also serves never needed it, and
+the wildcard let any page a miner or an operator visits read this API through
+their browser, from their address — including, on a pool bound to a LAN
+address, a machine the page could not otherwise reach.
 
 **That sentence was not true until 2026-09-13, and an outsider is the reason
 it is.** `/api/miners` truncated. `/api/hashrate`, `/api/blocks` and

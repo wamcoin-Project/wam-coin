@@ -222,7 +222,9 @@ class StratumClient extends EventEmitter {
         clearTimeout(this._authTimer);
 
         this.reply(id, true);
-        this.log.info(`${this.ip} authorized as ${this.workerName}`);
+        // Two lines, not one: see label(). The pair lives at debug only.
+        this.log.info(`connection ${this.id} authorized as ${this.workerName}`);
+        this.log.debug(`connection ${this.id} is ${this.ip}`);
 
         this.sendDifficulty(this.varDiffState.difficulty);
         const job = this.server.jobManager.currentJob;
@@ -265,6 +267,10 @@ class StratumClient extends EventEmitter {
             if (this.shares.invalid > 50 &&
                 this.shares.invalid > this.shares.valid * 4) {
                 this.log.warn(`${this.label()} banned: ${this.shares.invalid} invalid shares`);
+                // The one place the pair is written at warn level, and the
+                // reason is in label(): this connection is being banned, and
+                // the operator cannot act on a ban they cannot locate.
+                this.log.warn(`  connection ${this.id} was from ${this.ip}`);
                 this.server.ban(this.ip);
                 this.disconnect();
             }
@@ -306,7 +312,33 @@ class StratumClient extends EventEmitter {
         this.notify('mining.notify', job.getJobParams(cleanJobs));
     }
 
-    label() { return this.workerName ? `${this.workerName}@${this.ip}` : this.ip; }
+    /**
+     * How this connection is named in the log.
+     *
+     * THE LOG USED TO WRITE EVERY MINER'S IP NEXT TO THEIR PAYOUT ADDRESS.
+     *
+     * This returned `<address>.<rig>@<ip>` and seven log lines used it, one of
+     * them at info on every single authorize. A pool's log file is kept for
+     * months, shipped to whoever is helping debug something, and quoted in
+     * support threads -- and with that line in it, the file is a table mapping
+     * every miner's payout address to where they live. Nobody consented to
+     * that by pointing a CPU at a stratum port, and the pool does not need it:
+     * the rate limiter, the per-IP connection cap and the ban list all use
+     * `this.ip` in memory, live, and none of them writes it down.
+     *
+     * So the two facts are separated. The log names a connection by its own
+     * id, the id is tied to an IP once, at debug level, where an operator who
+     * needs to trace one has it and an ordinary log does not.
+     *
+     * The ban path below is the deliberate exception: a connection being
+     * banned for abuse is the one case where the operator has to see both, and
+     * it says so in two lines rather than in every line.
+     *
+     * Reported 13 November 2026.
+     */
+    label() {
+        return this.workerName ? `${this.workerName}#${this.id}` : this.ip;
+    }
 
     disconnect() {
         clearTimeout(this._authTimer);

@@ -560,12 +560,44 @@ _B58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
 
 
 def _cli_base(args):
-    """The wam-cli invocation the offline machine uses, without the method."""
+    """The wam-cli invocation the offline machine uses, without the method.
+
+    THE KEY WAS TAKEN OUT OF ARGV. THE RPC PASSWORD WAS LEFT IN IT.
+
+    The note at the signing call below records the fix that moved the private
+    key out of the process list and onto stdin -- and this function, two
+    hundred lines above it, appended the password option to the same
+    command. /proc/<pid>/cmdline is world-readable on Linux by default, so on
+    the signing machine, during the one operation where a treasury key is in
+    memory, any other account could read the node's RPC password out of `ps`.
+
+    -stdinrpcpass takes it as the first line of standard input instead
+    (bitcoin-cli.cpp: it is consumed before -stdin reads the arguments), so
+    the key and the password travel the same way and neither is an argument.
+    A username is not a secret and stays where it was.
+
+    With neither given, nothing is passed and wam-cli reads the node's cookie
+    file -- mode 0600, rewritten on every restart.
+
+    Reported 13 November 2026 with scripts/import_founder_key.sh, which had
+    the same shape.
+    """
     cli = [args.cli, "-chain=main", "-rpcconnect=%s" % args.rpcconnect,
            "-rpcport=%d" % args.port]
     if args.rpcuser:
-        cli += ["-rpcuser=%s" % args.rpcuser, "-rpcpassword=%s" % args.rpcpassword]
+        cli += ["-rpcuser=%s" % args.rpcuser]
+    if args.rpcpassword:
+        cli += ["-stdinrpcpass"]
     return cli + ["-stdin"]
+
+
+def _cli_input(args, payload):
+    """What this call sends, with the RPC password ahead of it when there is one.
+
+    Every caller of _cli_base feeds its arguments on stdin, so there is one
+    place to put the password line and one shape for it to be in.
+    """
+    return (args.rpcpassword + "\n" + payload) if args.rpcpassword else payload
 
 
 def _offline_decode(args, raw_hex):
@@ -577,7 +609,8 @@ def _offline_decode(args, raw_hex):
     to sign -- so the dependency is not new, only used one call earlier.
     """
     proc = subprocess.run(_cli_base(args) + ["decoderawtransaction"],
-                          input=raw_hex + "\n", capture_output=True, text=True)
+                          input=_cli_input(args, raw_hex + "\n"),
+                          capture_output=True, text=True)
     if proc.returncode != 0:
         die("the transaction in the plan could not be decoded: %s"
             % (proc.stderr.strip() or proc.stdout.strip()))
@@ -800,9 +833,9 @@ def _sign_one(args, plan, wif, out):
     # keeps the key out of argv entirely.
     cli = _cli_base(args) + ["signrawtransactionwithkey"]
 
-    payload = "\n".join([plan["unsignedHex"],
-                         json.dumps([wif]),
-                         json.dumps(plan["prevtxs"])]) + "\n"
+    payload = _cli_input(args, "\n".join([plan["unsignedHex"],
+                                          json.dumps([wif]),
+                                          json.dumps(plan["prevtxs"])]) + "\n")
     proc = subprocess.run(cli, input=payload, capture_output=True, text=True)
     del payload
     if proc.returncode != 0:

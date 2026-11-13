@@ -43,7 +43,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const ShareProcessor = require('../lib/shareProcessor');
-const { attachAtomic, attachUnsupported,
+const { attachAtomic, attachSet, attachUnsupported,
         CLAIM_AND_RECORD_NAME, RECORD_BLOCK_NAME, CREDIT_MATURED_NAME,
         CREDIT_SHARE_NAME, COMMIT_PAYMENT_NAME } = require('./fakeAtomic');
 const { attachMulti } = require('./fakeMulti');
@@ -84,7 +84,6 @@ function fakeRedis(balances = {}) {
         _journalPath: path.join(JOURNALS, `j${++journalSeq}.journal`),
         async hgetall(k) { return { ...(hashes[k] || {}) }; },
         async get(k) { return strings[k] ?? null; },
-        async set(k, v) { strings[k] = v; },
         async del(k) { delete strings[k]; },
         async sismember(k, v) { return sets[k] && sets[k].has(v) ? 1 : 0; },
         async scard(k) { return sets[k] ? sets[k].size : 0; },
@@ -126,6 +125,9 @@ function fakeRedis(balances = {}) {
             clear: () => { bag[k] = {}; }
         };
     };
+    // SET ... NX is a claim, not an announcement: one definition,
+    // in fakeAtomic.js, so no double here can grant it twice.
+    attachSet(r, strings);
     attachAtomic(r,
         (k) => asMap(hashes, k),
         (k) => (lists[k] = lists[k] || []),

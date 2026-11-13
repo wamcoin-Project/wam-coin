@@ -174,6 +174,16 @@ run "mention is not use"         "$PY" scripts/check_mentions.py
 # docstring sentence naming the convention had been doing that for weeks.
 run "a mention is not a mark"    "$PY" scripts/test/test_quoted.py
 run "every link resolves"        "$PY" scripts/check_links.py
+
+# /proc/<pid>/cmdline is world-readable on Linux, so a password in argv is
+# readable by every other account on the machine while the process lives.
+# import_founder_key.sh listed three precautions taken to keep the founder WIF
+# out of argv and then passed the node's RPC password there on every call, and
+# printed the whole command line in its error path; treasury_spend.py carried
+# a note about moving the private key onto stdin two hundred lines below the
+# function that put the password on the command line. Both written by people
+# who knew the rule. Reported 13 November 2026.
+run "no RPC password in argv"    "$PY" scripts/check_rpc_secrets.py
 run "the zone is signed and validates" "$PY" scripts/check_dnssec.py
 run "the seeds inside the binary answer" "$PY" scripts/check_fixed_seeds.py
 run "a floor under what a node follows" "$PY" scripts/check_min_chain_work.py --network "$NETWORK" ${NODES:+--host ${NODES%% *}}
@@ -328,6 +338,25 @@ run "units report their own failure"  bash scripts/test/test_onfailure.sh
 # machine-readable copies and reads no document a human reads -- and neither
 # did anything else here. This one reads what we publish.
 run "published claims match consensus"  "$PY" scripts/check_published_claims.py
+
+# The line above asks whether a published number matches the constant the
+# network enforces. It can only ask that where a constant exists to ask it
+# against -- and a second class of published number has no constant at all,
+# because it is about this repository rather than about the chain: how many
+# tests there are, how far the emission truncates once every epoch has been
+# shifted, what install.sh runs before it compiles, when a file was last
+# reviewed. Nothing enforced them, so nothing compared them.
+#
+# On 13 November 2026 an outside reader sent six of them in one report, three
+# wrong since the files were written: "53 tests over the payout logic" (56),
+# "35 Boost tests" (45), "the first four before it compiles anything" (three,
+# and the fourth runs after the build), 19,999,999.99 (19,999,999.978 --
+# the limit of the series rounded, not the sum of the truncated epochs),
+# epoch 26 (28), and SECURITY.md saying it was last reviewed on 2026-08-11
+# while it was being rewritten underneath that line. This measures each one
+# from the thing it describes.
+run "figures about ourselves are measured" \
+    "$PY" scripts/check_published_counts.py
 
 # And the claims nothing can check, because they are about the future. Until
 # 2026-10-04 the front page said the founder's mining addresses "will be

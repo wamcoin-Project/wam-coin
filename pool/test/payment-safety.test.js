@@ -33,7 +33,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const ShareProcessor = require('../lib/shareProcessor');
-const { attachAtomic, attachUnsupported,
+const { attachAtomic, attachSet, attachUnsupported,
         CLAIM_AND_RECORD_NAME, RECORD_BLOCK_NAME, CREDIT_MATURED_NAME,
         CREDIT_SHARE_NAME } = require('./fakeAtomic');
 
@@ -64,7 +64,6 @@ function fakeRedis(initial = {}) {
         calls: [],
         async hgetall(k) { return { ...(hashes[k] || {}) }; },
         async get(k) { return strings[k] ?? null; },
-        async set(k, v) { strings[k] = v; r.calls.push(['set', k]); },
         async del(k) { delete strings[k]; r.calls.push(['del', k]); },
         _strings: strings,
         _lists: lists,
@@ -97,6 +96,9 @@ function fakeRedis(initial = {}) {
             clear: () => { bag[k] = {}; }
         };
     };
+    // SET ... NX is a claim, not an announcement: one definition,
+    // in fakeAtomic.js, so no double here can grant it twice.
+    attachSet(r, strings, (k) => r.calls.push(['set', k]));
     attachAtomic(r,
         (k) => asMap(hashes, k),
         (k) => (lists[k] = lists[k] || []),
@@ -208,6 +210,65 @@ function make(redis, daemon, cfg = {}) {
         await sp.processPayments();
         assert.strictEqual(sp.paying, false,
             'a thrown error left the pool unable to ever pay again');
+    });
+
+    await test('two pool processes over one redis broadcast once', async () => {
+        // `paying` is a field on an object inside one process, so it says
+        // nothing at all about a second one. Two instances -- one started by
+        // hand to "get payments moving", a systemd restart that overlapped,
+        // a failed-over host that came back -- both read an empty
+        // payment:inflight at the top of the run, and 130 lines of work later
+        // both wrote it. The second write overwrote the first and told
+        // nobody; then both broadcast, and the same miners were paid twice
+        // out of the pool's wallet.
+        //
+        // The barrier below is where the two runs are held level: inside
+        // getBalance, after both have read the marker and built the identical
+        // batch from the identical balances, and before either claims. That
+        // is the window, and on a real pool it is milliseconds wide.
+        //
+        // Separate journal files on purpose: two processes on two hosts have
+        // two journals, and sharing one here would let the journal refuse the
+        // second run and prove nothing about the claim.
+        const redis = fakeRedis({ addr1: '500000000', addr2: '300000000' });
+
+        let arrived = 0;
+        let open;
+        const both = new Promise((r) => { open = r; });
+        const barrier = async () => {
+            if (++arrived === 2) open();
+            await both;
+        };
+
+        const daemons = [fakeDaemon(), fakeDaemon()];
+        const runs = daemons.map((d, i) => {
+            d.getBalance = async () => { await barrier(); return 1000000; };
+            const sp = make(redis, d, {
+                paymentJournal: redis._journalPath + '.' + i
+            });
+            return sp.processPayments();
+        });
+
+        const verdict = await Promise.race([
+            Promise.all(runs).then(() => 'both returned'),
+            new Promise((r) => setTimeout(() => r('deadlocked'), 3000))
+        ]);
+        assert.strictEqual(verdict, 'both returned',
+            `the two runs did not both finish (${verdict})`);
+
+        const broadcasts = daemons.reduce((n, d) => n + d.sent.length, 0);
+        assert.strictEqual(broadcasts, 1,
+            `${broadcasts} transactions were broadcast for one batch of `
+            + 'balances; every miner in it was paid that many times out of '
+            + 'the pool\'s own wallet');
+
+        // And the one that lost the claim must not have cleared it, counted
+        // it, or paused the pool: it did nothing, which is the only correct
+        // thing for it to have done.
+        assert.strictEqual(await redis.get('wam:payment:inflight'), null,
+            'the winning run did not clear its own marker');
+        assert.strictEqual(redis._hashes['wam:balances'].addr1, '0',
+            'the balances do not show exactly one payment');
     });
 
     console.log('\n=== a crash mid-payment must not pay twice ===');

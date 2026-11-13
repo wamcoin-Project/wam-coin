@@ -82,12 +82,69 @@ const SEEN_WINDOW_SEC = 7 * 24 * 3600;
 
 let seenCache = null;
 
+// A HASH OF A /24 IS NOT ANONYMISATION. IT IS AN INDEX.
+//
+// The comment above says the file on disk holds no address. It held every
+// address, in an encoding anyone can invert: the id was
+// SHA256("203.0.113.0/24") truncated, with nothing secret in it. There are
+// 2^24 IPv4 /24 blocks. Hashing all of them and looking an id up in the table
+// is seconds of work on a laptop, so publishing or leaking seen.json
+// published the list of networks running a node -- which this module exists
+// to avoid being able to do. IPv6 /64s are a larger space, but the operators
+// worth finding are on a few thousand hosting prefixes, and that list is
+// public.
+//
+// A salt this machine keeps and never shows closes it. The ids stay stable
+// across restarts, which is the only property rememberVersions needs, and
+// they mean nothing anywhere else -- the same operator gets a different id on
+// a different explorer, so two installations' files cannot be joined either.
+//
+// Reported 13 November 2026.
+//
+// If the salt cannot be written, a random one is kept for the life of the
+// process: the week-long memory degrades to this process's lifetime, which
+// makes the panel undercount and keeps the addresses unrecoverable. That is
+// the direction this has to fail in.
+const SALT_FILE = process.env.WAM_SEEN_SALT
+    || path.join(path.dirname(SEEN_FILE), 'seen.salt');
+
+let saltCache = null;
+
+function machineSalt() {
+    if (saltCache) return saltCache;
+    try {
+        const stored = fs.readFileSync(SALT_FILE);
+        if (stored.length >= 16) {
+            saltCache = stored;
+            return saltCache;
+        }
+    } catch { /* not there yet, or unreadable: make one */ }
+
+    const fresh = crypto.randomBytes(32);
+    try {
+        fs.mkdirSync(path.dirname(SALT_FILE), { recursive: true });
+        // wx: if another process created it between the read above and here,
+        // that one wins and this reads it back, so two workers cannot end up
+        // hashing with two different salts.
+        fs.writeFileSync(SALT_FILE, fresh, { mode: 0o600, flag: 'wx' });
+        saltCache = fresh;
+    } catch {
+        try {
+            const stored = fs.readFileSync(SALT_FILE);
+            saltCache = stored.length >= 16 ? stored : fresh;
+        } catch {
+            saltCache = fresh;          // in memory only; see above
+        }
+    }
+    return saltCache;
+}
+
 // The network an address sits in, not the address.
 //
 // This page said eight machines had been on the network in seven days. Six
 // of those eight were one laptop on a home line that changes its last octet
-// -- 41.254.73.4, .29, .35, .68, .85, .97 -- and it belongs to the founder.
-// Counting addresses counted his router's mood as seven strangers, on a
+// -- six addresses inside a single /24, one subscriber. Counting addresses
+// counted that router's mood as seven strangers, on a
 // public page whose entire purpose is to answer "is this a real network or
 // one person's laptop" honestly.
 //
@@ -154,7 +211,11 @@ function machineId(addr) {
     // how a bare IPv6 address ends, so `2001:db8::1` became `2001:db8:`.
     // Two neighbours collided there for the wrong reason, and a hextet that
     // was not all digits did not collide at all.
-    return crypto.createHash('sha256').update(networkOf(hostOf(addr)))
+    //
+    // Keyed with this machine's own salt -- see machineSalt(). Without it the
+    // id was a lookup into a 2^24 table, not a one-way function.
+    return crypto.createHmac('sha256', machineSalt())
+        .update(networkOf(hostOf(addr)))
         .digest('hex').slice(0, 16);
 }
 

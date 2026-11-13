@@ -132,6 +132,120 @@ function fakeRes() {
         assert.strictEqual(res.code, 400);
     });
 
+    console.log('\n=== and the rate the cache said nothing about ===');
+
+    /** One GET through the real entry point, from one address. */
+    function get(api, url, ip, headers = {}) {
+        const res = fakeRes();
+        const req = { method: 'GET', url, headers, socket: { remoteAddress: ip } };
+        return api._handle(req, res).then(() => res);
+    }
+
+    await test('a dashboard on a timer is not throttled', async () => {
+        // 240 a minute is four a second. A page polling /api/stats every five
+        // seconds uses twelve, and the limit must not be the thing that
+        // breaks a pool's own front page.
+        const api = make({ apiRequestsPerMinute: 240, apiLookupsPerMinute: 30 });
+        api._stats = async () => ({ ok: true });
+        let throttled = 0;
+        for (let i = 0; i < 100; i++) {
+            const res = await get(api, '/api/stats', '203.0.113.9');
+            if (res.code === 429) throttled++;
+        }
+        assert.strictEqual(throttled, 0,
+            `${throttled} of 100 ordinary requests were refused`);
+    });
+
+    await test('walking addresses is refused, and says how long to wait', async () => {
+        const api = make({ apiLookupsPerMinute: 5 });
+        api.shares = { async getMinerStats() { return { balance: 0 }; } };
+        const ADDR = 'twam1qtekdutqnwmqwtsh4rddncxru2s0y3vp5ea7ljs';
+        const codes = [];
+        for (let i = 0; i < 9; i++) {
+            const res = await get(api, `/api/miner?address=${ADDR}`, '203.0.113.9');
+            codes.push(res.code);
+        }
+        assert.ok(codes.includes(429),
+            'the lookup endpoint answered nine times in a row at a limit of '
+            + 'five: the pool publishes its payment txids and the chain names '
+            + 'every recipient, so this endpoint can be walked');
+        const last = await get(api, `/api/miner?address=${ADDR}`, '203.0.113.9');
+        assert.ok(Number(last.headers['Retry-After']) >= 1,
+            'a 429 with no Retry-After tells a legitimate client nothing');
+    });
+
+    await test('one caller being refused does not refuse another', async () => {
+        const api = make({ apiLookupsPerMinute: 2 });
+        api.shares = { async getMinerStats() { return {}; } };
+        const ADDR = 'twam1qtekdutqnwmqwtsh4rddncxru2s0y3vp5ea7ljs';
+        for (let i = 0; i < 6; i++) await get(api, `/api/miner?address=${ADDR}`, '203.0.113.9');
+        const other = await get(api, `/api/miner?address=${ADDR}`, '198.51.100.7');
+        assert.notStrictEqual(other.code, 429,
+            'the limit is global rather than per caller, so one abuser stops '
+            + 'every miner reading their own figures');
+    });
+
+    await test('the caller map cannot be grown without limit', async () => {
+        // The same defect the response cache had, in the thing defending it.
+        const api = make({ apiRateCallers: 64 });
+        api._stats = async () => ({});
+        for (let i = 0; i < 2000; i++) {
+            await get(api, '/api/stats', `198.51.100.${i % 256}:${i}`);
+        }
+        assert.ok(api.limiter.callers.size <= 64,
+            `the limiter remembers ${api.limiter.callers.size} callers with a `
+            + 'ceiling of 64');
+    });
+
+    await test('behind a proxy the limit follows the forwarded client', async () => {
+        const api = make({ apiTrustProxy: true, apiLookupsPerMinute: 2 });
+        api.shares = { async getMinerStats() { return {}; } };
+        const ADDR = 'twam1qtekdutqnwmqwtsh4rddncxru2s0y3vp5ea7ljs';
+        const hdr = (ip) => ({ 'x-forwarded-for': `10.0.0.1, ${ip}` });
+        for (let i = 0; i < 6; i++) {
+            await get(api, `/api/miner?address=${ADDR}`, '127.0.0.1', hdr('203.0.113.9'));
+        }
+        const victim = await get(api, `/api/miner?address=${ADDR}`, '127.0.0.1',
+                                 hdr('198.51.100.7'));
+        assert.notStrictEqual(victim.code, 429,
+            'every request arrives from the proxy, so one caller throttled '
+            + 'the whole pool');
+    });
+
+    await test('a forged forwarded header cannot shed the real client', async () => {
+        // nginx APPENDS the real client, so the last entry is the one it
+        // wrote. A client may prepend as many lies as it likes.
+        const api = make({ apiTrustProxy: true, apiLookupsPerMinute: 2 });
+        api.shares = { async getMinerStats() { return {}; } };
+        const ADDR = 'twam1qtekdutqnwmqwtsh4rddncxru2s0y3vp5ea7ljs';
+        let refused = false;
+        for (let i = 0; i < 8; i++) {
+            const res = await get(api, `/api/miner?address=${ADDR}`, '127.0.0.1',
+                { 'x-forwarded-for': `1.2.3.${i}, 203.0.113.9` });
+            if (res.code === 429) refused = true;
+        }
+        assert.ok(refused,
+            'a different first hop on every request was enough to get a fresh '
+            + 'budget each time');
+    });
+
+    await test('no CORS header unless the operator configured one', async () => {
+        const api = make();
+        api._stats = async () => ({});
+        const res = await get(api, '/api/stats', '203.0.113.9');
+        assert.strictEqual(res.headers['Access-Control-Allow-Origin'], undefined,
+            'a wildcard CORS header lets any page a miner visits read this '
+            + 'API through their browser and from their address');
+
+        const open = make({ apiCorsOrigin: 'https://example.org' });
+        open._stats = async () => ({});
+        const res2 = await get(open, '/api/stats', '203.0.113.9');
+        assert.strictEqual(res2.headers['Access-Control-Allow-Origin'],
+                           'https://example.org',
+            'a configured origin is no longer sent, which breaks a front end '
+            + 'that needs it');
+    });
+
     console.log('\n' + '='.repeat(66));
     if (fail.length === 0) {
         console.log(`\x1b[32m${pass} passed\x1b[0m`);

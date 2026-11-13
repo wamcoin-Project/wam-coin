@@ -58,12 +58,23 @@ def note(text: str) -> None:
 
 
 class Cli:
+    """wam-cli against this run's throwaway regtest node.
+
+    The password goes down stdin rather than into argv. On this node it is a
+    fixture and could not matter -- but the shape is what gets copied into a
+    script that points at a real node, which is exactly how it reached
+    treasury_spend.py and import_founder_key.sh. One way of doing it, in
+    every file, is cheaper than remembering which files are allowed the other.
+    """
+
     def __init__(self, cli: str, datadir: str, rpcport: int, user: str, password: str):
         self.base = [cli, "-regtest", f"-datadir={datadir}", f"-rpcport={rpcport}",
-                     f"-rpcuser={user}", f"-rpcpassword={password}"]
+                     f"-rpcuser={user}", "-stdinrpcpass"]
+        self.password = password + "\n"
 
     def __call__(self, *args, allow_error: bool = False):
         proc = subprocess.run(self.base + [str(a) for a in args],
+                              input=self.password,
                               capture_output=True, text=True)
         out = (proc.stdout or "").strip()
         err = (proc.stderr or "").strip()

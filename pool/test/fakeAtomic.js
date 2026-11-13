@@ -252,6 +252,40 @@ function attachAtomic(fake, hash, list, store) {
 }
 
 /**
+ * Give a double a SET that can refuse, over its own string store.
+ *
+ * SET ... NX belongs in this file for the same reason the scripts do: it is
+ * an atomic claim, and the pool uses it as one. payment:inflight is read at
+ * the top of a payment run and written 130 lines later, after a balances
+ * read, a batch build and a round trip to the node; between those two points
+ * a second process can do all the same work. NX is what makes the write the
+ * claim rather than an announcement, so exactly one caller broadcasts.
+ *
+ * Four doubles implemented `async set(k, v) { strings[k] = v; }` and ignored
+ * the third argument, which is the difference between a double that can be
+ * refused and a double that silently says yes to everyone. Written once here
+ * so no copy of it can quietly grant the claim twice.
+ *
+ * @param fake     the double
+ * @param strings  the double's own plain-string store, as a plain object
+ * @param before   optional hook called as before(key, value, mode), for
+ *                 doubles that count calls or fail on command
+ */
+function attachSet(fake, strings, before) {
+    fake.set = async (key, value, ...rest) => {
+        if (before) before(key, value, rest[0]);
+        const mode = rest.map((a) => String(a).toUpperCase());
+        const exists = Object.prototype.hasOwnProperty.call(strings, key)
+                       && strings[key] !== undefined;
+        if (mode.includes('NX') && exists) return null;
+        if (mode.includes('XX') && !exists) return null;
+        strings[key] = value;
+        return 'OK';
+    };
+    return fake;
+}
+
+/**
  * Give a double commands that refuse to pretend.
  *
  * @param why    what this double does not model, in the error a reader sees
@@ -273,7 +307,7 @@ function attachUnsupported(fake, why, which) {
 }
 
 module.exports = {
-    attachAtomic, attachUnsupported,
+    attachAtomic, attachSet, attachUnsupported,
     CLAIM_AND_RECORD_NAME, RECORD_BLOCK_NAME, CREDIT_MATURED_NAME,
     CREDIT_SHARE_NAME, COMMIT_PAYMENT_NAME
 };

@@ -680,8 +680,22 @@ class ShareProcessor extends EventEmitter {
             // Never lose a block over an accounting bug: park it for manual
             // review rather than dropping it on the floor.
             this.log.error(`reward computation failed for block ${share.height}: ${err.message}`);
+            // THE PARKED RECORD KEPT THE FINDER'S IP ADDRESS, FOREVER.
+            //
+            // `{ ...share }` copies the whole share, and a share carries
+            // `ipAddress` -- so a block whose reward computation failed left
+            // the finder's IP in redis next to their payout address, in a hash
+            // that nothing ever prunes, waiting for an operator who may look
+            // at it in a month. Nothing in reward computation needs it: what
+            // an operator needs is the height, the hash, the worker and the
+            // error. See pool/lib/stratumServer.js label() for the same
+            // mistake in the log.
+            //
+            // Reported 13 November 2026.
+            const { ipAddress, ...keepable } = share;
+            void ipAddress;
             await this.redis.hset(this.k('blocks:failed'), share.blockHash,
-                JSON.stringify({ ...share, error: err.message }));
+                JSON.stringify({ ...keepable, error: err.message }));
             return null;
         }
 
@@ -765,7 +779,56 @@ class ShareProcessor extends EventEmitter {
         }
     }
 
+    /**
+     * Offer every block stranded in blocks:maturing to the credit again.
+     *
+     * A block leaves blocks:pending the moment its maturation is claimed, so
+     * once the credit has been attempted the sweep over pending will never
+     * see it again. If that credit was refused -- a balance field of the
+     * wrong type, a redis that answered an error -- the payout table sat in
+     * blocks:maturing with nothing anywhere re-reading it. One block's
+     * miners were never paid, the coins stayed in the operator's wallet, and
+     * the only trace was a log line.
+     *
+     * Running it is safe to the point of being dull. wamCreditMatured takes
+     * its marker inside the script, so a block already credited returns 0
+     * and changes nothing -- which is also why this can run on every sweep
+     * instead of waiting for somebody to notice.
+     *
+     * In the ordinary case the list is empty and this costs one LRANGE.
+     *
+     * Reported on 13 November 2026 with the stranding measured: a block
+     * credited-and-refused stayed in blocks:maturing across three ticks with
+     * its balances untouched, and recordBlock refused to re-record it.
+     */
+    async _drainMaturing() {
+        let entries;
+        try {
+            entries = await this.redis.lrange(this.k('blocks:maturing'), 0, -1);
+        } catch (err) {
+            this.log.warn(`could not read ${this.k('blocks:maturing')} ` +
+                          `(${err.message}); stranded blocks, if any, wait`);
+            return;
+        }
+        for (const raw of entries || []) {
+            let record;
+            try { record = JSON.parse(raw); } catch { continue; }
+            if (!record || !record.blockHash) continue;
+            try {
+                await this._credit(record, raw);
+            } catch (err) {
+                this.log.warn(`block ${record.height} is still not creditable ` +
+                              `(${err.message}); it stays where it is`);
+            }
+        }
+    }
+
     async _checkPendingBlocks() {
+        // Anything stranded by an earlier refusal is offered again first.
+        // It costs one LRANGE when there is nothing there, which is the
+        // ordinary case.
+        await this._drainMaturing();
+
         const pending = await this.redis.hgetall(this.k('blocks:pending'));
         const hashes = Object.keys(pending);
         if (hashes.length === 0) return;
@@ -858,7 +921,34 @@ class ShareProcessor extends EventEmitter {
                 continue;
             }
 
-            await this._mature(hash, record);
+            // ONE BLOCK THAT CANNOT BE CREDITED MUST NOT STOP THE OTHERS.
+            //
+            // _mature throws when the credit is refused, and this call sat
+            // outside every try -- so a single refusal left this loop
+            // through the top of the function and the whole sweep tick
+            // ended. Every later block in the same tick stayed pending,
+            // having nothing wrong with it. Reported with that side effect
+            // measured: a healthy second block stayed pending until the
+            // next tick.
+            //
+            // And the block itself was stranded: recordBlock refuses a hash
+            // that is already maturing, nothing re-reads blocks:maturing to
+            // credit it, and the payout table sat there with no way back.
+            // The log said "evidence is kept for an operator to replay by
+            // hand" and there was no replay anywhere. _drainMaturing below
+            // is that replay, and it is safe precisely because the credit
+            // is idempotent: a block already credited answers 0 and changes
+            // nothing, so offering a stranded one again costs a round trip
+            // and can never pay twice.
+            try {
+                await this._mature(hash, record);
+            } catch (err) {
+                this.log.error(
+                    `block ${record.height} could not be credited ` +
+                    `(${err.message}). It stays in ${this.k('blocks:maturing')} ` +
+                    'and the next sweep offers it again; nothing else in ' +
+                    'this one is affected.');
+            }
         }
     }
 
@@ -991,6 +1081,17 @@ class ShareProcessor extends EventEmitter {
             return;
         }
 
+        await this._credit(record, evidence);
+    }
+
+    /**
+     * Credit a block whose maturation has already been claimed.
+     *
+     * Split out of _mature so that _drainMaturing can offer a stranded block
+     * again without re-claiming it -- the claim is what moved it out of
+     * blocks:pending, and it has already happened.
+     */
+    async _credit(record, evidence) {
         // ONE SCRIPT, AN APPLIED MARKER INSIDE IT, AND EVERY REFUSAL
         // DECIDED BEFORE THE FIRST WRITE.
         //
@@ -1247,7 +1348,55 @@ class ShareProcessor extends EventEmitter {
             total: batchTotal,
             payouts: Object.fromEntries(batch)
         };
-        await this.redis.set(this.k('payment:inflight'), JSON.stringify(intent));
+
+        // THE MARKER IS CLAIMED, NOT ANNOUNCED.
+        //
+        // This was a plain SET, and the question "is a payment already in the
+        // air?" is asked 130 lines above it, at the top of this function. In
+        // between: a balances read, a batch build, a wallet-balance round trip
+        // to the node. Two pool processes against one redis -- a second
+        // instance started by hand, a systemd restart that overlapped, an
+        // operator running the payer twice to "get it moving" -- both read an
+        // empty marker, both built the identical batch from the identical
+        // balances, and both arrived here. The second SET overwrote the first
+        // and told nobody; then both broadcast, and the same miners were paid
+        // twice out of the pool's wallet. `this.paying` cannot see it: it is a
+        // field on an object inside one process.
+        //
+        // NX makes the write the claim. Exactly one caller gets 'OK', and the
+        // other has not paid, has not broadcast, and has changed nothing, so
+        // it stops here and leaves the marker belonging to whoever owns it.
+        //
+        // It stays without an expiry, deliberately. A TTL would let the marker
+        // disappear while the transaction it describes is still unconfirmed,
+        // which is the exact state it exists to remember; it is cleared by the
+        // commit script and by nothing else.
+        //
+        // Reported 13 November 2026, with the two broadcasts measured against
+        // one redis and two processes.
+        let claimed;
+        try {
+            claimed = await this.redis.set(this.k('payment:inflight'),
+                                           JSON.stringify(intent), 'NX');
+        } catch (err) {
+            this.log.error(`could not claim ${this.k('payment:inflight')} ` +
+                           `(${err.message}); nothing was broadcast and this ` +
+                           'run stops here');
+            return;
+        }
+        if (claimed !== 'OK') {
+            // Not an unfinished run -- a run that is happening now, in another
+            // process. Pausing would be wrong: there is nothing to reconcile
+            // and nothing for a human to check. The next tick re-reads the
+            // marker, and by then it is either gone, because that run
+            // committed, or still there, which the check at the top of this
+            // function reports as the unfinished run it is.
+            this.log.warn(
+                `${this.k('payment:inflight')} is already held by another ` +
+                'payment run; this one pays nobody. If no other pool process ' +
+                'is running, the next tick will report it as an unfinished run.');
+            return;
+        }
 
         // BUILD IT AND SIGN IT FIRST, SO IT HAS A NAME BEFORE IT HAS A FATE.
         //
@@ -1289,6 +1438,11 @@ class ShareProcessor extends EventEmitter {
             txid = decoded.txid;
 
             // Written down BEFORE the broadcast, which is the whole point.
+            //
+            // A plain SET and not NX, unlike the claim above: this call is the
+            // holder adding the txid to the record it already owns, and NX
+            // here would refuse to write it precisely because the claim
+            // succeeded.
             intent.txid = txid;
             intent.hex = signedHex;
             await this.redis.set(this.k('payment:inflight'), JSON.stringify(intent));

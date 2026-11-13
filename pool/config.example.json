@@ -74,7 +74,16 @@
   "apiPort": 8080,
   "apiBind": "0.0.0.0",
   "apiCacheMs": 3000,
-  "apiCorsOrigin": "*",
+  "_apiCorsOrigin": "Empty = same origin only, which is what the dashboard this server also serves needs. It was \"*\" until 2026-11-13, which let any page a miner or operator visits read this API through their browser and from their address -- including a pool bound to a LAN address. Set it to an origin only when a separate front end genuinely fetches from one.",
+  "_apiRequestsPerMinute": "Per-caller ceiling on /api/* in any 60-second window. 240 is four a second, well above a dashboard on a timer.",
+  "_apiLookupsPerMinute": "The same for /api/miner?address=... alone, which is the endpoint that can be walked. The pool publishes its payment txids and the chain names every recipient, so the address list is public whatever this is set to -- what this buys is that walking it is slow and attributable rather than free.",
+  "_apiRateCallers": "How many callers the limiter remembers. A map keyed on something a stranger chooses needs a ceiling or the defence is the attack.",
+  "_apiTrustProxy": "true only when a reverse proxy fronts this API AND sets X-Forwarded-For (nginx: proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;). Without it every request arrives from the proxy and one caller would throttle everybody. With it set and the header absent, callers cannot be told apart, so the limit is not applied and the pool says so once in its log.",
+  "apiCorsOrigin": "",
+  "apiRequestsPerMinute": 240,
+  "apiLookupsPerMinute": 30,
+  "apiRateCallers": 4096,
+  "apiTrustProxy": false,
   "hashrateWindowSec": 600,
 
   "redis": {

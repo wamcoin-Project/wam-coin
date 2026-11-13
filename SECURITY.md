@@ -829,4 +829,12 @@ details.
 
 ---
 
-*Last reviewed: 2026-08-11*
+*This file is revised whenever a finding is accepted, a classification is
+decided or a payment is made, so a date written here by hand goes stale
+between one report and the next — it said 2026-08-11 for three months while
+the file was being rewritten underneath it. The date of the last change is in
+the repository and cannot drift from it:*
+
+```bash
+git log -1 --date=short --format=%ad -- SECURITY.md
+```

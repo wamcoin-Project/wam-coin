@@ -203,9 +203,6 @@ if redis.call('EXISTS', KEYS[1]) == 1 then
     return redis.error_reply('credited-set is not a set')
   end
 end
-if redis.call('SADD', KEYS[1], ARGV[1]) ~= 1 then
-  return 0
-end
 
 if redis.call('EXISTS', KEYS[2]) == 1 and redis.call('TYPE', KEYS[2])['ok'] ~= 'hash' then
   return redis.error_reply('balances is not a hash')
@@ -235,6 +232,10 @@ for i = 4, #ARGV, 2 do
   if held and not string.match(held, '^%-?%d+$') then
     return redis.error_reply('balance for ' .. who .. ' is not an integer')
   end
+end
+
+if redis.call('SADD', KEYS[1], ARGV[1]) ~= 1 then
+  return 0
 end
 
 for i = 4, #ARGV, 2 do

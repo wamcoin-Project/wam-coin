@@ -87,33 +87,34 @@ curl -fs localhost:8081/api/health || echo "WAM node is down"
 
 | | |
 |---|---|
-| Consensus code | compiles; 35 Boost tests pass |
+| Consensus code | compiles; 45 Boost test cases over the WAM consensus layer pass (`wam_devfee`, `wam_monetary`, `wam_pow`, `wam_vesting`) |
 | Testnet | running, seed nodes in Germany and Singapore, found by DNS |
 | Mainnet genesis | mined and committed — `d8d3debe…` |
 | Founder key | generated offline, on paper, never on a networked machine |
 | Founder reserve | fully time-locked; nothing spendable at launch |
 | Release | [v0.1.14](https://wamcoin.org/downloads/), built and published by CI from a tag |
-| Independent review | two developers outside the project, both still reading — [findings and what changed](review/REVIEW_RESPONSE.md) |
+| Independent review | two developers outside the project, both still reading — every finding that produced a change is in [SECURITY.md](SECURITY.md) |
 | Registry | [SLIP-0044](https://github.com/satoshilabs/slips/blob/master/slip-0044.md) coin type **5718349** and [SLIP-0173](https://github.com/satoshilabs/slips/blob/master/slip-0173.md) prefix **`wam`** — merged into SatoshiLabs' registry, 2026-08-26 |
 | Paid security audit | **none** |
 
 Two developers outside the project have read this code. The first found two
 real security holes -- a Redis instance reachable without a password, and a
-share-accounting race -- both fixed, with the exchange on the record in
-[review/REVIEW_RESPONSE.md](review/REVIEW_RESPONSE.md); he still follows the
-repository and sends notes. The second began on 2026-08-21, intends to keep
-following it, and says he will bring colleagues who would each take a different
-area. That last part has not started and is written here as an intention, not a
-fact.
+share-accounting race -- both fixed; he still follows the repository and sends
+notes. The second began on 2026-08-21, intends to keep following it, and says
+he will bring colleagues who would each take a different area. That last part
+has not started and is written here as an intention, not a fact. The
+correspondence itself is not published here: it is a named reviewer's own
+letters and his to publish, not ours. What came out of it is in
+[SECURITY.md](SECURITY.md), finding by finding, with the fix beside each one.
 
 That is peer review, and peer review is not a paid audit. Nobody has been
 engaged to attack the consensus changes methodically and publish what they
 find. The consensus layer is where a mistake costs most and where the fewest
-eyes have been, so it is the part most worth volunteering for: see
+eyes have been, so it is the part most worth reading: see
 [SECURITY.md](SECURITY.md), which says plainly what a reviewer gets — a real
-answer, credit if wanted, a fix, and the report published in full. **No
-payment**, and the reason is in that file: this project has no revenue, and a
-promise we could not keep would be worse than saying so.
+answer, credit if wanted, a fix, the report published in full, and a bounty
+paid in WAM at the rungs that file publishes. It is paid in WAM and in nothing
+else, which is stated there rather than left to be asked about.
 
 - **[docs/START_HERE.md](docs/START_HERE.md)** — run a node and mine, written for someone who has never done either ([بالعربية](docs/START_HERE_AR.md)).
 - **[docs/ROADMAP.md](docs/ROADMAP.md)** — the phased plan from here to a running network.
@@ -165,7 +166,7 @@ hashes per version byte to prove that mainnet addresses *always* start with `W`.
 ```bash
 node pool/test/rewards.test.js
 ```
-53 tests over the payout logic, including the one that matters most: the pool refuses to
+56 tests over the payout logic, including the one that matters most: the pool refuses to
 distribute the consensus treasury output.
 
 ```bash
@@ -173,7 +174,11 @@ python3 scripts/patch_upstream.py --list
 ```
 Every single change made to Bitcoin Core, with its rationale.
 
-`install.sh` runs the first four automatically **before** it compiles anything.
+`install.sh` runs the first three automatically **before** it compiles anything
+(`install.sh:206-210`) — if the arithmetic or the serialization does not hold there is no
+point building. The pool suite needs the pool's native RandomX addon, so it runs once that
+is built (`install.sh:524`), after the node. The patch list is not a check and is not run;
+the patches themselves are applied during the build.
 
 ---
 
