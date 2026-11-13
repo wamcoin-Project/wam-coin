@@ -140,6 +140,7 @@ def main() -> int:
     HALVINGS  = P["WAM_MAX_HALVINGS"]
     DEVFEE    = P["WAM_DEVFEE_PERCENT"]
     SPACING   = P["WAM_POW_TARGET_SPACING"]
+    DGW_PAST  = P["WAM_DGW_PAST_BLOCKS"]
 
     print("[1] constants read from the header")
     print(f"      COIN                     = {COIN:,}")
@@ -150,6 +151,7 @@ def main() -> int:
     print(f"      SUBSIDY_HALVING_INTERVAL = {INTERVAL:,} blocks")
     print(f"      DEVFEE_PERCENT           = {DEVFEE}%")
     print(f"      POW_TARGET_SPACING       = {SPACING} s")
+    print(f"      DGW_PAST_BLOCKS          = {DGW_PAST} blocks")
 
     # -- 2. the headline arithmetic ----------------------------------------
     print("\n[2] the identity that makes 22,000,000 close exactly")
@@ -267,14 +269,54 @@ def main() -> int:
 
     # -- 5. timing ----------------------------------------------------------
     print("\n[5] timing")
-    halving_days = INTERVAL * SPACING / 86400
-    total_years = last_height * SPACING / 86400 / 365.25
-    blocks_per_day = 86400 / SPACING
-    print(f"      blocks per day        : {blocks_per_day:,.0f}")
+
+    # EVERY DURATION THIS CHAIN PUBLISHES IS DERIVED FROM THE WRONG SPACING.
+    #
+    # DarkGravityWave averages WAM_DGW_PAST_BLOCKS targets, and the loop that
+    # does it walks back one block fewer than it counts: it compares the time
+    # across PAST_BLOCKS - 1 intervals against a target of PAST_BLOCKS
+    # intervals (src/wam/pow.cpp, `if (nCountBlocks != nPastBlocks)`). So the
+    # fixed point is not 120 seconds a block. It is
+    #
+    #     24 * 120 / 23 = 125.2174 s,    4.35% slower
+    #
+    # and every figure computed from 120 was short by that much: halvings at
+    # ~9.1 months rather than ~9.5, emission ending in ~25.1 years rather
+    # than ~26.2, 720 blocks a day rather than 690.
+    #
+    # This is inherited verbatim from Dash's DGWv3 and is not a defect in the
+    # chain: a 125-second chain is a 125-second chain, and changing it is a
+    # hard fork for four per cent. What was a defect is publishing 120 and
+    # the numbers that follow from it, for the life of the chain, with
+    # nothing deriving them from the algorithm that actually runs.
+    #
+    # Measured on the live chain to confirm the arithmetic rather than infer
+    # it: 126.01 s a block over the first 40,876 blocks (genesis 2026-09-15
+    # 00:00 UTC to the tip at 2026-11-13 14:46 UTC). Reported 13 November
+    # 2026.
+    #
+    # Durations below come from the equilibrium. The target is printed beside
+    # it because it is the consensus constant, and the difference between
+    # them is the point.
+    measured = SPACING * DGW_PAST / (DGW_PAST - 1)
+    halving_days = INTERVAL * measured / 86400
+    total_years = last_height * measured / 86400 / 365.2425
+    print(f"      target spacing        : {SPACING} s  (the consensus constant)")
+    print(f"      DGW equilibrium       : {measured:,.4f} s"
+          f"  ({(measured / SPACING - 1) * 100:.2f}% slower -- "
+          f"{DGW_PAST - 1} intervals measured against {DGW_PAST})")
+    print(f"      blocks per day        : {86400 / measured:,.0f}"
+          f"  ({86400 / SPACING:,.0f} at the target)")
     print(f"      time between halvings : {halving_days:,.1f} days"
-          f"  (~{halving_days / 30.44:,.1f} months)")
+          f"  (~{halving_days / 30.436875:,.1f} months)")
     print(f"      emission ends after   : ~{total_years:,.1f} years")
     check("block spacing is 120 s", SPACING, 120)
+    check(f"DGW measures {DGW_PAST - 1} intervals against {DGW_PAST}",
+          DGW_PAST >= 2)
+    # A guard on the arithmetic above, not on the chain: if the window ever
+    # changes, the published durations change with it and this says so.
+    check("the equilibrium is the window over the window minus one",
+          round(measured, 6), round(SPACING * DGW_PAST / (DGW_PAST - 1), 6))
 
     # -- 6. spot checks against the C++ function ---------------------------
     print("\n[6] GetBlockSubsidy() spot checks")

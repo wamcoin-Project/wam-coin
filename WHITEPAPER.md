@@ -124,17 +124,38 @@ Bitcoin.
 | Maximum supply | 22,000,000 WAM (hard-coded) |
 | Genesis premine | 2,000,000 WAM |
 | Initial block subsidy | 50 WAM |
-| Halving interval | 200,000 blocks (~9.1 months) |
-| Block target | 120 seconds |
-| Blocks per day | 720 |
+| Halving interval | 200,000 blocks (~9.5 months) |
+| Block target | 120 seconds; the chain settles at **125.2 s** — see below |
+| Blocks per day | ~690 |
 | Launch date | 2026-09-15 00:00 UTC |
 | Operating fee | 5% of the block subsidy, heights 1–400,000 only |
 | Founder reserve vesting | 5 tranches, 20% per year, 2027-09-15 to 2031-09-15 |
-| Coinbase maturity | 100 blocks (~3.3 hours) |
-| Emission ends | height 6,600,000 (~25.1 years) |
+| Coinbase maturity | 100 blocks (~3.5 hours) |
+| Emission ends | height 6,600,000 (~26.2 years) |
 | Proof of work | RandomX |
 | Difficulty algorithm | DarkGravityWave v3, every block |
 | Address prefix | `W` (mainnet P2PKH) |
+
+**The target is 120 seconds and the chain runs at 125.2.** DarkGravityWave
+averages the last 24 targets, and the loop that walks the window steps back
+one block fewer than it counts: it measures the time across **23** intervals
+and divides by a target of **24 × 120 = 2880** seconds
+(`src/wam/pow.cpp`). The fixed point of that is `24 × 120 / 23 = 125.2174`
+seconds — 4.35% slower than the constant. It is inherited verbatim from
+Dash's DGWv3, which has run this way since 2014.
+
+Measured rather than asserted: **126.01 seconds** a block over the first
+40,876 blocks, from genesis at 2026-09-15 00:00 UTC to the tip at
+2026-11-13 14:46 UTC. `python3 scripts/verify_supply.py` derives the
+equilibrium from the two constants and prints every duration from it, so the
+figures in this table cannot drift from the algorithm again.
+
+Every block-count in this paper is exact and is what consensus enforces;
+every duration is an estimate at that equilibrium, and a chain whose hash
+rate is climbing runs a little slower still. The halving is 200,000 blocks,
+not nine and a half months. This paper said 9.1 months, 720 blocks a day,
+3.3 hours and 25.1 years until an outside reader recomputed them on
+13 November 2026, and all four followed from the 120 that never happens.
 
 ### 2.3 Emission schedule
 
@@ -199,7 +220,9 @@ extending it would require a hard fork that every node operator would have to in
 | **Epoch 2 onward** | **400,001 →** | 12.5 → 0 | **100%** | **0** | **0** |
 | | | | | **Lifetime** | **750,000 WAM** |
 
-At 120 seconds per block, the window is roughly **18.3 months**.
+At the 125.2-second equilibrium (§2.2) the window is roughly **19 months**;
+at the 120-second target it would be 18.3. The window itself is 400,000
+blocks, which is the figure consensus enforces.
 
 Two things follow from the halving schedule that are worth stating plainly:
 

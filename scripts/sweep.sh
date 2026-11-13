@@ -7,7 +7,7 @@
 # ===========================================================================
 #
 #      bash scripts/sweep.sh
-#      bash scripts/sweep.sh --nodes "1.2.3.4 5.6.7.8"     # also the live ones
+#      bash scripts/sweep.sh --nodes "203.0.113.4 198.51.100.8"     # also the live ones
 #
 #  WHY THIS EXISTS
 #
@@ -184,6 +184,18 @@ run "every link resolves"        "$PY" scripts/check_links.py
 # function that put the password on the command line. Both written by people
 # who knew the rule. Reported 13 November 2026.
 run "no RPC password in argv"    "$PY" scripts/check_rpc_secrets.py
+
+# "A list of who runs a node is a list of who can be attacked" is written in
+# explorer/lib/network.js, which exists to avoid publishing one -- and three
+# lines above that sentence was the founder's own home /24, with six of its
+# last octets, found by an outside reader on 13 November 2026. Removing it
+# found four more: his full home address as the default of --ours in
+# check_peer_versions.py, the range again in login_watch.py, two node
+# operators named by address and country in check_visitors.py, and the first
+# stranger ever to connect to a WAM mainnet port, named in a comment in
+# mainnet_listener.py. Every one of those comments was written to explain a
+# privacy measure. Nothing was careless; nothing was checked.
+run "no undeclared address"      "$PY" scripts/check_no_private_addresses.py
 run "the zone is signed and validates" "$PY" scripts/check_dnssec.py
 run "the seeds inside the binary answer" "$PY" scripts/check_fixed_seeds.py
 run "a floor under what a node follows" "$PY" scripts/check_min_chain_work.py --network "$NETWORK" ${NODES:+--host ${NODES%% *}}

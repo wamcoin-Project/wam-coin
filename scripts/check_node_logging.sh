@@ -3,7 +3,7 @@
 #  check_node_logging.sh -- can this node still tell us who connected?
 # ===========================================================================
 #
-#      bash scripts/check_node_logging.sh 1.2.3.4 5.6.7.8
+#      bash scripts/check_node_logging.sh 203.0.113.4 198.51.100.8
 #
 #  WHY
 #

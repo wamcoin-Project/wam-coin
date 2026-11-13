@@ -32,8 +32,9 @@
 //  unit; from 6,600,001 the subsidy is exactly zero and miners are
 //  compensated by transaction fees only. That height is epoch 33 --
 //  nHalvings is (nHeight - 1) / 200,000, so epoch e covers heights
-//  200,000*e + 1 through 200,000*(e+1) -- and ~25.1 years at the 120 s target
-//  spacing.
+//  200,000*e + 1 through 200,000*(e+1) -- and ~26.2 years at the 125.2 s
+//  the chain settles at (see WAM_DGW_PAST_BLOCKS); 25.1 at the 120 s
+//  target, which is what every document said until 13 November 2026.
 //
 //  The truncation figure was published as 19,999,999.99 for the life of the  // wam:quote-line
 //  chain, which is wrong by 0.012 WAM: it is the limit of the series rounded,
@@ -92,7 +93,10 @@ static constexpr int64_t WAM_INITIAL_BLOCK_SUBSIDY = 50 * WAM_COIN;
  *
  * 200,000 (not Bitcoin's 210,000) is what makes the arithmetic close exactly:
  *   200,000 * 50 * 2 == 20,000,000 WAM.
- * At a 120 s target this is one halving every ~9.1 months.
+ * At the 125.2 s the chain actually settles at -- see
+ * WAM_DGW_PAST_BLOCKS below -- this is one halving every ~9.5 months.
+ * The 120 s target would give 9.1, which is what every document said
+ * until 13 November 2026.
  */
 static constexpr int WAM_SUBSIDY_HALVING_INTERVAL = 200'000;
 
@@ -150,7 +154,8 @@ static constexpr int WAM_DEVFEE_START_HEIGHT = 1;
  *                                   ------------------------------
  *   lifetime treasury income from block rewards       750,000 WAM
  *
- * At a 120 s target this is roughly 18.3 months of funding.
+ * At the 125.2 s equilibrium (WAM_DGW_PAST_BLOCKS) this is roughly 19
+ * months of funding; at the 120 s target it would be 18.3.
  */
 static constexpr int WAM_DEVFEE_LAST_HEIGHT = 400'000;
 
@@ -313,13 +318,44 @@ static_assert(WAM_PREMINE_UNLOCK_TIMES[0] > 500000000,
 // Block timing and difficulty
 // ---------------------------------------------------------------------------
 
-/** Target seconds between blocks. */
+/**
+ * Target seconds between blocks.
+ *
+ * THE CHAIN DOES NOT RUN AT THIS, AND CANNOT. See WAM_DGW_PAST_BLOCKS:
+ * DarkGravityWave compares 23 intervals against a target of 24, so the
+ * fixed point is 24 * 120 / 23 = 125.2174 s. Measured at 126.01 s over
+ * the first 40,876 blocks. Every duration this project publishes is
+ * derived from the equilibrium by scripts/verify_supply.py, not from the
+ * constant below.
+ */
 static constexpr int64_t WAM_POW_TARGET_SPACING = 120;
 
 /**
  * DarkGravityWave v3 window: the number of previous blocks averaged when
  * retargeting. DGW retargets on EVERY block, so there is no "timespan"
  * parameter in the Bitcoin sense.
+ *
+ * AND THIS WINDOW IS WHY THE CHAIN IS 4.35% SLOWER THAN ITS TARGET.
+ *
+ * The loop in wam::DarkGravityWave counts to WAM_DGW_PAST_BLOCKS and
+ * steps back one block fewer than it counts (`if (nCountBlocks !=
+ * nPastBlocks)`), so nActualTimespan spans 23 intervals while
+ * nTargetTimespan is 24 * 120 s. At equilibrium those are equal:
+ *
+ *     23 * spacing == 24 * 120        ->  spacing = 125.2174 s
+ *
+ * It is Dash's DGWv3 verbatim, unchanged since 2014, and it is not a
+ * defect in this chain -- a 125-second chain is a 125-second chain, and
+ * moving it is a hard fork for four per cent. What was a defect is that
+ * every published duration was computed from the 120 instead. All four
+ * were wrong, for the life of the chain, until an outside reader
+ * recomputed them on 13 November 2026:
+ * wam:quote-begin
+ *     halving              9.1 months    ->  9.5
+ *     blocks per day       720           ->  690
+ *     coinbase maturity    3.3 hours     ->  3.5
+ *     emission ends        25.1 years    ->  26.2
+ * wam:quote-end
  */
 static constexpr int64_t WAM_DGW_PAST_BLOCKS = 24;
 
@@ -329,7 +365,8 @@ static constexpr int64_t WAM_DGW_PAST_BLOCKS = 24;
  */
 static constexpr int64_t WAM_DGW_CLAMP_FACTOR = 3;
 
-/** Confirmations before a coinbase output becomes spendable (~3.3 hours). */
+/** Confirmations before a coinbase output becomes spendable (~3.5 hours
+ *  at the 125.2 s equilibrium; 3.3 at the 120 s target). */
 static constexpr int WAM_COINBASE_MATURITY = 100;
 
 // ---------------------------------------------------------------------------

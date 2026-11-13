@@ -148,10 +148,10 @@ const OURS = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3} \[(DEBUG|INFO |WARN |E
 
     await test('an ordinary line is untouched', async () => {
         const L = makeLogger();
-        L.log.info('stratum', '1.2.3.4 authorized as W1abc.rig1');
+        L.log.info('stratum', '203.0.113.4 authorized as W1abc.rig1');
         const lines = await L.lines();
         assert.strictEqual(lines.length, 1);
-        assert.ok(lines[0].endsWith('[stratum] 1.2.3.4 authorized as W1abc.rig1'),
+        assert.ok(lines[0].endsWith('[stratum] 203.0.113.4 authorized as W1abc.rig1'),
             `escaping changed a line that had nothing wrong with it: ${lines[0]}`);
     });
 

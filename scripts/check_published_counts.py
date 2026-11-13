@@ -133,6 +133,10 @@ def emission():
     if None in (subsidy, interval, halvings, premine, pct):
         return None
 
+    spacing = const("WAM_POW_TARGET_SPACING", text)
+    dgw = const("WAM_DGW_PAST_BLOCKS", text)
+    maturity = const("WAM_COINBASE_MATURITY", text)
+
     mined = sum(interval * (subsidy >> e) for e in range(halvings))
     last_paying_epoch = max(e for e in range(halvings) if (subsidy >> e) > 0)
     # Epoch e covers heights interval*e + 1 .. interval*(e+1), because
@@ -142,13 +146,40 @@ def emission():
     zero_fee_epoch = next(
         (e for e in range(halvings) if ((subsidy >> e) * pct) // 100 == 0),
         None)
-    return {
+    out = {
         "mined": mined,
         "terminal": mined + premine,
         "last_paying_height": last_paying_height,
         "zero_fee_epoch": zero_fee_epoch,
         "zero_fee_subsidy": (subsidy >> zero_fee_epoch) if zero_fee_epoch is not None else None,
+        "spacing": spacing,
+        "equilibrium": None,
     }
+
+    # THE SPACING THE CHAIN RUNS AT, WHICH IS NOT THE CONSTANT.
+    #
+    # DarkGravityWave measures WAM_DGW_PAST_BLOCKS - 1 intervals against a
+    # target of WAM_DGW_PAST_BLOCKS (src/wam/pow.cpp), so the fixed point is
+    # the target scaled by that ratio: 24 * 120 / 23 = 125.2174 s. Every
+    # duration this project publishes was computed from the 120 instead --
+    # halvings at 9.1 months, 720 blocks a day, maturity in 3.3 hours,
+    # emission ending in 25.1 years, four figures wrong for the life of the
+    # chain. Each one is derived here so it cannot drift from the algorithm
+    # again. Reported 13 November 2026, measured at 126.01 s over the first
+    # 40,876 blocks.
+    if spacing and dgw and dgw > 1:
+        eq = spacing * dgw / (dgw - 1)
+        year = 365.2425 * 86400
+        month = year / 12
+        out.update({
+            "equilibrium": eq,
+            "blocks_per_day": 86400 / eq,
+            "halving_months": interval * eq / month,
+            "emission_years": last_paying_height * eq / year,
+            "maturity_hours": (maturity * eq / 3600) if maturity else None,
+            "devfee_months": (const("WAM_DEVFEE_LAST_HEIGHT", text) or 0) * eq / month,
+        })
+    return out
 
 
 def boost_cases():
@@ -381,6 +412,52 @@ def main() -> int:
                             f"(install.sh make is at line {order['make_at']}, "
                             f"and {order['after']} of them run after it)")
 
+    # ---- 5b. durations derived from a spacing the chain never runs at -----
+    #
+    # Each pattern matches the CLAIM and captures whatever number is there, so
+    # a wrong figure is contradicted rather than a right one confirmed. The
+    # tolerance is the rounding the documents use: a tenth of a month, a
+    # tenth of a year, a block a day.
+    if e.get("equilibrium"):
+        DURATIONS = [
+            (re.compile(r"halving\w*[^.\n]{0,40}?~\s*([\d.]+)\s*months?", re.I),
+             e["halving_months"], 0.1, "months between halvings"),
+            (re.compile(r"(?:emission|subsidy)[^.\n]{0,60}?~\s*([\d.]+)\s*years?", re.I),
+             e["emission_years"], 0.1, "years until the emission ends"),
+            (re.compile(r"blocks per day[^|\n]{0,12}?\|?\s*~?\s*([\d,]+)", re.I),
+             e["blocks_per_day"], 1.0, "blocks a day"),
+            (re.compile(r"coinbase maturity[^.\n]{0,40}?~\s*([\d.]+)\s*hours?", re.I),
+             e["maturity_hours"], 0.1, "hours to coinbase maturity"),
+            (re.compile(r"(?:settles? at|equilibrium)[^.\n]{0,40}?"
+                        r"\*{0,2}([\d.]+)\s*(?:s\b|second)", re.I),
+             e["equilibrium"], 0.1, "seconds a block at equilibrium"),
+        ]
+        for rel in docs:
+            text = read(ROOT / rel)
+            for i, line in enumerate(text.splitlines(), 1):
+                # The pipes go before the match, for the same reason as
+                # _flat() in check_published_claims.py: every one of these
+                # figures lives in a markdown table, with the claim in one
+                # cell and the number in the next. A pattern that excluded
+                # `|` to stop it running into the following cell could never
+                # match the row a reader actually looks at -- which is how
+                # the first version of this passed a whitepaper that still
+                # said 9.1 months. The {0,40} bound is what keeps it from
+                # reading two cells away.
+                flat = re.sub(r"[*_`|]+", " ", re.sub(r"<[^>]+>", " ", line))
+                for pat, want, tol, label in DURATIONS:
+                    if want is None:
+                        continue
+                    for m in pat.finditer(flat):
+                        try:
+                            got = float(m.group(1).replace(",", ""))
+                        except ValueError:
+                            continue
+                        if abs(got - want) > tol:
+                            bad(f"{rel}:{i} states {m.group(1)} for the {label}; "
+                                f"the DGW equilibrium of "
+                                f"{e['equilibrium']:.4f} s gives {want:.2f}")
+
     # ---- 6. a review date written by hand ---------------------------------
     #
     # SECURITY.md said 2026-08-11 for three months while being rewritten
@@ -433,6 +510,12 @@ def main() -> int:
         print(f"  last paying height : {e['last_paying_height']:,}")
         print(f"  5% hits zero at    : epoch {e['zero_fee_epoch']} "
               f"(subsidy {e['zero_fee_subsidy']} base unit(s))")
+    if e.get("equilibrium"):
+        print(f"  target spacing     : {e['spacing']} s (the constant)")
+        print(f"  DGW equilibrium    : {e['equilibrium']:,.4f} s"
+              f"  -> {e['blocks_per_day']:,.0f} blocks/day,"
+              f" {e['halving_months']:.1f} months a halving,"
+              f" {e['emission_years']:.1f} years of emission")
     print(f"  Boost cases        : {boost if boost is not None else '??'}")
     print(f"  rewards.test.js    : {rewards if rewards is not None else '??'}")
     if order:

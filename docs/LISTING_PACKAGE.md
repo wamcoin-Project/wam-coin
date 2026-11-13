@@ -36,9 +36,9 @@ code — the differences are the constants in section 3.
 | | |
 |---|---|
 | Maximum supply | 22,000,000 WAM |
-| Block time | 120 seconds |
+| Block time | 120 s target; the chain settles at **125.2 s** (see below) |
 | Initial subsidy | 50 WAM |
-| Halving interval | 200,000 blocks (~13.9 months) |
+| Halving interval | 200,000 blocks (~9.5 months) |
 | Difficulty algorithm | DarkGravityWave v3, retargets every block |
 | Decimals | 8 |
 | Smallest unit | 1 satoshi-equivalent = 0.00000001 WAM |
@@ -49,7 +49,24 @@ OP_CHECKLOCKTIMEVERIFY; none is spendable at launch.** They unlock on
 2027-09-15, 2028-09-15, 2029-09-15, 2030-09-15 and 2031-09-15.
 
 **Treasury:** 5% of each block subsidy, heights 1 to 400,000 only, then zero
-forever. 750,000 WAM total over roughly 18 months.
+forever. 750,000 WAM total over roughly 19 months.
+
+**Block time: the target is 120 seconds and the chain runs at 125.2.**
+DarkGravityWave averages the last 24 targets and the loop that walks the
+window steps back one block fewer than it counts, so it measures 23
+intervals against a target of 24 x 120 seconds. The fixed point is
+`24 x 120 / 23 = 125.2174` s, 4.35% slower than the constant, and it is
+Dash's DGWv3 verbatim. Measured: 126.01 s a block over the first 40,876
+blocks, 2026-09-15 00:00 UTC to 2026-11-13 14:46 UTC.
+
+Every block count in this document is exact and enforced by consensus;
+every duration is an estimate at that equilibrium. Until 13 November 2026
+this table gave the halving interval as a figure that implies 182.8 s a
+block -- matching neither the target nor the chain, and wrong by four
+months.
+`python3 scripts/verify_supply.py` derives all of them from the two
+constants, and `scripts/check_published_counts.py` compares every
+published copy against it.
 
 Founder + treasury = 2,750,000 = **12.50%** of the cap. Public mining = 87.50%.
 

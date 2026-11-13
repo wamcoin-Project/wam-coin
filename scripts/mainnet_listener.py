@@ -12,11 +12,16 @@
 #  WHY THIS EXISTS
 #
 #  On 4 September 2026 a mainnet node was started for twenty-one minutes as
-#  part of the Phase E rehearsal. Two seconds after port 9555 opened, a node
-#  from 69.173.206.211 connected, said /WAM:0.1.6/, and stayed until it was
-#  disconnected. That address appears nowhere in the testnet node's journal --
-#  not once, ever. Somebody had read the documentation, configured a node for
-#  mainnet only, and left it retrying.
+#  part of the Phase E rehearsal. Two seconds after port 9555 opened, one node
+#  connected, said /WAM:0.1.6/, and stayed until it was disconnected. Its
+#  address appears nowhere in the testnet node's journal -- not once, ever.
+#  Somebody had read the documentation, configured a node for mainnet only,
+#  and left it retrying.
+#
+#  (The address was written out here until 13 November 2026. It is a stranger
+#  who ran a node before we asked anyone to, and this project's own rule is
+#  that a list of who runs a node is a list of who can be attacked. The story
+#  is the point; the address was never part of it.)
 #
 #  That is the first real operator waiting for launch, and we only saw them
 #  because the port happened to be open for a few minutes. Nothing counts

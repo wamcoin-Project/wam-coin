@@ -93,7 +93,11 @@ def network_of(ip):
     """The address's network, not the address.
 
     Six logins over three days came from six different addresses and a
-    single /24 -- 41.254.73.x, a home line changing its last octet. Keyed on
+    single /24 -- one home line changing its last octet. (The range was
+    written out here until 13 November 2026, when an outside reader found
+    the same thing in explorer/lib/network.js: it is one identified
+    person's home network, in a public repository, and naming it taught a
+    reader nothing the sentence does not.) Keyed on
     the whole address this watcher would announce a new one most days, and
     an alarm that fires most days is read for a week. Keyed on the /24 it is
     silent for that churn and speaks the moment a login arrives from a

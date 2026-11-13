@@ -62,15 +62,51 @@ from wamcli import flags as _wamcli_flags   # noqa: E402
 
 RED = "\033[31m"; GRN = "\033[32m"; YEL = "\033[33m"; BLD = "\033[1m"; OFF = "\033[0m"
 
-# Ours and the operators we already know, so the report is about strangers.
-KNOWN = {
-    "71.38.219.3": "United States",
-    "91.216.73.201": "Spain",
+# OURS GO HERE. OTHER PEOPLE'S DO NOT.
+#
+# This map used to name two node operators by address, with their countries
+# beside them, in a public repository. This project's own rule is that a list
+# of who runs a node is a list of who can be attacked -- it is written in
+# explorer/lib/network.js, which exists to avoid publishing exactly this --
+# and the two were here because excluding them made this report quieter.
+#
+# Found on 13 November 2026 while removing the founder's own home range,
+# which an outside reader had found in that same explorer file. Three places
+# had his; this had two strangers'.
+#
+# Our seeds stay: they are in DNS and in every published binary, so naming
+# them here withdraws nothing from anybody. Anyone else's address is read
+# from a file outside the repository, one line each, '#' for comments:
+#
+#     export WAM_KNOWN_PEERS=/etc/wam/known-peers
+#
+# With no such file every peer reads as a stranger, which makes this report
+# noisier and never wrong.
+OURS = {
     "169.58.159.165": "ours (Germany)",
     "5.223.52.200": "ours (Singapore)",
     "13.140.33.187": "ours (US-east)",
     "127.0.0.1": "localhost",
 }
+
+
+def _known():
+    known = dict(OURS)
+    path = os.environ.get("WAM_KNOWN_PEERS")
+    if not path:
+        return known
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            for line in f:
+                addr = line.split("#", 1)[0].strip()
+                if addr:
+                    known[addr] = "known operator (from WAM_KNOWN_PEERS)"
+    except OSError:
+        pass                    # absent is the default, not an error
+    return known
+
+
+KNOWN = _known()
 
 IP = re.compile(r"(?:\d{1,3}\.){3}\d{1,3}")
 

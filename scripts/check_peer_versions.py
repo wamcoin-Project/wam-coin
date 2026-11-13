@@ -88,13 +88,25 @@ def main():
     # confidently about a chain with nothing on it.
     ap.add_argument("--network", default="mainnet",
                     choices=["mainnet", "testnet", "regtest"])
-    # The last address is the founder's own node, and it is stale: his ISP
-    # hands out a new one, so on 10 September he appeared as 41.254.73.0 and
-    # this list counted him as an independent operator. The count said two
-    # when the honest answer was one. A fixed address cannot track a dynamic
-    # one, so the wording below says "not our servers" rather than
-    # "independent" -- which is exactly what this list can actually prove.
-    ap.add_argument("--ours", default="169.58.159.165,5.223.52.200,13.140.33.187,41.254.76.34",
+    # OUR SERVERS ARE PUBLIC. A PERSON'S HOME LINE IS NOT.
+    #
+    # This default used to carry a fourth address: the founder's own machine
+    # at home, written out in full in a public repository. The three seeds
+    # are deliberate infrastructure -- they are in DNS and compiled into
+    # every published binary -- and his house is not, and a full address is
+    # worse than the /24 an outside reader found in explorer/lib/network.js
+    # on 13 November 2026.
+    #
+    # It was also useless: his ISP hands out a new address, so on 10
+    # September he appeared on a different one and this list counted him as
+    # an independent operator. The count said two when the honest answer
+    # was one. A fixed address cannot track a dynamic one, which is why the
+    # wording below says "not our servers" rather than "independent" --
+    # exactly what this list can prove.
+    #
+    # Pass --ours to add a machine for one run. Nothing about a home line
+    # belongs in a file anybody can read.
+    ap.add_argument("--ours", default="169.58.159.165,5.223.52.200,13.140.33.187",
                     help="addresses we run ourselves, excluded from the count of "
                          "independent operators")
     ap.add_argument("--window-hours", type=int, default=48,

@@ -192,10 +192,10 @@ the patches themselves are applied during the build.
 | Operating budget | 750,000 WAM (3.41%) — 5% fee, **expires at block 400,000** |
 | *Founder + operating* | *2,750,000 WAM — **12.50%*** |
 | Initial subsidy | 50 WAM |
-| Halving | every 200,000 blocks (~9.1 months) |
-| Block time | 120 seconds |
+| Halving | every 200,000 blocks (~9.5 months) |
+| Block time | 120 s target; the chain settles at **125.2 s** (DGW measures 23 intervals against 24 — [whitepaper §2.2](WHITEPAPER.md#22-parameters)) |
 | Launch | 2026-09-15 00:00 UTC |
-| Emission ends | height 6,600,000 (~25.1 years) |
+| Emission ends | height 6,600,000 (~26.2 years) |
 | Algorithm | RandomX (ASIC-resistant, CPU-friendly) |
 | Difficulty | DarkGravityWave v3, retargeting every block |
 | Addresses | start with `W` |

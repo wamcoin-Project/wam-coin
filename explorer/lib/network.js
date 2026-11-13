@@ -49,7 +49,7 @@ function hostOf(addr) {
     if (s.startsWith('[')) return s.slice(1).split(']')[0];   // [2001:db8::1]:19555
     const colons = (s.match(/:/g) || []).length;
     if (colons > 1) return s;                                  // bare IPv6, no port
-    return s.split(':')[0];                                    // 1.2.3.4:19555, x.onion:19555
+    return s.split(':')[0];                                    // 203.0.113.4:19555, x.onion:19555
 }
 
 /** Reduce an address to something countable but not locatable. */

@@ -54,7 +54,7 @@
 # ===========================================================================
 
 # Same defaults as scripts/deploy.sh. Override for a different pair:
-#   WAM_TOOL_HOSTS="1.2.3.4" bash scripts/check_dns_seeds.sh
+#   WAM_TOOL_HOSTS="203.0.113.4" bash scripts/check_dns_seeds.sh
 # All three. With only two named, a check that borrows a tool (dig, curl)
 # had nowhere to go the moment those two were a commit behind -- which is
 # exactly what happened to the DNS seed check on 18 September.

@@ -179,7 +179,7 @@ test('an IPv4 /24 is still one machine', () => {
     assert.strictEqual(net.machineId('198.51.100.4:56797'),
                        net.machineId('198.51.100.97:56797'));
     assert.notStrictEqual(net.machineId('198.51.100.4:56797'),
-                          net.machineId('41.254.74.4:56797'));
+                          net.machineId('192.0.2.4:56797'));
 });
 
 test('an unparseable address is still counted, not dropped', () => {

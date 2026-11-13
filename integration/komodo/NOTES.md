@@ -168,9 +168,15 @@ electrum.wamcoin.org    169.58.159.165:50002 SSL   height 33344, ElectrumX 2.0.0
                         169.58.159.165:50001 TCP   height 33344
 electrum2.wamcoin.org    13.140.33.187:50002 SSL   height 33344, ElectrumX 2.0.0
                          13.140.33.187:50001 TCP   height 33344
-wam.zcd.lol            158.247.220.175:50002 SSL   height 33344, ElectrumX 2.0.0
-                       158.247.220.175:50001 TCP   height 33344
+wam.zcd.lol                            :50002 SSL   height 33344, ElectrumX 2.0.0
+                                       :50001 TCP   height 33344
 ```
+
+The third server is named by its hostname and not by the address it
+resolved to. Its operator published the name; the address was our own
+lookup of his machine, it can change under him, and this project does
+not publish another operator's address. It was written out here until
+13 November 2026.
 
 Genesis on all three reads
 `d8d3debea987b62a0934c3980d62bffbb6e16aa797d19891d4fcc9b9fb11d7e9`, identical

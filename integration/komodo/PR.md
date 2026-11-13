@@ -17,7 +17,7 @@ and runs `wamd` v0.1.13 from the signed release with SHA256SUMS verified.
 Verified from outside his machine rather than taken on his word, 2 November
 2026:
 
-  wam.zcd.lol -> 158.247.220.175   50002 SSL / 50001 TCP / 50004 WSS
+  wam.zcd.lol   50002 SSL / 50001 TCP / 50004 WSS
   tip 33344, block-identical to our node and to both existing servers
   genesis d8d3debea987b62a0934c3980d62bffbb6e16aa797d19891d4fcc9b9fb11d7e9
           identical to the assert in src/wam/chainparams.cpp:483
