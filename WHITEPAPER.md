@@ -587,10 +587,10 @@ Nothing in this document asks for trust. Each claim has a corresponding check:
 | A specific block paid the treasury | `wam-cli getdevfeeinfo "<hash>"` |
 
 `install.sh` runs `verify_supply.py`, `gen_founder_key.py --selftest` and
-`genesis/test_serialization.py` *before* it compiles anything (`install.sh:206-210`): if the
+`genesis/test_serialization.py` *before* it compiles anything (`install.sh`, lines 206-210): if the
 arithmetic or the serialization does not hold, there is no point building the binary. The
 pool suite is the one exception — it needs the pool's native RandomX addon, so it runs once
-that is built (`install.sh:524`).
+that is built (`install.sh`, line 524).
 
 ---
 

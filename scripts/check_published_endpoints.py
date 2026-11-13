@@ -165,8 +165,21 @@ CERT_WARN_DAYS = 30
 # real country domains, and wampool.vslabs.co.in:3333 is an endpoint we
 # publish -- a list would have had to carry that exception from the start,
 # and the next one would be found by a stranger rather than by us.
+# AND THE SAME FOUR-OR-FIVE-DIGIT RULE THE BARE :port BELOW ALREADY USES.
+#
+# The slash rule above drops dir/file.ext:line. It cannot drop a file named
+# with no path at all, and on 13 November 2026 two citations added to
+# README.md and WHITEPAPER.md -- pointing a reader at the install.sh lines
+# that run the audits before the build -- were dialled as endpoints.
+# `install.sh` resolved to nothing and the sweep went red about a file in our
+# own tree, which is exactly the red line nobody can act on that the note
+# above was written for.
+#
+# This file already states the fact that separates them: "Every port this
+# project publishes is four or five: 3310-3336, 6040, 50002-51004." The bare
+# :port rule below was built on it. This one was not. It is now.
 ENDPOINT = re.compile(
-    r"(?<![^/]/)\b([a-z0-9][a-z0-9.-]*\.[a-z]{2,})[:\s]*:(\d{2,5})\b")
+    r"(?<![^/]/)\b([a-z0-9][a-z0-9.-]*\.[a-z]{2,})[:\s]*:(\d{4,5})\b")
 
 # A SECOND port for the same host, written bare after the first. Two of the
 # four pools on docs/MINE.md are published this way, because an operator with

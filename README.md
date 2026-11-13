@@ -175,9 +175,9 @@ python3 scripts/patch_upstream.py --list
 Every single change made to Bitcoin Core, with its rationale.
 
 `install.sh` runs the first three automatically **before** it compiles anything
-(`install.sh:206-210`) — if the arithmetic or the serialization does not hold there is no
+(`install.sh`, lines 206-210) — if the arithmetic or the serialization does not hold there is no
 point building. The pool suite needs the pool's native RandomX addon, so it runs once that
-is built (`install.sh:524`), after the node. The patch list is not a check and is not run;
+is built (`install.sh`, line 524), after the node. The patch list is not a check and is not run;
 the patches themselves are applied during the build.
 
 ---

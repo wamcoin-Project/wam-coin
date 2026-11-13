@@ -17,6 +17,21 @@
 //  node is on the same machine or the same room; a general HTTP client here
 //  would be more code to be wrong in.
 //
+//  "OR THE SAME ROOM" WAS A COMMENT, NOT A RULE, AND THE README SAID OTHERWISE.
+//
+//  miner/README.md documented `--rpc 192.168.1.10:9554 --rpcuser USER
+//  --rpcpassword PASSWORD` as the way to reach a node on another machine, and
+//  Basic auth is base64 of user:password -- so the credential for the node's
+//  whole RPC surface, every wallet call included, went across the network in
+//  something anyone on the path can decode. Reported 13 November 2026 (M-2).
+//
+//  main() now decides what may leave this machine in the clear, before any
+//  socket is opened: see ClassifyHost in plaintext.h. A password to a public
+//  address is refused unless --insecure-rpc says the operator knows; a
+//  password to a LAN warns; a node on this machine needs neither, because the
+//  cookie is read off the disk. The README's remote recipe is an ssh
+//  forward now.
+//
 //  HOW IT AUTHENTICATES
 //
 //  Two ways, and the second is the one most people will use without knowing

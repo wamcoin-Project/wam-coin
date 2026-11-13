@@ -51,6 +51,11 @@ import re
 import subprocess
 import sys
 
+import pathlib as _pathlib
+import sys as _sys
+_sys.path.insert(0, str(_pathlib.Path(__file__).resolve().parent / "lib"))
+import quoted  # noqa: E402
+
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 
 RED = "\033[31m"; GRN = "\033[32m"; BLD = "\033[1m"; OFF = "\033[0m"
@@ -86,6 +91,15 @@ IPV4 = re.compile(r"(?<![\w.])(\d{1,3}(?:\.\d{1,3}){3})(?![\w.])")
 EXEMPT_FILES = {
     "share/examples/wam.conf":
         "generated from the node's own help; the examples are upstream's",
+    # A TEST OF ADDRESS CLASSIFICATION MUST NAME ADDRESSES ON BOTH SIDES.
+    #
+    # miner/test/plaintext_test.cpp asks what reads as public one step past
+    # the end of 172.16/12 and what reads as private one step inside it,
+    # and the same for 192.168/16 and 10/8. Those boundaries cannot be said
+    # in the documentation ranges, because the question is precisely where the
+    # private ranges end. The addresses are arithmetic, not anybody's machine.
+    "miner/test/plaintext_test.cpp":
+        "its subject is where the private ranges end, so it must name both sides",
 }
 
 # Text files only. A binary with an address in it is a different question and
@@ -113,7 +127,12 @@ def interesting(addr: str):
             or ip.is_multicast or ip.is_reserved or ip.is_unspecified:
         return None
     # RFC 5737, the ranges that exist to be written down.
-    for net in ("192.0.2.0/24", "198.51.100.0/24", "203.0.113.0/24"):
+    # RFC 6598 shared address space: a carrier NAT, not the open internet.
+    # miner/src/plaintext.h classifies it as private and this did not, so the
+    # two disagreed about 100.64.0.1 -- which is exactly the boundary case the
+    # miner's own test names.
+    for net in ("100.64.0.0/10",
+                "192.0.2.0/24", "198.51.100.0/24", "203.0.113.0/24"):
         if ip in ipaddress.ip_network(net):
             return None
     if addr == "255.255.255.255":
@@ -135,7 +154,13 @@ def main() -> int:
         if rel in EXEMPT_FILES:
             continue
         try:
-            text = p.read_text(encoding="utf-8", errors="strict")
+            # Through strip_quoted, like every other text check in scripts/:
+            # a file RECORDING an address we removed necessarily contains it,
+            # and this one's own DECLARED block is a list of addresses. Line
+            # numbers survive the blanking. scripts/check_mentions.py caught
+            # this on the first sweep after the file was written.
+            text = quoted.strip_quoted(
+                p.read_text(encoding="utf-8", errors="strict"))
         except (OSError, UnicodeDecodeError):
             continue                     # binary, or gone
         scanned += 1
