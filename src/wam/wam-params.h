@@ -436,8 +436,25 @@ static constexpr const char* WAM_GENESIS_TIMESTAMP_PHRASE =
  * uses a real, buried block hash as normal.
  *
  * This constant is mirrored in genesis/genesis_generator.py and in
- * pool/lib/randomxSeed.js; scripts/verify_supply.py --check-constants asserts
- * that all three agree.
+ * pool/lib/randomxSeed.js, and scripts/verify_supply.py --check-constants
+ * asserts that all three derive the SAME 32-BYTE KEY -- not merely that they
+ * quote the same string.
+ *
+ * THAT DISTINCTION WAS THE WHOLE DEFECT. This comment claimed the check
+ * covered all three for the life of the chain, and the check compared the 24
+ * characters. The node and the pool hash them; genesis_generator.py fed them
+ * in raw, 24 bytes, so the genesis block was mined against a key no node and
+ * no pool ever uses. Measured on 13 November 2026 against the committed
+ * mainnet header: nNonce 1264205 gives a proof-of-work hash of 000007d3...
+ * under the raw phrase, inside the 00000ffff0... target, and 6a100fd4...
+ * under SHA256 of it, far outside.                            // wam:quote-line
+ *
+ * Nothing broke and nothing is at risk: no code path verifies the genesis
+ * block's proof of work, because the genesis block is the root of the chain
+ * by definition rather than something a peer offers. Mainnet has run since
+ * 15 September 2026 on it. The committed nonce stands -- changing it would
+ * change the genesis hash, which is consensus -- and
+ * --legacy-bootstrap-key is how an auditor reproduces it.
  */
 static constexpr const char* WAM_RANDOMX_BOOTSTRAP_KEY =
     "WAM/RandomX/epoch-0/2026";

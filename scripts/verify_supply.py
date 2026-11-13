@@ -26,8 +26,11 @@ Exit code 0 means the 22,000,000 WAM cap is mathematically enforced.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import os
 import re
+import shutil
+import subprocess
 import sys
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -347,6 +350,7 @@ def main() -> int:
     if args.check_constants:
         print("\n[8] cross-language constant agreement")
         _check_other_languages(P)
+        _check_bootstrap_derivation(P)
 
     print("\n" + "=" * 78)
     if FAILURES:
@@ -357,6 +361,69 @@ def main() -> int:
     print(" AUDIT PASSED -- the 22,000,000 WAM cap is enforced by the arithmetic.")
     print("=" * 78)
     return 0
+
+
+def _check_bootstrap_derivation(P: dict) -> None:
+    """Do the three implementations derive the SAME KEY, not just quote the
+    same string?
+
+    THE STRING WAS MIRRORED. THE DERIVATION WAS NOT.
+
+    wam-params.h said WAM_RANDOMX_BOOTSTRAP_KEY was "mirrored in
+    genesis/genesis_generator.py and in pool/lib/randomxSeed.js" and that this
+    very check "asserts that all three agree". It compared the 24 characters.
+    The node and the pool hash them -- SHA256, 32 bytes -- and the generator
+    fed them in raw, so it mined the genesis block against a key no node uses.
+
+    Measured on 13 November 2026 against the committed mainnet header rebuilt
+    from chainparams.cpp: the nonce satisfies proof of work under the
+    generator's key and not under the node's. Nothing broke, because nothing
+    verifies the genesis block's proof of work -- which is why mainnet has run
+    since September. The defect was that nothing compared the one thing that
+    mattered.
+
+    So this computes each key and compares the bytes. A file may spell the
+    phrase however it likes as long as the key comes out the same.
+    """
+    phrase = P.get("WAM_RANDOMX_BOOTSTRAP_KEY")
+    if not phrase:
+        check("the header declares a bootstrap phrase", False)
+        return
+    want = hashlib.sha256(phrase.encode()).hexdigest()
+    print(f"      phrase                   = {phrase!r}")
+    print(f"      SHA256(phrase)           = {want}")
+
+    # The generator, by importing it rather than reading it: a comment can say
+    # anything, and this has to be the key the code produces.
+    try:
+        sys.path.insert(0, os.path.join(REPO, "genesis"))
+        import genesis_generator as gg                        # noqa: E402
+        check("genesis_generator.py derives the node's key",
+              gg.bootstrap_seed().hex(), want)
+        legacy = gg.bootstrap_seed(legacy=True).hex()
+        check("and --legacy-bootstrap-key still reproduces the old one",
+              legacy != want and legacy == phrase.encode().hex())
+    except Exception as exc:                                  # noqa: BLE001
+        check(f"genesis_generator.py could be asked for its key ({exc})", False)
+
+    # The pool, by running it, for the same reason.
+    try:
+        node = shutil.which("node")
+        if not node:
+            raise RuntimeError("node is not installed")
+        out = subprocess.run(
+            [node, "-e",
+             "process.stdout.write(require('./lib/randomxSeed')"
+             ".BOOTSTRAP_SEED.toString('hex'))"],
+            cwd=os.path.join(REPO, "pool"), capture_output=True, text=True,
+            timeout=60)
+        if out.returncode != 0:
+            raise RuntimeError((out.stderr or out.stdout).strip()[:200])
+        check("pool/lib/randomxSeed.js derives the node's key",
+              out.stdout.strip(), want)
+    except Exception as exc:                                  # noqa: BLE001
+        check(f"pool/lib/randomxSeed.js could be asked for its key ({exc})",
+              False)
 
 
 def _check_other_languages(P: dict) -> None:

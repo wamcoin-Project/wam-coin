@@ -441,7 +441,49 @@ public:
         // differ only in which header chains they will consider while syncing.
         // A v0.1.8 node needs no update and this release is not MANDATORY --
         // consensus_floor.py excludes the field by name for that reason.
-        consensus.nMinimumChainWork = uint256S("0000000000000000000000000000000000000000000000000000002adc39e008");
+        //
+        // RAISED ON 13 NOVEMBER 2026, AND THIS IS THE FLOOR THAT PRICES
+        // PRESYNC SPAM.
+        //
+        // The value above was set from block 936 and stayed there while the
+        // chain reached 40,952. It was not wrong; it had become 11.6 times
+        // too small, and that ratio is exactly the cost of fabricating a
+        // header chain.
+        //
+        //   work per header at powLimit (nBits 0x1e0fffff, target ~2^236)
+        //       = 2^256 / 2^236 = 1,048,576
+        //   headers needed to reach a floor F = F / 1,048,576
+        //
+        //       old floor  184,083,406,856   ->    175,555 headers,  28 MB
+        //       new floor  1,800,206,906,319 ->  1,716,737 headers, 275 MB
+        //
+        // That matters because WAM cannot run upstream's cheap presync
+        // filter: HasValidProofOfWork hashes with RandomX, whose key comes
+        // from a buried block, and a presynced header has no established
+        // position in the chain (see WAM_PRESYNC_POW_SKIPPED in
+        // scripts/patch_upstream.py). So during presync a peer's CLAIMED work
+        // is taken on trust, and the floor is the only thing that says how
+        // much claimed work it takes to waste our bandwidth. Reported on
+        // 13 November 2026 with it measured: 7,000 fabricated testnet
+        // headers, served twice, 1.1 MB and about a second, for zero
+        // attacker proof of work.
+        //
+        // The cost is symmetric -- the attacker uploads what the victim
+        // downloads -- and no invalid header is ever accepted: the redownload
+        // phase checks RandomX and the peer is disconnected. Raising the
+        // floor multiplies that cost by the same factor for both sides.
+        //
+        // Set from block 38,000, 2,952 behind the tip when it was written and
+        // about four days of network work, so there is margin. The direction
+        // that fails badly is still a value ABOVE the real chain's work --
+        // every new node then stops syncing and it looks like an outage --
+        // and the live chain carried 2,137,853,705,019 at height 40,952, so
+        // this is 1.19 times below what already exists. Verify both
+        // directions against a running node before changing it:
+        //
+        //     python3 scripts/check_min_chain_work.py --network mainnet \
+        //             --host <a node>
+        consensus.nMinimumChainWork = uint256S("000000000000000000000000000000000000000000000000000001a324b173cf");
 
         // Still zero, and staying zero. defaultAssumeValid tells a node to
         // skip signature checking below a block WE name, which asks the reader

@@ -31,6 +31,7 @@
 #include <atomic>
 #include <cinttypes>
 #include <csignal>
+#include <cctype>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -43,6 +44,7 @@
 #include <vector>
 
 #include "json.h"
+#include "plaintext.h"
 #include "platform.h"
 #include "randomx_engine.h"
 #include "sha256.h"
@@ -748,6 +750,10 @@ struct Options {
     std::string rpcPass;
     std::string rpcCookie;
     bool        rpcPortGiven = false;   // did --rpc name a port explicitly?
+    // Sending an RPC password in the clear to an address off this network is
+    // refused rather than warned about: the warning scrolls away and the
+    // password does not. This says the operator knows.
+    bool        insecureRpc = false;
     std::string network = "mainnet";
     int         pollSeconds = 5;
 
@@ -768,7 +774,12 @@ void PrintHelp()
 "    wam-miner -o <pool> -u <your WAM address>[.<worker>]\n"
 "\n"
 "OPTIONS\n"
-"    -o, --url <host:port>   pool address; a stratum+tcp:// prefix is accepted\n"
+"    -o, --url <host:port>   pool address; a stratum+tcp:// prefix is accepted.\n"
+"                            stratum+ssl:// is refused rather than quietly\n"
+"                            downgraded: this miner has no TLS. Terminate it\n"
+"                            beside the miner --\n"
+"                              stunnel3 -c -d 127.0.0.1:3333 -r <pool>:3336\n"
+"                            -- and point -o at 127.0.0.1:3333.\n"
 "    -u, --user <address>    the WAM address to be paid at, optionally\n"
 "                            followed by .<worker> to label this machine\n"
 "    -p, --pass <password>   pool password (most pools ignore it; default 'x')\n"
@@ -792,6 +803,12 @@ void PrintHelp()
 "        --rpcuser <name>    RPC credentials, as in wam.conf. Omit both and\n"
 "        --rpcpassword <s>   the miner reads the node .cookie instead.\n"
 "        --rpccookie <path>  where that cookie is, if not the default\n"
+"        --insecure-rpc      allow --rpcuser/--rpcpassword to be sent to a\n"
+"                            public address in the clear. Refused without it,\n"
+"                            because the header is base64 of user:password\n"
+"                            and it opens every wallet RPC on that node. A\n"
+"                            node on this machine needs none of this: the\n"
+"                            cookie is read from disk.\n"
 "        --network <net>     mainnet (default), testnet or regtest\n"
 "        --blocks <n>        exit once n blocks have been accepted. Meant for\n"
 "                            testing on regtest; without it the miner runs\n"
@@ -855,6 +872,7 @@ bool ParseOptions(int argc, char** argv, Options& opt, std::string& err)
         else if (a == "--rpcuser")     { const char* v = needsValue(i, "--rpcuser");     if (!v) return false; opt.rpcUser = v; }
         else if (a == "--rpcpassword") { const char* v = needsValue(i, "--rpcpassword"); if (!v) return false; opt.rpcPass = v; }
         else if (a == "--rpccookie")   { const char* v = needsValue(i, "--rpccookie");   if (!v) return false; opt.rpcCookie = v; }
+        else if (a == "--insecure-rpc") { opt.insecureRpc = true; }
         else if (a == "--network") {
             const char* v = needsValue(i, "--network");
             if (!v) return false;
@@ -881,7 +899,39 @@ bool ParseOptions(int argc, char** argv, Options& opt, std::string& err)
 
             std::string url = v;
             const size_t scheme = url.find("://");
-            if (scheme != std::string::npos) url = url.substr(scheme + 3);
+            if (scheme != std::string::npos) {
+                // A SCHEME THAT PROMISES TLS IS NOT A SCHEME TO DISCARD.
+                //
+                // This stripped whatever was in front of :// and connected in
+                // cleartext, so `-o stratum+ssl://pool.wamcoin.org:3336` --
+                // the pool's real TLS port, the thing a careful operator
+                // types -- opened a plaintext socket to it. The connection
+                // then fails somewhere unhelpful, and if it had not failed it
+                // would have been a silent downgrade.
+                std::string proto;
+                for (size_t k = 0; k < scheme; ++k) {
+                    proto += (char)std::tolower((unsigned char)url[k]);
+                }
+                if (proto.find("ssl") != std::string::npos ||
+                    proto.find("tls") != std::string::npos ||
+                    proto == "https") {
+                    err = "this miner speaks no TLS, so " + proto + ":// cannot "
+                          "be honoured and will not be silently downgraded.\n"
+                          "        Terminate TLS beside the miner and point it "
+                          "at the local end:\n"
+                          "          stunnel3 -c -d 127.0.0.1:3333 -r "
+                          "pool.wamcoin.org:3336\n"
+                          "          wam-miner -o stratum+tcp://127.0.0.1:3333 "
+                          "-u <your address>\n"
+                          "        or, with socat:\n"
+                          "          socat TCP-LISTEN:3333,fork,bind=127.0.0.1 "
+                          "OPENSSL:pool.wamcoin.org:3336\n"
+                          "        Native TLS in the miner is open work; see "
+                          "miner/README.md.";
+                    return false;
+                }
+                url = url.substr(scheme + 3);
+            }
 
             const size_t colon = url.rfind(':');
             if (colon == std::string::npos) {
@@ -1296,6 +1346,65 @@ int Run(int argc, char** argv)
             "       Pass -u <your WAM address>. Without it the pool has no way\n"
             "       to pay you, and will refuse the connection.\n");
         return 2;
+    }
+
+    // ---- what is about to cross the wire in the clear ---------------------
+    //
+    // See ClassifyHost. A password is refused and a template is warned about,
+    // and the difference is what each costs when it goes wrong: a warning
+    // scrolls past, and a password does not come back.
+    if (opt.solo) {
+        const wam::HostKind where = wam::ClassifyHost(opt.rpcHost);
+        const bool sendsPassword = !opt.rpcPass.empty() || !opt.rpcUser.empty();
+        if (sendsPassword && where == wam::HostKind::Public && !opt.insecureRpc) {
+            std::fprintf(stderr,
+                "error: --rpcuser/--rpcpassword would be sent to %s in the "
+                "clear.\n"
+                "       This miner has no TLS, so the Authorization header is "
+                "base64\n"
+                "       of user:password -- readable by anyone on the path, and "
+                "it opens\n"
+                "       the node's whole RPC surface, wallet RPCs included.\n"
+                "\n"
+                "       Mine against a node on this machine (the default, and "
+                "it uses the\n"
+                "       cookie file, so no password crosses anything):\n"
+                "         wam-miner --solo -u <your address>\n"
+                "\n"
+                "       Or forward the port over ssh and keep talking to "
+                "localhost:\n"
+                "         ssh -N -L 9554:127.0.0.1:9554 you@%s\n"
+                "         wam-miner --solo --rpc 127.0.0.1:9554 -u <your "
+                "address>\n"
+                "\n"
+                "       --insecure-rpc overrides this if you have decided the "
+                "path is\n"
+                "       yours. Nothing else about the request changes.\n",
+                opt.rpcHost.c_str(), opt.rpcHost.c_str());
+            return 2;
+        }
+        if (sendsPassword && where == wam::HostKind::Private) {
+            Warn("the RPC password goes to " + opt.rpcHost + " unencrypted; "
+                 "anyone on that network can read it and use it");
+        }
+        if (sendsPassword && where == wam::HostKind::Public && opt.insecureRpc) {
+            Warn("--insecure-rpc: the RPC password goes to " + opt.rpcHost +
+                 " in base64 over plain HTTP, across a public network");
+        }
+    } else {
+        const wam::HostKind where = wam::ClassifyHost(opt.host);
+        if (where != wam::HostKind::Loopback) {
+            Warn("this connection is plaintext stratum. Anyone on the path can "
+                 "replace the");
+            Warn("  block template, and then your hashrate pays their address "
+                 "while every");
+            Warn("  share still reports as accepted. The pool offers TLS on "
+                 "3336; terminate");
+            Warn("  it beside the miner (stunnel or socat) and point -o at "
+                 "127.0.0.1.");
+            Warn("  miner/README.md has the two commands. Native TLS in the "
+                 "miner is open work.");
+        }
     }
 
     // -----------------------------------------------------------------------

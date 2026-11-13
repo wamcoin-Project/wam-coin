@@ -62,6 +62,50 @@ GENESIS_PREMINE = 2_000_000 * COIN
 GENESIS_PHRASE = "WAM Network Launching Next Generation Decentralized Economy 2026"
 RANDOMX_BOOTSTRAP_KEY = b"WAM/RandomX/epoch-0/2026"
 
+
+# THE NODE HASHES THIS STRING. THIS FILE USED TO FEED IT RAW.
+#
+# wam::GetRandomXBootstrapSeed() is SHA256 of the 24 characters above -- 32
+# bytes -- and pool/lib/randomxSeed.js does the same. This generator passed
+# the 24 bytes themselves straight into RandomXContext, so it mined against a
+# key no node and no pool ever uses.
+#
+# Measured on 13 November 2026 with the committed mainnet header rebuilt from
+# src/wam/chainparams.cpp (nTime 1789430400, nBits 0x1e0ffff0, nNonce
+# 1264205, the merkle root matching the assert byte for byte):
+#
+#   under SHA256(phrase), the node's key : 6a100fd40710e589...  > target
+#   under the raw phrase, this file's key : 000007d3483f0c5f... <= target
+#
+# So the committed genesis nonce satisfies proof of work under this file's old
+# key and NOT under the key the network derives. Nothing broke, because
+# nothing verifies the genesis block's proof of work -- LoadGenesisBlock
+# accepts it as the root of the chain by definition, which is why mainnet has
+# run since 15 September without noticing. It is not a vulnerability; it is
+# that the one block nobody checks was mined against the wrong key.
+#
+# wam-params.h said this constant was "mirrored in genesis_generator.py" and
+# that verify_supply.py --check-constants asserted all three agreed. The
+# string was mirrored. The derivation was not, and --check-constants compared
+# string literals, so it could never have seen this.
+#
+# What changes: this file now derives the key the way the node does, so any
+# genesis mined from here is valid under the rule the network applies.
+# --legacy-bootstrap-key reproduces the historical derivation, because the
+# committed mainnet and testnet nonces came from it and an auditor has to be
+# able to arrive at the same numbers.
+def bootstrap_seed(legacy: bool = False) -> bytes:
+    """The RandomX key for epoch 0, as the node derives it.
+
+    Mirrors wam::GetRandomXBootstrapSeed() and the BOOTSTRAP_SEED in
+    pool/lib/randomxSeed.js. scripts/verify_supply.py --check-constants
+    compares the three DERIVATIONS now, by computing each one, rather than
+    comparing the string they all start from.
+    """
+    if legacy:
+        return RANDOMX_BOOTSTRAP_KEY
+    return hashlib.sha256(RANDOMX_BOOTSTRAP_KEY).digest()
+
 # Launch: 2026-09-15 00:00:00 UTC. Mirrors WAM_GENESIS_TIME in wam-params.h.
 GENESIS_TIME = 1789430400
 
@@ -464,6 +508,14 @@ def main() -> int:
                     help="write the mined values straight into chainparams.cpp")
     ap.add_argument("--json", metavar="FILE", default=None,
                     help="also write the full result as JSON")
+    ap.add_argument("--legacy-bootstrap-key", action="store_true",
+                    help="mine against the raw 24-byte phrase instead of "
+                         "SHA256 of it. This is what this script did until "
+                         "2026-11-13 and is the key the committed mainnet "
+                         "and testnet genesis nonces were found under, so it "
+                         "is how an auditor reproduces them. A genesis mined "
+                         "this way does NOT satisfy proof of work under the "
+                         "key the node derives.")
     ap.add_argument("--quiet", action="store_true")
     args = ap.parse_args()
 
@@ -503,6 +555,9 @@ def main() -> int:
     header_prefix = serialize_header(1, b"\x00" * 32, merkle, n_time, n_bits, 0)[:76]
     target = compact_to_target(n_bits)
 
+    # The key this run mines against, decided once.
+    seed = bootstrap_seed(args.legacy_bootstrap_key)
+
     if not args.quiet:
         print("=" * 74)
         print(f" WAM Coin genesis generator -- {args.network}")
@@ -524,7 +579,9 @@ def main() -> int:
         print(f"  nBits         : 0x{n_bits:08x}")
         print(f"  target        : {target:064x}")
         print(f"  merkle root   : {merkle[::-1].hex()}")
-        print(f"  randomx key   : {RANDOMX_BOOTSTRAP_KEY.decode()}")
+        print(f"  randomx phrase: {RANDOMX_BOOTSTRAP_KEY.decode()}")
+        print(f"  randomx key   : {seed.hex()}"
+              f"{'  (LEGACY: the raw phrase, not SHA256 of it)' if args.legacy_bootstrap_key else '  = SHA256(phrase), as the node derives it'}")
         print(f"  expected work : ~{(1 << 256) // max(target, 1):,} hashes")
         print(f"  threads       : {threads}   mode: "
               f"{'light (cache)' if args.light else 'full (2 GiB dataset)'}")
@@ -533,7 +590,7 @@ def main() -> int:
     # ---- mine ------------------------------------------------------------
     started = time.time()
     try:
-        with RandomXContext(RANDOMX_BOOTSTRAP_KEY, full_mem=not args.light,
+        with RandomXContext(seed, full_mem=not args.light,
                             threads=threads, verbose=not args.quiet) as ctx:
             nonce, pow_hash, tried = mine(header_prefix, target, ctx, threads, args.quiet)
     except RandomXError as exc:

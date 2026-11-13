@@ -115,6 +115,45 @@ def declared():
 
 CHAIN_FIELD = {"mainnet": "main", "testnet": "test", "regtest": "regtest"}
 
+# The class each network is defined in, as declared() finds them.
+_CLASS_OF = {"mainnet": "CMainParams", "testnet": "CTestNetParams",
+             "regtest": "CRegTestParams"}
+
+
+def _powlimit_work(network):
+    """Hashes per header at the difficulty floor, or None if it cannot be read.
+
+    Read out of chainparams rather than written down here, so a change to
+    powLimit moves the arithmetic with it. nBits is in compact form:
+
+        target = mantissa * 256^(exponent - 3)
+        work   = 2^256 / (target + 1)
+    """
+    text = _read(CHAINPARAMS)
+    marks = [(m.start(), m.group(1)) for m in
+             re.finditer(r"^class (\w+Params)\s*:", text, re.M)]
+    if not marks:
+        return None
+    marks.append((len(text), None))
+    want_class = _CLASS_OF.get(network)
+    for (start, cls), (end, _) in zip(marks, marks[1:]):
+        if cls != want_class:
+            continue
+        m = re.search(r"powLimit\s*=\s*uint256S?\(\s*\"(?:0x)?([0-9a-fA-F]+)\"",
+                      text[start:end])
+        if m:
+            target = int(m.group(1), 16)
+            return (1 << 256) // (target + 1) if target else None
+        m = re.search(r"nBits[^=\n]*=\s*(0x[0-9a-fA-F]+)", text[start:end])
+        if m:
+            bits = int(m.group(1), 16)
+            size = bits >> 24
+            word = bits & 0x007fffff
+            target = word >> (8 * (3 - size)) if size <= 3 \
+                else word << (8 * (size - 3))
+            return (1 << 256) // (target + 1) if target else None
+    return None
+
 
 def node(network, host):
     """(height, chainwork) from a node ON THAT NETWORK, or None, or "wrong".
@@ -239,6 +278,40 @@ def main():
         warn("less than 1% of margin -- close enough to the tip that a short "
              "stall could\n        leave a new node waiting. Move it further back "
              "at the next release.")
+
+    # AND THE OTHER DIRECTION OF STALENESS, WHICH NOTHING WAS SAYING.
+    #
+    # This warned when the floor was too CLOSE to the tip, because that stops
+    # new nodes syncing, and said nothing at all when it fell far behind. The
+    # mainnet value was set from block 936 and was still there at 40,952 --
+    # 11.6 times below the chain's work -- and that ratio is the price of
+    # spamming a syncing node.
+    #
+    # WAM cannot run upstream's cheap presync filter: HasValidProofOfWork
+    # hashes with RandomX, whose key comes from a buried block, and a
+    # presynced header has no position in the chain yet. So a peer's CLAIMED
+    # work is taken on trust during presync, and this floor is the only thing
+    # that prices it. Measured on 13 November 2026: 7,000 fabricated testnet
+    # headers served twice, 1.1 MB in about a second, for zero attacker proof
+    # of work.
+    #
+    # Work per header at the difficulty floor is 2^256 / target. The powLimit
+    # target is read out of chainparams rather than assumed, so a change to
+    # it moves this with it.
+    per_header = _powlimit_work(args.network)
+    if per_header:
+        headers = want // per_header
+        print(f"        a fabricated chain at powLimit needs {headers:,} headers "
+              f"to reach it")
+        print(f"        ({headers * 80 * 2 / 1e6:,.0f} MB, served twice: presync "
+              f"then redownload)")
+        if want * 2 < work:
+            warn(f"the floor is {work / want:.1f}x below the live chain's work. "
+                 f"It is not\n        wrong, it has gone stale -- and a stale "
+                 f"floor is exactly how cheap\n        presync spam gets. Raise "
+                 f"it from a block a few days behind the tip:\n"
+                 f"            wam-cli getblockhash {max(0, height - 3000)}\n"
+                 f"            wam-cli getblockheader <that hash> | grep chainwork")
     print()
     print(f"  {GRN}{BLD}a new node cannot be walked onto a cheaper history{OFF}\n")
     return 0

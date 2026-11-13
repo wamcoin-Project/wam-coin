@@ -79,7 +79,7 @@ fi
 OUT="${MINER_TEST_OUT:-$(mktemp -d)}"
 mkdir -p "$OUT"
 
-TESTS=(address_test solo_template_test stratum_hostile_test)
+TESTS=(address_test plaintext_test solo_template_test stratum_hostile_test)
 
 printf '\n%s  the miner'"'"'s unit tests%s\n\n' "$BLD" "$OFF"
 
@@ -113,9 +113,97 @@ for t in "${TESTS[@]}"; do
     fi
 done
 
+# ---------------------------------------------------------------------------
+# AND THE POLICY, NOT ONLY THE CLASSIFIER.
+#
+# plaintext_test covers ClassifyHost exhaustively. What it cannot reach is
+# what main() DOES with the answer, and that is the part the report is about:
+# stratum+ssl:// must be refused rather than downgraded, and an RPC password
+# must not be sent to a public address. Both live in main(), so both are
+# checked by running the binary -- and so are the two cases that must only
+# WARN, because refusing those would break people mining today.
+#
+# Reported 13 November 2026 (M-1, M-2).
+printf '\n%s  and what the miner does about it%s\n\n' "$BLD" "$OFF"
+
+# A BINARY THAT IS HERE IS NOT A BINARY THAT RUNS HERE.
+#
+# The first version ran it straight away and read a failure to start as a
+# failure of the miner. On Windows this is reached through the re-exec at the
+# top, and `wsl.exe -e bash -c` lands in the DEFAULT distribution while the
+# node and the miner are built in Ubuntu-24.04. The binary then stops at
+#
+#     ./miner/wam-miner: /lib/x86_64-linux-gnu/libc.so.6:
+#     version `GLIBC_2.38' not found
+#
+# and all four checks below were reported as defects in the miner. It is this
+# project's own rule in the other direction: a check that could not run is not
+# a pass, and it is not a failure either. It says which, and exits 2.
+policy_unchecked=""
+if [ ! -x miner/wam-miner ]; then
+    policy_unchecked="miner/wam-miner is not built -- bash miner/build.sh"
+elif ! ./miner/wam-miner --help >/dev/null 2>&1; then
+    why="$(./miner/wam-miner --help 2>&1 | head -1)"
+    policy_unchecked="miner/wam-miner will not run in this shell: ${why:-unknown error}"
+fi
+
+if [ -z "$policy_unchecked" ]; then
+    ADDR=WdMMqW1DcgWZ6HtyJuEMdce6QkKg4raGmE
+
+    out="$(./miner/wam-miner -o stratum+ssl://pool.wamcoin.org:3336 -u "$ADDR" 2>&1)"
+    rc=$?
+    if [ "$rc" -eq 2 ] && printf '%s' "$out" | grep -q "speaks no TLS"; then
+        printf '  %sok%s    stratum+ssl:// is refused, not downgraded\n' "$GRN" "$OFF"
+    else
+        printf '  %sFAIL%s  stratum+ssl:// did not refuse (exit %s)\n' "$RED" "$OFF" "$rc"
+        printf '          a scheme asking for TLS was discarded, so the miner\n'
+        printf '          opened a cleartext socket to the pool TLS port\n'
+        failed=$((failed + 1))
+    fi
+
+    out="$(./miner/wam-miner --solo --rpc 203.0.113.9:9554 --rpcuser u \
+                             --rpcpassword p -u "$ADDR" 2>&1)"
+    rc=$?
+    if [ "$rc" -eq 2 ] && printf '%s' "$out" | grep -q "in the clear"; then
+        printf '  %sok%s    an RPC password is refused to a public address\n' "$GRN" "$OFF"
+    else
+        printf '  %sFAIL%s  the RPC password was not refused (exit %s)\n' "$RED" "$OFF" "$rc"
+        printf '          base64 of user:password, over plain HTTP, to a routable\n'
+        printf '          address, opening every wallet RPC on that node\n'
+        failed=$((failed + 1))
+    fi
+
+    for args in "-o stratum+tcp://pool.wamcoin.org:3333 -u $ADDR" \
+                "--solo --rpc 192.168.1.10:9554 --rpcuser u --rpcpassword p -u $ADDR"; do
+        # shellcheck disable=SC2086
+        out="$(timeout 8 ./miner/wam-miner $args 2>&1)"
+        rc=$?
+        if [ "$rc" -eq 2 ]; then
+            printf '  %sFAIL%s  refused what it must only warn about:\n' "$RED" "$OFF"
+            printf '          %s\n' "${args%% -u*}"
+            failed=$((failed + 1))
+        elif printf '%s' "$out" | grep -qi "warn"; then
+            printf '  %sok%s    warns without refusing: %s\n' \
+                   "$GRN" "$OFF" "${args%% -u*}"
+        else
+            printf '  %sFAIL%s  no warning at all for:\n' "$RED" "$OFF"
+            printf '          %s\n' "${args%% -u*}"
+            failed=$((failed + 1))
+        fi
+    done
+else
+    printf '  %s!!%s    the refusals were not checked at all\n' "$YLW" "$OFF"
+    printf '          %s\n' "$policy_unchecked"
+fi
+
 printf '\n'
+if [ "$failed" -eq 0 ] && [ -n "$policy_unchecked" ]; then
+    printf '%s%s  %s test program(s) passed; the refusals could not be checked%s\n\n' \
+           "$YLW" "$BLD" "${#TESTS[@]}" "$OFF"
+    exit 2
+fi
 if [ "$failed" -eq 0 ]; then
-    printf '%s%s  all %s miner test program(s) passed%s\n\n' \
+    printf '%s%s  all %s miner test program(s) passed, and both refusals hold%s\n\n' \
            "$GRN" "$BLD" "${#TESTS[@]}" "$OFF"
     exit 0
 fi

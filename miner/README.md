@@ -87,9 +87,39 @@ wam-miner -o stratum+tcp://veinpool.fr:3310 -u <your WAM address>.livingroom
 
 (use port `3311` for servers: higher starting difficulty)
 
+### Plain stratum is not only unencrypted
+
+**This miner has no TLS.** Every connection above is cleartext, and the risk is
+not somebody reading your shares — it is somebody **replacing the block
+template**. Then your whole hashrate mines to their address and every share
+still comes back accepted, from your miner's point of view and from yours. It
+needs a position on the path: a shared network, a hotel or café, an ISP, a
+router somebody else administers.
+
+The miner says so on every start-up against a non-local pool, and
+`stratum+ssl://` is **refused** rather than quietly downgraded, because a
+cleartext socket to a TLS port is the worst of both.
+
+`pool.wamcoin.org` offers TLS on **3336**. Terminate it beside the miner and
+point the miner at the local end:
+
+```bash
+# one of these, then leave it running
+stunnel3 -c -d 127.0.0.1:3333 -r pool.wamcoin.org:3336
+socat TCP-LISTEN:3333,fork,bind=127.0.0.1 OPENSSL:pool.wamcoin.org:3336
+
+wam-miner -o stratum+tcp://127.0.0.1:3333 -u <your WAM address>
+```
+
+Native TLS in the miner is open work. It means linking libssl into a binary
+that is deliberately one translation unit, one `g++` call and one static
+library, and it has to keep building for Linux, Windows through mingw, macOS
+and Android — so it gets a release of its own with all four builds behind it
+rather than riding along with something else. Reported 13 November 2026.
+
 | Option | Meaning |
 | --- | --- |
-| `-o, --url` | pool host and port; `stratum+tcp://` is optional |
+| `-o, --url` | pool host and port; `stratum+tcp://` is optional. `stratum+ssl://` is refused — see above |
 | `-u, --user` | the WAM address you want to be paid at, optionally `.worker` |
 | `-p, --pass` | pool password; most pools ignore it |
 | `-t, --threads` | mining threads (default: every core but one) |
@@ -134,15 +164,37 @@ this before a single hash was computed.
 | `--rpc <host:port>` | the node's RPC address. Left out, the port follows `--network`: 9554, 19554, 29554 |
 | `--rpcuser`, `--rpcpassword` | credentials from `wam.conf`. Omit both and the node's `.cookie` is read |
 | `--rpccookie <path>` | where that cookie is, if not the default |
+| `--insecure-rpc` | allow the password to go to a public address in the clear. Refused without it |
 | `--blocks <n>` | exit after n accepted blocks. For testing; a miner does not want it |
 
-If the node is on another machine, say so — and remember its RPC has to be
-reachable from this one:
+If the node is on another machine, **forward the port rather than sending the
+password across the network.** This miner has no TLS, so `--rpcuser` and
+`--rpcpassword` travel as base64 of `user:password` in a plain HTTP header —
+readable by anyone on the path, and that one credential opens the node's whole
+RPC surface, every wallet call included.
 
 ```bash
-wam-miner --solo -u <address> -t 4 --rpc 192.168.1.10:9554 \
-          --rpcuser USER --rpcpassword PASSWORD
+ssh -N -L 9554:127.0.0.1:9554 you@192.168.1.10
+wam-miner --solo -u <address> -t 4 --rpc 127.0.0.1:9554
 ```
+
+The tunnel is encrypted and the miner is talking to localhost, so no password
+crosses anything: it reads the node's `.cookie` through the forwarded port.
+
+Sending the password to a **public** address is refused outright, and
+`--insecure-rpc` overrides that if you have decided the path is yours. Sending
+it across a **LAN** warns and continues, because that is what this page used to
+recommend and people are doing it today:
+
+```bash
+wam-miner --solo -u <address> --rpc 192.168.1.10:9554 \
+          --rpcuser USER --rpcpassword PASSWORD
+# warn  the RPC password goes to 192.168.1.10 unencrypted; anyone on that
+#       network can read it and use it
+```
+
+This page showed that last command as *the* way to do it, with nothing said
+about what it costs, until 13 November 2026.
 
 **Every block found this way is a separate finder in the chain's own
 records**, where everyone in one pool counts as one however many people are

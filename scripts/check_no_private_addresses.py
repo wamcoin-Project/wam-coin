@@ -79,7 +79,7 @@ IPV4 = re.compile(r"(?<![\w.])(\d{1,3}(?:\.\d{1,3}){3})(?![\w.])")
 #
 # share/examples/wam.conf is produced by scripts/gen_wam_conf.sh out of the
 # node's own --help, which is Bitcoin Core's option help with our names in
-# it. Its `1.2.3.4` examples are upstream's, they describe the syntax of
+# it. Its placeholder examples are upstream's, they describe the syntax of
 # -whitelist and -rpcallowip, and editing them here would make the file
 # disagree with the binary it is generated from -- which
 # scripts/check_example_conf.py exists to catch.
