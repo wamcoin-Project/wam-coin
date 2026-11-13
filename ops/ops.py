@@ -182,10 +182,27 @@ def rsh(host, cmd, timeout=45, tries=2):
     return last
 
 
+
+# The mainnet peer-to-peer port. RPC is this minus one, by WAM's own rule, and
+# the RPC port is not open to anyone -- so this is the port that proves a node
+# is serving the network rather than merely booted.
+P2P_PORT = 9555
+
+
+def _port_answers(host, port, timeout=8):
+    """True if something accepts a TCP connection there. No bytes are sent."""
+    import socket
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
+    except OSError:
+        return False
+
+
 def _rsh_once(host, cmd, timeout):
     try:
         p = subprocess.run(
-            ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10",
+            ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=20",
              "-o", "StrictHostKeyChecking=accept-new", f"root@{host}",
              "bash -s"],
             input=cmd.encode("utf-8"), capture_output=True, timeout=timeout)
@@ -320,8 +337,27 @@ echo "###end"
     # and ran the script to the end; whatever else went wrong belongs in the
     # fields, not in a verdict about the host being gone.
     if "###end" not in out:
-        return {"name": name, "ip": ip, "reachable": False, "checked": now,
-                "why": (out or "no answer").strip()[:200]}
+        # SSH IS NOT THE MACHINE, AND A CLOSED DOOR IS NOT AN EMPTY HOUSE.
+        #
+        # On 13 November this card read "Singapore unreachable -- Connection
+        # timed out during banner exchange", twice, while the host was up 72
+        # days at load 0.00, its node at the same height as the others and
+        # carrying 39 peers, and ssh from the same laptop answered in under a
+        # second. "banner exchange" means the TCP connection WAS made and the
+        # server had not finished saying hello -- a busy sshd or a slow path,
+        # which is the one case where the panel already holds evidence that
+        # the machine is alive and throws it away.
+        #
+        # So before the loudest word on the page is used, the node's own port
+        # is asked. If it answers, the machine is there and what failed is the
+        # way in. That is a different sentence and it sends a person to a
+        # different place.
+        serving = _port_answers(ip, P2P_PORT)
+        return {"name": name, "ip": ip, "reachable": False,
+                "serving": serving, "checked": now,
+                "why": (("ssh did not answer, and the node's port %d is open "
+                         "-- the machine is there: " % P2P_PORT) + (out or "no answer").strip()
+                        if serving else (out or "no answer").strip())[:220]}
     # It answered. Keep whatever fields came back, and note separately that
     # part of the collection failed -- shown as a warning on the card, not as
     # a dead host and not swallowed into a green one.

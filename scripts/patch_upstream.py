@@ -1777,6 +1777,94 @@ MAGIC_BYTES = {
 
     # -----------------------------------------------------------------------
     changes.append(Change(
+        id="WAM-028",
+        title="The unit-test fixtures must mine WAM blocks, not Bitcoin ones",
+        rationale=("Every upstream fixture that needs a chain mines it with a "
+                   "one-line loop over the block id and SHA256d. That loop "
+                   "cannot terminate here, so the fixture aborted in its "
+                   "constructor and seventeen suites could never run."),
+        edits=[
+            Edit(
+                file="src/test/util/setup_common.cpp",
+                description="include the WAM proof-of-work header",
+                marker="#include <wam/pow.h>",
+                anchor="#include <pow.h>\n",
+                replacement="#include <pow.h>\n#include <wam/pow.h>\n"),
+            Edit(
+                file="src/test/util/setup_common.cpp",
+                description="mine the fixture's blocks with RandomX",
+                marker="WAM_TEST_FIXTURE_MINES_RANDOMX",
+                anchor=(
+                    "    while (!CheckProofOfWork(block.GetHash(), block.nBits, "
+                    "m_node.chainman->GetConsensus())) ++block.nNonce;"),
+                replacement=(
+                    "    // WAM_TEST_FIXTURE_MINES_RANDOMX\n"
+                    "    //\n"
+                    "    // Bitcoin's proof of work is SHA256d of the block id, so this loop\n"
+                    "    // found a nonce in microseconds. WAM's is RandomX over the 80-byte\n"
+                    "    // header, keyed by a buried block's hash -- the block id is not the\n"
+                    "    // proof -- so the loop never succeeded, the chain never advanced,\n"
+                    "    // and every fixture needing a chain aborted in its constructor.\n"
+                    "    wam::GrindProofOfWork(block, WITH_LOCK(::cs_main, return chainstate.m_chain.Tip()),\n"
+                    "                          m_node.chainman->GetConsensus());"),
+            ),
+            Edit(
+                file="src/test/util/setup_common.cpp",
+                description="the hundredth block is ours, not Bitcoin's",
+                marker="WAM_TEST_FIXTURE_CHAIN_IS_OURS",
+                anchor=(
+                    "        assert(\n"
+                    "            m_node.chainman->ActiveChain().Tip()->GetBlockHash().ToString() ==\n"
+                    "            \"571d80a9967ae599cec0448b0b0ba1cfb606f584d8069bd7166b86854ba7a191\");"),
+                replacement=(
+                    "        // WAM_TEST_FIXTURE_CHAIN_IS_OURS\n"
+                    "        //\n"
+                    "        // Upstream asserts the exact hash this fixture's hundredth block\n"
+                    "        // has on Bitcoin's regtest. It cannot hold here and is not meant\n"
+                    "        // to: a different genesis, a coinbase carrying the treasury\n"
+                    "        // output, and RandomX instead of SHA256d all change it. What the\n"
+                    "        // assert is FOR is that the fixture really built the chain it\n"
+                    "        // promises, and that survives.\n"
+                    "        assert(m_node.chainman->ActiveChain().Height() == COINBASE_MATURITY);\n"
+                    "        assert(m_node.chainman->ActiveChain().Tip() != nullptr);"),
+            ),
+            Edit(
+                file="src/test/peerman_tests.cpp",
+                description="include the WAM proof-of-work header",
+                marker="#include <wam/pow.h>",
+                anchor="#include <validation.h>\n",
+                replacement="#include <validation.h>\n#include <wam/pow.h>\n"),
+            Edit(
+                file="src/test/peerman_tests.cpp",
+                description="mine peerman's block with RandomX",
+                marker="wam::GrindProofOfWork",
+                anchor=(
+                    "    while (!CheckProofOfWork(block.GetHash(), block.nBits, "
+                    "node.chainman->GetConsensus())) ++block.nNonce;"),
+                replacement=(
+                    "    wam::GrindProofOfWork(block, WITH_LOCK(::cs_main, return node.chainman->ActiveChain().Tip()),\n"
+                    "                          node.chainman->GetConsensus());"),
+            ),
+            Edit(
+                file="src/test/blockfilter_index_tests.cpp",
+                description="include the WAM proof-of-work header",
+                marker="#include <wam/pow.h>",
+                anchor="#include <validation.h>\n",
+                replacement="#include <validation.h>\n#include <wam/pow.h>\n"),
+            Edit(
+                file="src/test/blockfilter_index_tests.cpp",
+                description="mine the filter index test's block with RandomX",
+                marker="wam::GrindProofOfWork",
+                anchor=(
+                    "    while (!CheckProofOfWork(block.GetHash(), block.nBits, "
+                    "m_node.chainman->GetConsensus())) ++block.nNonce;"),
+                replacement=(
+                    "    wam::GrindProofOfWork(block, prev, m_node.chainman->GetConsensus());"),
+            ),
+        ]))
+
+    # -----------------------------------------------------------------------
+    changes.append(Change(
         id="WAM-008",
         title="Mark where the binary names will be renamed (NOT YET DONE)",
         rationale=("This change set does NOT rename anything. It inserts a marker "

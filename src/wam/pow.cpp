@@ -8,6 +8,7 @@
 #include <consensus/params.h>
 #include <primitives/block.h>
 #include <uint256.h>
+#include <wam/crypto/randomx_hash.h>
 #include <wam/wam-params.h>
 
 #include <cassert>
@@ -116,6 +117,18 @@ bool CheckProofOfWork(const uint256& hash, unsigned int nBits, const Consensus::
     // would silently accept every block -- the call sites are the integration
     // point that patches/0002 rewires.
     return UintToArith256(hash) <= bnTarget;
+}
+
+void GrindProofOfWork(CBlockHeader& header, const CBlockIndex* pindexPrev,
+                      const Consensus::Params& params)
+{
+    const uint256 seed = GetRandomXSeedHash(pindexPrev, params);
+    while (!CheckProofOfWork(GetRandomXPoWHash(header, seed), header.nBits, params)) {
+        ++header.nNonce;
+        // A wrap means the whole 32-bit space failed, which on a test chain
+        // means the target is wrong rather than the search unlucky.
+        assert(header.nNonce != 0);
+    }
 }
 
 } // namespace wam
