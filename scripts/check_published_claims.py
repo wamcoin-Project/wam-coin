@@ -43,6 +43,7 @@ from __future__ import annotations
 
 import pathlib
 import re
+import subprocess
 import sys
 
 import pathlib as _pathlib
@@ -397,6 +398,65 @@ def main() -> int:
     PAYOUT_WORDS = re.compile(
         r"\b(fee|payout|threshold|minimum|scheme|PPLNS|PROP|SOLO)\b", re.I)
 
+    # WE DO NOT STATE ANOTHER OPERATOR'S NUMBERS. HE STATES HIS OWN.
+    #
+    # That is the rule, and the rule has always had two halves. The half this
+    # check knew was the first: a fee or a payout rule written by US beside
+    # somebody else's address is a promise we cannot keep, because it is his
+    # to change and ours to go stale. The half it did not know is that a line
+    # the operator wrote HIMSELF, and sent as a merge request under his own
+    # name, is not us speaking about him at all. It is his statement, carried
+    # here. If he changes his fee he opens another request, exactly as he
+    # opened the first.
+    #
+    # The repository already records which of the two a line is, and it does
+    # not depend on anybody remembering: git blame names the author. A line
+    # authored by this project is held to the rule. A line authored by
+    # anybody else is his own, and is left alone.
+    #
+    # This was a red gate on 13 November 2026 over the VSLabs row in
+    # docs/MINE.md, submitted by its operator with his fee in it. I asked
+    # which way to resolve it; I had been told twice already and asked a
+    # third time. The answer was never a judgement call -- it was this
+    # distinction, which nothing had been taught to make.
+    PROJECT_AUTHOR = "wamcoin.core@gmail.com"
+
+    # A GENERATED PAGE HAS NO AUTHOR OF ITS OWN.
+    #
+    # site/mine/index.html is written by scripts/build_pages.py out of
+    # docs/MINE.md, so every line in it is authored by whoever ran the
+    # generator -- us, always. Blaming it would hold the operator's own row
+    # against us the moment it is committed, and would have passed it a
+    # moment earlier while it was still uncommitted, which is two wrong
+    # answers from one question. The authority for a generated line is the
+    # line it was generated from.
+    GENERATED_FROM = {"site/mine/index.html": "docs/MINE.md"}
+    operator_stated = {}        # (endpoint, number) -> author, from the sources
+
+    def author_of(rel, lineno):
+        """The email that last wrote this line, or None if it cannot be read.
+
+        None is not an answer. A release tarball has no git history, a line
+        that is not committed yet has no author, and a check that cannot
+        tell whose line it is must say what it saw rather than wave it
+        through.
+        """
+        try:
+            out = subprocess.run(
+                ["git", "blame", "-L", f"{lineno},{lineno}", "--porcelain",
+                 "--", rel],
+                cwd=ROOT, capture_output=True, text=True, timeout=30)
+        except (OSError, subprocess.SubprocessError):
+            return None
+        if out.returncode != 0:
+            return None
+        for ln in out.stdout.splitlines():
+            if ln.startswith("author-mail "):
+                who = ln[len("author-mail "):].strip("<> \t")
+                # git's sentinel for a working-tree line nobody has committed.
+                return None if who == "not.committed.yet" else who
+        return None
+
     for rel, opens, closes in WHICH_POOL:
         path = ROOT / rel
         if not path.is_file():
@@ -420,13 +480,35 @@ def main() -> int:
             for pat, what in A_NUMBER:
                 hit = pat.search(line)
                 if hit:
+                    key = (beside.group(0), hit.group(0).strip())
+                    source = GENERATED_FROM.get(rel)
+                    if source:
+                        who = operator_stated.get(key)
+                        whence = f"{who} wrote it in {source}" if who else None
+                    else:
+                        who = author_of(rel, first + j)
+                        if who and who != PROJECT_AUTHOR:
+                            operator_stated[key] = who
+                        whence = f"{who} wrote that line" if who else None
+                    if who and who != PROJECT_AUTHOR:
+                        warn(f"{rel}:{first + j} states {what} "
+                             f"({hit.group(0).strip()}) beside "
+                             f"\"{beside.group(0)}\", and {whence}. It is the "
+                             f"operator's own statement, carried here, not "
+                             f"ours about him.")
+                        break
+                    where = ("" if who else
+                             (" (its source line is not the operator's)"
+                              if source else
+                              " (whose line it is could not be read: no git "
+                              "history, or it is not committed yet)"))
                     bad(f"{rel}:{first + j} puts {what} "
                         f"({hit.group(0).strip()}) beside "
-                        f"\"{beside.group(0)}\" in the pool list. That block "
-                        f"carries where to dial a pool and nothing else. A "
-                        f"fee, a scheme or a payout rule is the operator's to "
-                        f"state on their own page -- the page that changes "
-                        f"when they change it.")
+                        f"\"{beside.group(0)}\" in the pool list{where}. That "
+                        f"block carries where to dial a pool and nothing "
+                        f"else. A fee, a scheme or a payout rule is the "
+                        f"operator's to state on their own page -- the page "
+                        f"that changes when they change it.")
                     break
 
     # ---- report ------------------------------------------------------------
