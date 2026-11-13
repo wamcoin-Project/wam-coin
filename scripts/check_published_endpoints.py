@@ -334,19 +334,46 @@ def tls(host, port):
     failure here and not a note. An expired certificate never reaches the
     expiry arithmetic below -- the handshake itself refuses it, which is the
     point."""
+    # THE RETRY COVERED THE DIAL AND NOT THE HANDSHAKE.
+    #
+    # _connect tries three times, because a packet lost on the way to a seed
+    # is not a seed that is down. The handshake on top of it had one attempt,
+    # and on 13 November 2026 wamcoin.net answered
+    #
+    #     TLS handshake failed: [SSL: TLSV1_ALERT_INTERNAL_ERROR]
+    #
+    # on the sweep. Three handshakes a minute later succeeded, TLS 1.3, the
+    # certificate good to 31 December. An nginx reloading a certificate, a
+    # worker recycling, an HTTP/3 negotiation -- the server was busy for a
+    # moment and the sweep went red about a site that was up, which is the
+    # red line nobody can act on that this file was written to avoid.
+    #
+    # The line that must NOT be retried is the one above it. A certificate a
+    # wallet would refuse -- expired, wrong name, broken chain -- is refused
+    # the same way every time, and retrying it would only mean three times the
+    # wait before saying so. So a verification failure answers at once and an
+    # alert is tried again.
     ctx = ssl.create_default_context()
-    try:
-        with _connect(host, port) as raw:
-            with ctx.wrap_socket(raw, server_hostname=host) as s:
-                cert = s.getpeercert()
-    except ssl.SSLCertVerificationError as e:
-        # Reached, and refused on its merits. That distinction decides
-        # whether a run of failures is the world's or this laptop's.
-        return "fail", f"a wallet would refuse this: {e.verify_message or e}", 1
-    except ssl.SSLError as e:
-        return "fail", f"TLS handshake failed: {str(e)[:60]}", 1
-    except OSError as e:
-        return "fail", f"{type(e).__name__} -- no answer in {ATTEMPTS} attempts", 0
+    last_alert = None
+    for attempt in range(ATTEMPTS):
+        try:
+            with _connect(host, port) as raw:
+                with ctx.wrap_socket(raw, server_hostname=host) as s:
+                    cert = s.getpeercert()
+            break
+        except ssl.SSLCertVerificationError as e:
+            # Reached, and refused on its merits. That distinction decides
+            # whether a run of failures is the world's or this laptop's.
+            return "fail", f"a wallet would refuse this: {e.verify_message or e}", 1
+        except ssl.SSLError as e:
+            last_alert = e
+            if attempt + 1 < ATTEMPTS:
+                time.sleep(RETRY_PAUSE)
+        except OSError as e:
+            return "fail", f"{type(e).__name__} -- no answer in {ATTEMPTS} attempts", 0
+    else:
+        return ("fail",
+                f"TLS handshake failed {ATTEMPTS}x: {str(last_alert)[:60]}", 1)
 
     when = expiry_of(cert)
     if when is None:
