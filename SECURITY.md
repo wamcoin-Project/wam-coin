@@ -143,8 +143,8 @@ it contradicted. He was right and the file was wrong.
 **What has been paid is in the ledger, and nothing else has.** 10,000 WAM went
 to chovy on 1–2 October 2026, 10,000 to Alboy on 11 October, 1,000 to
 Smooth Jazz Crypto on 13 October, 250 to ahten on 15 October, and 10,250 to
-bobbyning on 8 November, and 1,950 to three people on 9 November — 33,450 WAM
-in bounties. What has been accepted and
+bobbyning on 8 November, 1,950 to three people on 9 November, and 650 to two
+more on 13 November — 34,100 WAM in bounties. What has been accepted and
 not yet paid says so in its own entry below, with what it is waiting on. This
 sentence used to count them, and a count is wrong again by the next payment;
 the entries cannot be. Until 2 October this paragraph opened
@@ -648,6 +648,80 @@ expression, held down by `explorer/test/halving.test.js` and
 
 He did not price it and no amount was paid. The rung is recorded, and it is
 his whenever he asks for it.
+
+**400 WAM — the guard against a punished peer buying twenty milliseconds
+covered one of its two doors, accepted 12 November 2026, PAID 13 November
+2026.** txid
+`28a67ee033913738bcc62124d70f0c7c107532960bdd55bae058c82d9fa155d9`, in block
+40,690, and in `docs/TREASURY_LEDGER.md` with the rest.
+
+WAM-027 drops HEADERS messages from an address this node has already
+discouraged, because verifying one header costs about twenty milliseconds of
+RandomX with `cs_main` held, and `CConnman` lets a discouraged address
+reconnect whenever inbound slots are not nearly full. That was the finding of
+8 November, and that was the fix for it.
+
+A compact block announcement carries a header too. The CMPCTBLOCK handler
+calls `ProcessNewBlockHeaders` directly — it never passes through
+`ProcessHeadersMessage`, which is where the guard was written — so the same
+header reached the same verification by a path the guard was not on. The two
+cheap checks in front of it stop nothing an attacker would not satisfy
+anyway: the parent is the node's own tip, which is public, and the
+claimed-work threshold is the tip's work less a 144-block buffer, which any
+header extending the tip passes by construction.
+
+Found by Radenlingga (Discord), by reading the v0.1.14 release tree and
+reproducing it structurally against a build tree materialised exactly as the
+release is built — upstream v28.1 plus `scripts/patch_upstream.py` — with a
+seven-check script that prints the guard's line, the unguarded call site, and
+the chain from there down to `wam::GetRandomXPoWHash`. Nothing was tested
+against the live network or against anyone's running node.
+
+Fixed as he suggested, with one `NoPoWForThisPeer` helper that both
+announcement paths call, so that the next announcement type cannot re-open
+it. The regression test had only ever sent `msg_headers`, which is why it
+passed over this; `test/functional/feature_wam_header_dos.py` now sends a
+compact block as well. Against the node as it was, that step logs
+`Misbehaving: peer=1: invalid header via cmpctblock` — the header was
+verified and the twenty milliseconds were paid. Against the node as it is,
+the compact block is ignored in 51 ms with nothing verified.
+
+Classified at 400, the rung the reporter named and the rung the 8 November
+finding was given: the same impact, reached through a new root cause.
+
+**250 WAM — a stranger could write lines in the operator's log, accepted
+12 November 2026, PAID 13 November 2026.** txid
+`3b15fbffd9ceb0b4091fc6bcb8a178ce2198f9f088cbc04703febdd1ac3de169`, in the
+same block.
+
+`Logger._write` interpolated its message verbatim and appended a newline, and
+nothing in between removed anything. So a string carrying a newline did not
+produce one log line; it produced two, and whoever supplied the string wrote
+the second. On a pool those strings come from strangers before anybody
+authenticates: `mining.authorize` is the first message a connection sends,
+and the stratum server logged both the address it was given and the worker
+label. A thirty-character label put a timestamped `[ERROR]` line in the
+operator's log, by itself, in this logger's exact format. The invalid-address
+path needs no valid address at all.
+
+Nothing is stolen by that. The log is also not decoration: it is the record
+an operator reads to find out whether miners were paid, the payment path
+writes its banners to it, and a large part of this file was found by reading
+it. Someone who can add lines to it can manufacture an incident or bury a
+real one.
+
+Reported by 0xpack with a self-contained reproduction that drives the real
+stratum server and the real logger over a loopback port, and with the
+remediation this project took: sanitise once in the logger, where no call
+site can reintroduce it. Also escaped are the bidirectional overrides and the
+Unicode line separators, which are the same fault at other code points, and a
+message is clipped at 2,000 characters. The worker label is filtered to
+`[A-Za-z0-9_-]` and the invalid address is logged through `JSON.stringify`.
+Held down by `pool/test/log-injection.test.js`, eight of whose ten cases fail
+against the code it replaces, including both of the reporter's vectors with
+his markers and his label kept as he sent them.
+
+Classified at 250, the hardening rung, which is the rung the reporter named.
 
 **1,000 WAM — the pool API leak, accepted 13 September 2026, unpaid.** Three of
 four `/api/*` endpoints returned every miner's full payout address while the
