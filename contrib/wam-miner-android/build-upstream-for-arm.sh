@@ -30,7 +30,7 @@ set -euo pipefail
 #./setup-dependencies.sh
 
 export ANDROID_HOME="$HOME/Android/Sdk"
-export ANDROID_NDK_ROOT="$ANDROID_HOME/ndk/23.1.7779620"
+export ANDROID_NDK_ROOT="$ANDROID_HOME/ndk/21.4.7075529"
 export ANDROID_TOOLCHAIN="$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64"
 export AR="$ANDROID_TOOLCHAIN/bin/llvm-ar"
 export CC="$ANDROID_TOOLCHAIN/bin/aarch64-linux-android28-clang"
@@ -38,10 +38,11 @@ export CXX="$ANDROID_TOOLCHAIN/bin/aarch64-linux-android28-clang++"
 export RANLIB="$ANDROID_TOOLCHAIN/bin/llvm-ranlib"
 export PATH="$ANDROID_NDK_ROOT:$ANDROID_HOME/emulator:$ANDROID_HOME/tools:$ANDROID_HOME/tools/bin:$ANDROID_HOME/platform-tools:$PATH"
 
-#gradle wrapper
+# remove any existing build
+rm -rf ../../build
 
+# go to the scripts folder as the original- fetch-upstream.sh
 cd ../../scripts
-
 
 # An interpreter that is actually Python: `python3` on Windows is a
 # Microsoft Store stub that runs nothing and exits 49.
@@ -202,15 +203,23 @@ if [ "$RANDOMX_PATCHED" = 1 ] && [ -f "$RANDOMX_DIR/build/librandomx.a" ]; then
     rm -f "$RANDOMX_DIR/build/librandomx.a"
 fi
 
-if [ ! -f "$RANDOMX_DIR/build/librandomx.so" ]; then
+if [ ! -f "$RANDOMX_DIR/build/librandomx.a" ]; then
     log "     building librandomx (ARCH=$RANDOMX_ARCH)"
-	    cmake -S "$RANDOMX_DIR" -B "$RANDOMX_DIR/build" -DBUILD_SHARED_LIBS=ON -DCMAKE_BUILD_TYPE=Release -DARCH="$RANDOMX_ARCH" -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_ROOT/build/cmake/android.toolchain.cmake" -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-28 >/dev/null
-    cmake --build "$RANDOMX_DIR/build" -j"$(nproc 2>/dev/null || echo 4)" >/dev/null
+#	    cmake -S "$RANDOMX_DIR" -B "$RANDOMX_DIR/build" -DCMAKE_BUILD_TYPE=Release -DARCH="$RANDOMX_ARCH" -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_ROOT/build/cmake/android.toolchain.cmake" -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-28 >/dev/null
+    cmake -S "$RANDOMX_DIR" \
+    -B "$RANDOMX_DIR/build" \
+    -DARCH="$RANDOMX_ARCH" \
+    -DANDROID_ABI=arm64-v8a \
+    -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_ROOT/build/cmake/android.toolchain.cmake" \
+    -DANDROID_PLATFORM=android-28 \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DANDROID_STL=c++_static
+    cmake --build "$RANDOMX_DIR/build" -j"$(nproc 2>/dev/null || echo 4)"
 else
-    log "     librandomx.so already built"
+    log "     librandomx.a already built"
 fi
 
-[ -f "$RANDOMX_DIR/build/librandomx.so" ] || die "librandomx.so was not produced"
+[ -f "$RANDOMX_DIR/build/librandomx.a" ] || die "librandomx.a was not produced"
 
 # Verify the library against the reference vector before anything depends on it.
 log "     verifying librandomx against the reference test vector"
@@ -374,7 +383,7 @@ cd ../contrib/wam-miner-android
 mkdir -p "app/src/main/cpp/randomx/lib/arm64-v8a"
 
 # Copy the file using Linux forward slashes
-cp "$RANDOMX_DIR/build/librandomx.so" "app/src/main/cpp/randomx/lib/arm64-v8a/"
+cp "$RANDOMX_DIR/build/librandomx.a" "app/src/main/cpp/randomx/lib/arm64-v8a/"
 
 #echo "gvsdebug ${ANDROID_HOME}"
 #gradle assembleDebug
@@ -384,3 +393,4 @@ log ""
 log "  librandomx  copied to : $(pwd)/app/src/main/cpp/randomx/lib/arm64-v8a/"
 log ""
 log "  Next: run ./prepare-miner-code.sh"
+
