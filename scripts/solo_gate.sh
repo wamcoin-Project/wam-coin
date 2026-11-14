@@ -100,9 +100,21 @@ fetch_release() {
 
     base="https://wamcoin.org/downloads/$ver"
     dir="$CACHE/$ver"
-    if [ -x "$dir/wam-miner" ] && [ -x "$dir/wamd" ]; then
-        echo "$dir"; return 0
-    fi
+
+    # NO EARLY RETURN ON A CACHE NOBODY RE-VERIFIES.
+    #
+    # This returned cached binaries without checking them again, so a release
+    # that verified once was executed as root every day afterwards on trust.
+    # Anything that could write to the cache directory between two runs --
+    # and this runs as root, so anything that could write there at all -- got
+    # a daily execution for free, with the verification already behind it.
+    #
+    # The cache stays, because re-downloading 100 MB a day for nothing is its
+    # own kind of rudeness. What goes is trusting it: the checksums are
+    # re-read from the verified SHA256SUMS on every run, below.
+    #
+    # Reported by Martam, 13 November 2026, with the gate's own commands
+    # replayed against an attacker key.
 
     local tmp; tmp="$(mktemp -d -t solo-gate-dl-XXXXXX)"
     (
@@ -114,11 +126,30 @@ fetch_release() {
         done
         curl -fsSLO https://wamcoin.org/SIGNING-KEY.asc || exit 1
 
-        # The signature first, in a keyring of its own, against the published
-        # key -- and the checksums verified before anything is unpacked.
-        export GNUPGHOME="$tmp/gnupg"; mkdir -p "$GNUPGHOME"; chmod 700 "$GNUPGHOME"
-        gpg --batch --quiet --import SIGNING-KEY.asc || exit 1
-        gpg --batch --verify SHA256SUMS.asc SHA256SUMS >/dev/null 2>&1 || exit 1
+        # ONE VERIFIER, AND IT IS THE ONE THAT CHECKS THE FINGERPRINT.
+        #
+        # What used to be here imported SIGNING-KEY.asc -- downloaded from the
+        # same website as everything else -- into a fresh keyring and ran
+        # `gpg --batch --verify`. That asks whether the signature matches the
+        # key just imported, which it always does: an attacker who can replace
+        # the tarballs can replace the key beside them, sign his own
+        # SHA256SUMS with it, and this said yes. The comment above it claimed
+        # the signature was checked "against the published key". Nothing here
+        # knew what the published key was. The gate then unpacked and RAN
+        # those binaries, as root, daily, on a host carrying a mainnet node
+        # and a solo miner.
+        #
+        # scripts/install_release.sh already says why this must not be
+        # reimplemented, in as many words: "verify_release.sh is called rather
+        # than reimplemented. Two verifiers drift." They drifted. One of them
+        # compares VALIDSIG against 4BD4A8D3AFD43F5CBCB500E23798462FE00ADBA4
+        # and the other had no fingerprint in it at all.
+        #
+        # So this calls the same verifier every other path calls. A key that
+        # is not ours fails there, and has nowhere else to be checked.
+        #
+        # Reported by Martam, 13 November 2026.
+        bash "$HERE/scripts/verify_release.sh" "$tmp" >/dev/null 2>&1 || exit 1
         # The two files this gate downloaded, named, and not "everything on
         # this platform".
         #

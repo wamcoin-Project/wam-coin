@@ -196,6 +196,25 @@ run "no RPC password in argv"    "$PY" scripts/check_rpc_secrets.py
 # mainnet_listener.py. Every one of those comments was written to explain a
 # privacy measure. Nothing was careless; nothing was checked.
 run "no undeclared address"      "$PY" scripts/check_no_private_addresses.py
+
+# WAM-029 disables 43 inherited Boost cases, each because it encodes a Bitcoin
+# fact this chain does not have. That mechanism is also the easiest way in the
+# world to turn a red build green: nine words, in a 2,300-line patch file,
+# and the suite goes on reporting that everything passed. This holds the tree
+# to the table -- nothing disabled without a reason, and no reason left
+# standing over a case that no longer exists.
+run "every gated test is a decision" "$PY" scripts/check_gated_tests.py
+
+# `gpg --verify` exits 0 for any key in the keyring it was handed. solo_gate.sh
+# downloaded SIGNING-KEY.asc from the same website as the release, imported it,
+# verified against it, and then executed the binaries AS ROOT, daily, on a host
+# carrying a mainnet node and a solo miner -- so an attacker who could replace
+# the tarballs could replace the key beside them and be run. The comment above
+# that line said the signature was checked "against the published key"; nothing
+# in the file knew what the published key was. install_release.sh had already
+# written down why this must not be reimplemented: "Two verifiers drift."
+# Reported by Martam, 13 November 2026.
+run "no signature check that cannot fail" "$PY" scripts/check_signature_verification.py
 run "the zone is signed and validates" "$PY" scripts/check_dnssec.py
 run "the seeds inside the binary answer" "$PY" scripts/check_fixed_seeds.py
 run "a floor under what a node follows" "$PY" scripts/check_min_chain_work.py --network "$NETWORK" ${NODES:+--host ${NODES%% *}}
