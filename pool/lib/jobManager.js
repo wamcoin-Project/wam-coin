@@ -876,9 +876,15 @@ class JobManager extends EventEmitter {
             //                   hash, which commits to a coinbase carrying
             //                   this pool's own extranonce. Nobody else can
             //                   have submitted it. We did.
-            //   "inconclusive"  it processed a DIFFERENT block and named no
+            //   "inconclusive"  it processed a DIFFERENT block and named no   // wam:quote-line
             //                   fault. That is the lost race this branch was
             //                   written for, and nothing is owed.
+            //
+            // (That word is marked as a quotation: submit-verdict.test.js
+            // refuses the node's vocabulary outside daemon.js, because three
+            // separate places once read it differently. This is naming it,
+            // not reading it -- the branch above asks daemon.js for a
+            // verdict like everything else.)
             //
             // The retry loop above resends while nobody answers. So the
             // ordinary shape of the first case is: attempt 1 is UNANSWERED
