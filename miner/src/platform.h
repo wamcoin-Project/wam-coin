@@ -200,6 +200,34 @@ inline bool SockWouldBlock(int e)
 #endif
 }
 
+/**
+ * Say "the socket had nothing to give" in the way SockErr() will read back.
+ *
+ * TLS needs this. OpenSSL reports a timed-out read as SSL_ERROR_WANT_READ
+ * and does not touch errno, while the stratum loop decides whether a link
+ * has gone silent by asking SockErr() after a short read. Without a way to
+ * set the code, a TLS session would report every quiet second as a dead
+ * connection -- see MapError in miner/src/tls.h.
+ */
+inline void SetWouldBlock()
+{
+#ifdef _WIN32
+    ::WSASetLastError(WSAEWOULDBLOCK);
+#else
+    errno = EAGAIN;
+#endif
+}
+
+/** And a failure that is not worth a special case, in the same way. */
+inline void SetGenericError()
+{
+#ifdef _WIN32
+    ::WSASetLastError(WSAECONNRESET);
+#else
+    errno = ECONNRESET;
+#endif
+}
+
 /** Interrupted before anything was transferred; the call may be retried. */
 inline bool SockInterrupted(int e)
 {

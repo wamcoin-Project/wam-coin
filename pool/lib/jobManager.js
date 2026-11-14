@@ -541,6 +541,39 @@ class JobManager extends EventEmitter {
         await this._spoolStore.put(entry.hash, entry);
     }
 
+    /**
+     * Whose block does the node have under this hash?
+     *
+     * 'ours'    -- it has a block with THIS hash. The hash commits to the
+     *              coinbase, which carries this pool's own extranonce, so no
+     *              other miner on earth could have produced it. We submitted
+     *              it, and an answer was lost somewhere.
+     * 'theirs'  -- it has no such block, so whatever it already has for that
+     *              height is somebody else's. An honest lost race.
+     * 'unknown' -- it could not be asked. Not an answer, and must not be
+     *              read as either of the other two.
+     *
+     * Added for the ALREADY_HAVE branch above; see the long note there.
+     * Reported by Martam, 13 November 2026.
+     */
+    async _whoseBlock(hash) {
+        try {
+            const block = await this.daemon.getBlock(hash, 1);
+            if (block && block.hash === hash) return 'ours';
+            // An answer that is not the block we asked about is not an
+            // answer about it.
+            return block ? 'unknown' : 'theirs';
+        } catch (err) {
+            // "Block not found" is the node saying it does not have this
+            // hash, which is a real answer. Anything else -- no connection,
+            // a timeout, a node still starting -- is not.
+            if (/not found/i.test(err.message || '')) return 'theirs';
+            this.log.warn(`could not ask the node about block ${hash}: `
+                          + `${err.message}`);
+            return 'unknown';
+        }
+    }
+
     async _unspool(hash, refusedReason) {
         if (!this._spoolStore) return;
         await this._spoolStore.remove(hash, refusedReason);
@@ -833,13 +866,76 @@ class JobManager extends EventEmitter {
             //
             // The share itself was already credited: in PPLNS a miner is paid
             // for the work he showed, not for who got the block in first.
+            // ASK WHOSE BLOCK THE NODE HAS. DO NOT GUESS, AND DO NOT
+            // THROW THE EVIDENCE AWAY WHILE GUESSING.
+            //
+            // ALREADY_HAVE is two different events down one word. The
+            // vocabulary note in daemon.js has both:
+            //
+            //   "duplicate"     the node already had THIS block -- this exact
+            //                   hash, which commits to a coinbase carrying
+            //                   this pool's own extranonce. Nobody else can
+            //                   have submitted it. We did.
+            //   "inconclusive"  it processed a DIFFERENT block and named no
+            //                   fault. That is the lost race this branch was
+            //                   written for, and nothing is owed.
+            //
+            // The retry loop above resends while nobody answers. So the
+            // ordinary shape of the first case is: attempt 1 is UNANSWERED
+            // because the reply was lost, attempt 2 is answered "duplicate"
+            // -- by a node describing the block attempt 1 delivered. This
+            // branch called that a lost race, set blockAccepted=false so
+            // processShare never emitted 'block', so recordBlock never ran
+            // and no payout table was ever made -- and then unspooled, which
+            // deletes the only evidence the drain could have recovered it
+            // from. 47.5 WAM of miners' money, on the chain, owed to nobody.
+            //
+            // drainSpool, on the identical verdict, says "already on the
+            // node; offering it for payout in case the crash was between
+            // acceptance and accounting" and pays. Two paths, one answer,
+            // opposite conclusions.
+            //
+            // One RPC settles it. getblock on OUR hash either finds our
+            // block or does not, and that is not a judgement call.
+            //
+            // Reported by Martam, 13 November 2026, reproduced against the
+            // real JobManager and the real classifier.
+            const whose = await this._whoseBlock(blockHash);
+
+            if (whose === 'ours') {
+                this.stats.blocksFound++;
+                share.blockAccepted = true;
+                this.log.info(`*** BLOCK ${job.height} ACCEPTED *** (the node `
+                              + `already had it: ${result.reasons.join(' | ')}) `
+                              + `-- it is on the chain with this pool's own `
+                              + `coinbase, so the reply to an earlier attempt `
+                              + `was lost, not the block`);
+                this.refreshTemplate(true).catch(() => {});
+                // The spool entry stays until the payout record exists, for
+                // the same reason the accepted branch gives above.
+                return;
+            }
+
             share.blockAccepted = false;
             share.blockStale = true;
             this.stats.blocksStale = (this.stats.blocksStale || 0) + 1;
+
+            if (whose === 'unknown') {
+                // Not knowing is not the same as a lost race, and the
+                // difference is a payout. The entry stays spooled and the
+                // drain asks again -- which is what the drain is for.
+                this.log.warn(`block ${job.height}: the node says it already `
+                              + `has one (${result.reasons.join(' | ')}) and `
+                              + `could not be asked whether it is ours. The `
+                              + `spool entry is KEPT and the next drain will `
+                              + `offer it; nothing is paid and nothing is lost.`);
+                return;
+            }
+
             this.log.info(`block ${job.height} was already taken -- the node has `
-                          + `one for that height (${result.reasons.join(' | ')}). `
-                          + `A lost race, not a refusal; the share is credited `
-                          + `and nothing is owed.`);
+                          + `a different block for that height `
+                          + `(${result.reasons.join(' | ')}). A lost race, not a `
+                          + `refusal; the share is credited and nothing is owed.`);
             this._unspool(blockHash).catch(() => {});
         } else {
             share.blockAccepted = false;

@@ -287,6 +287,73 @@ static void TestHostileNumbers()
         }
     }
 
+    // ---- MONEY THAT IS NOT MONEY -----------------------------------------
+    //
+    // AsInt asks whether a JSON number fits in an int64. 2^62 does, and then
+    // `totalFees += fee` wraps on the second such transaction while
+    // `(coinbasevalue - totalFees) * 5` wraps on the first. The miner
+    // computes a nonsense treasury figure, throws, and SoloSession::Refresh
+    // re-polls every five seconds for ever -- a template that will never be
+    // mined, asked for again and again.
+    //
+    // Reported by Martam, 13 November 2026, reproduced under UBSan at both
+    // sites and by this project's own scripts/fuzz_miner.sh, which found the
+    // multiplication on its own at about 200,000 cases.
+    //
+    // The bound is consensus: no amount on this chain exceeds 22,000,000 WAM,
+    // so a fee above it is not a fee. The third case is the one a bound on
+    // each value alone would miss -- two amounts that are each legal and
+    // together are more money than exists.
+    {
+        const char* const cases[] = {
+            "\"transactions\":[{\"data\":\"00\",\"txid\":\"0000000000000000000000000000000000000000000000000000000000000001\",\"fee\":4611686018427387904},{\"data\":\"00\",\"txid\":\"0000000000000000000000000000000000000000000000000000000000000002\",\"fee\":4611686018427387904}]",
+            "\"transactions\":[{\"data\":\"00\",\"txid\":\"0000000000000000000000000000000000000000000000000000000000000001\",\"fee\":4611686018427387904}]",
+            "\"transactions\":[{\"data\":\"00\",\"txid\":\"0000000000000000000000000000000000000000000000000000000000000001\",\"fee\":2000000000000000},{\"data\":\"00\",\"txid\":\"0000000000000000000000000000000000000000000000000000000000000002\",\"fee\":2000000000000000}]",
+        };
+        const char* const what[] = {
+            "two fees of 2^62 are refused, not accumulated",
+            "one fee of 2^62 is refused, not multiplied",
+            "fees that are each legal and together are not",
+        };
+        for (int i = 0; i < 3; i++) {
+            std::string s2 = good;
+            const size_t at = s2.find("\"transactions\":[]");
+            s2.replace(at, std::string("\"transactions\":[]").size(), cases[i]);
+            json::Value t4;
+            std::string e4;
+            checks++;
+            if (!json::ParseLine(s2, t4, e4)) {
+                failures++;
+                std::printf("  FAIL  a hostile-fee template does not parse: %s\n", e4.c_str());
+                continue;
+            }
+            try {
+                BuildSoloTemplate(t4, "wamrt1q9uynnmupf5jl920vgztyef0v3esfjvdzfxfhyt",
+                                  NetParamsFor("regtest"), "/wam-miner/", en1, 4);
+                failures++;
+                std::printf("  FAIL  %s -- it built a job\n", what[i]);
+            } catch (const std::exception& e) {
+                // THE REASON MATTERS, NOT ONLY THAT IT THREW.
+                //
+                // With the bound removed the arithmetic wraps and the
+                // treasury cross-check further down throws anyway -- so a
+                // test that only asked "did it throw" passed on the broken
+                // code. UBSan sees the overflow; this sees which guard
+                // stopped it.
+                const std::string why = e.what();
+                if (why.find("not an amount of WAM") == std::string::npos &&
+                    why.find("more money than exists") == std::string::npos) {
+                    failures++;
+                    std::printf("  FAIL  %s -- it was refused for the wrong "
+                                "reason, so the arithmetic ran first: %s\n",
+                                what[i], why.c_str());
+                } else {
+                    std::printf("  ok    %s\n", what[i]);
+                }
+            }
+        }
+    }
+
     // and the real one still builds, so the bound did not eat the chain
     json::Value t3;
     std::string e3;

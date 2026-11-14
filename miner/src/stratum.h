@@ -29,6 +29,7 @@
 #include "sha256.h"   // BuildHeader folds the merkle branch
 
 #include <array>
+#include <atomic>
 #include <deque>
 #include <functional>
 #include <mutex>
@@ -40,6 +41,7 @@
 #include <vector>
 
 #include "json.h"
+#include "tls.h"
 #include "util.h"
 
 namespace wam {
@@ -147,9 +149,10 @@ void BuildHeader(const StratumJob& job, const Bytes& extranonce2, uint8_t header
 
 class StratumClient {
 public:
-    StratumClient(std::string host, uint16_t port, std::string user, std::string pass)
+    StratumClient(std::string host, uint16_t port, std::string user, std::string pass,
+                  bool tls = false)
         : m_host(std::move(host)), m_port(port),
-          m_user(std::move(user)), m_pass(std::move(pass)) {}
+          m_user(std::move(user)), m_pass(std::move(pass)), m_tls(tls) {}
 
     ~StratumClient() { Close(); }
 
@@ -160,7 +163,20 @@ public:
     std::function<void(const std::string&)>           onLog;
     std::function<void(const std::string&)>           onError;
 
-    bool IsConnected() const { return m_fd != kInvalidSock; }
+    bool IsConnected() const { return m_io.IsOpen(); }
+
+    /** True when this connection is encrypted. For the status line. */
+    bool IsEncrypted() const { return m_io.Encrypted(); }
+
+    /** Watch this flag inside the line drain as well as between polls. */
+    void StopOn(const std::atomic<bool>& running) { m_running = &running; }
+
+    /** The RandomX key this pool last announced. For tests and for the
+     *  status line; the job carries its own copy. */
+    const Bytes& LastSeed() const { return m_lastSeed; }
+
+    /** Called when the pool announces a key this client accepted. */
+    std::function<void(const Bytes&)> onSeed;
     bool IsAuthorized() const { return m_authorized; }
 
     /** How many times the pool has refused mining.authorize on this run. */
@@ -295,7 +311,14 @@ public:
         SetSockTimeout(fd, SO_RCVTIMEO, 1);
         m_lastRx = std::chrono::steady_clock::now();
 
-        m_fd = fd;
+        // TLS, when the operator asked for it and this build has it.
+        // Start() closes the socket itself on failure, so there is no
+        // half-open connection for the caller to tidy.
+        std::string tlsErr;
+        if (!m_io.Start(fd, m_host, m_tls, tlsErr)) {
+            err = tlsErr;
+            return false;
+        }
         m_buffer.clear();
         m_authorized = false;
         m_subscribed = false;
@@ -307,7 +330,7 @@ public:
 
     void Close()
     {
-        if (m_fd != kInvalidSock) { CloseSock(m_fd); m_fd = kInvalidSock; }
+        m_io.Close();
         m_authorized = false;
         m_subscribed = false;
     }
@@ -328,7 +351,7 @@ public:
     {
         FlushSubmits();
 
-        if (m_fd == kInvalidSock) return;
+        if (!m_io.IsOpen()) return;
 
         // Seconds in which this loop was not listening cannot be charged to
         // the pool.
@@ -408,7 +431,7 @@ public:
         m_lastWall = wall;
 
         char chunk[8192];
-        const long n = RecvSome(m_fd, chunk, sizeof(chunk));
+        const long n = m_io.Recv(chunk, sizeof(chunk));
 
         if (n == 0) {
             Report("the pool closed the connection");
@@ -440,6 +463,19 @@ public:
 
         size_t start = 0;
         for (;;) {
+            // A SHUTDOWN HAS TO LAND INSIDE THIS LOOP, NOT AFTER IT.
+            //
+            // This drained the whole buffered backlog before returning, and
+            // the main loop checks `running` only between Poll() calls. A
+            // pool that queues work faster than it can be handled -- or an
+            // expensive handler, which a RandomX re-key is -- therefore made
+            // SIGTERM and SIGINT do nothing at all: the miner worked through
+            // the backlog until it was SIGKILLed.
+            //
+            // Measured by Martam, 13 November 2026: `timeout 150` and
+            // `timeout 200` both failed to stop it.
+            if (m_running && !m_running->load()) break;
+
             const size_t nl = m_buffer.find('\n', start);
             if (nl == std::string::npos) break;
 
@@ -449,7 +485,7 @@ public:
             while (!line.empty() && (line.back() == '\r' || line.back() == ' ')) line.pop_back();
             if (!line.empty()) HandleLine(line);
 
-            if (m_fd == kInvalidSock) return;    // a handler disconnected us
+            if (!m_io.IsOpen()) return;          // a handler disconnected us
         }
         m_buffer.erase(0, start);
     }
@@ -466,12 +502,12 @@ private:
 
     bool SendRaw(const std::string& payload)
     {
-        if (m_fd == kInvalidSock) return false;
+        if (!m_io.IsOpen()) return false;
         const std::string line = payload + "\n";
 
         size_t sent = 0;
         while (sent < line.size()) {
-            const long n = SendSome(m_fd, line.data() + sent, line.size() - sent);
+            const long n = m_io.Send(line.data() + sent, line.size() - sent);
             if (n <= 0) {
                 const int e = SockErr();
                 if (SockInterrupted(e)) continue;
@@ -493,7 +529,7 @@ private:
         }
 
         for (const PendingSubmit& s : batch) {
-            if (m_fd == kInvalidSock || !m_authorized) continue;
+            if (!m_io.IsOpen() || !m_authorized) continue;
 
             const int id = m_nextId++;
             m_submitIds.insert(id);
@@ -559,7 +595,33 @@ private:
         } else if (method == "mining.set_seedhash") {
             Bytes seed;
             if (ParseHex(params.At(0).AsString(), seed) && seed.size() == 32) {
+                // A SEED HEIGHT ONLY EVER MOVES FORWARD.
+                //
+                // The key rotates once per RandomX epoch -- 2048 blocks,
+                // about three days. A pool announcing a key for a height at
+                // or below the one it already announced is either broken or
+                // replaying, and replaying two keys in turn is the whole of
+                // the attack: each change rebuilds a 2 GiB dataset, so
+                // alternating A and B every few seconds costs the miner
+                // every hash it would otherwise have made.
+                //
+                // Measured by Martam, 13 November 2026: 339.6 H/s on a
+                // stable seed, 0 H/s for seven minutes on a flap.
+                //
+                // Backwards is refused here. Forwards is rate-limited where
+                // the rebuild happens, because a claimed height costs an
+                // attacker nothing to increment.
+                const int64_t at = params.At(1).AsInt(-1);
+                if (at >= 0 && at <= m_lastSeedHeight && seed != m_lastSeed) {
+                    Log("ignoring a RandomX key announced for height " +
+                        std::to_string(at) + ": the last was for " +
+                        std::to_string(m_lastSeedHeight) +
+                        ", and a key never moves backwards");
+                    return;
+                }
+                if (at > m_lastSeedHeight) m_lastSeedHeight = at;
                 m_lastSeed = seed;
+                if (onSeed) onSeed(seed);
                 // AsInt(-1), not AsInt(). The seed is what this message is
                 // for and it has already parsed; the height is decoration on
                 // a log line. The strict form here meant a pool could kill
@@ -741,8 +803,15 @@ private:
     uint16_t    m_port;
     std::string m_user;
     std::string m_pass;
+    bool        m_tls = false;
+    // The highest seed height this pool has announced, so a replay of an
+    // older key is refused. -1 is "none yet", which the first key must pass.
+    int64_t     m_lastSeedHeight = -1;
+    // Watched inside the line drain, so a shutdown is not queued behind
+    // whatever the pool has already sent.
+    const std::atomic<bool>* m_running = nullptr;
 
-    sock_t      m_fd = kInvalidSock;
+    Transport   m_io;
     std::string m_buffer;
 
     bool  m_subscribed = false;

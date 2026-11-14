@@ -45,6 +45,7 @@
 
 #include "json.h"
 #include "plaintext.h"
+#include "tls.h"
 #include "platform.h"
 #include "randomx_engine.h"
 #include "sha256.h"
@@ -61,6 +62,15 @@ namespace wam {
 namespace {
 
 bool g_colour = true;
+
+// HOW LONG A REBUILD HAS TO BE LEFT ALONE.
+//
+// The RandomX key rotates once per epoch -- WAM_RANDOMX_EPOCH_BLOCKS is
+// 2048, which at the chain's measured spacing is about three days. Five
+// minutes is therefore a thousand times shorter than anything legitimate,
+// and a thousand times longer than the three seconds an attacker needs to
+// keep a 2 GiB rebuild running for ever. See PublishJob.
+constexpr int64_t kRekeyCooldownMs = 5 * 60 * 1000;
 
 const char* C(const char* code) { return g_colour ? code : ""; }
 
@@ -397,6 +407,46 @@ bool PublishJob(RandomXEngine& engine, SharedState& state, int threads,
         std::string seedErr;
         const Bytes previous = engine.CurrentSeed();
         if (previous != incoming.seed) {
+            // ONE REBUILD PER COOLDOWN, AND THE LAST SEED WINS.
+            //
+            // Rebuilding the 2 GiB dataset takes about forty seconds, and
+            // this ran it on ANY seed change with nothing in the way. A pool
+            // -- or anyone on a plaintext stratum link -- could notify a new
+            // seed every three seconds and the miner never hashed again:
+            // measured at 339.6 H/s on a stable seed and 0 H/s for seven
+            // minutes on a flap, by Martam, 13 November 2026.
+            //
+            // The key rotates once per RandomX epoch, 2048 blocks, about
+            // three days. So a cooldown of a few minutes delays nothing that
+            // is real and makes the attack cost the attacker a wait for
+            // every forty seconds he takes from us -- it is the difference
+            // between losing everything and losing a few per cent.
+            //
+            // Deferred rather than dropped: the seed is remembered and
+            // applied when the cooldown expires, so a rotation that happens
+            // to arrive during one is not lost, and an attacker alternating
+            // keys gets ONE rebuild per cooldown rather than one per notify.
+            // stratum.h refuses a seed whose announced height moves
+            // backwards, which is the other half of the same attack.
+            static int64_t lastRekeyMs = 0;
+            static Bytes   deferred;
+            const int64_t now = NowMs();
+            if (!previous.empty() && lastRekeyMs != 0 &&
+                now - lastRekeyMs < kRekeyCooldownMs) {
+                if (deferred != incoming.seed) {
+                    deferred = incoming.seed;
+                    Warn("a RandomX key change arrived " +
+                         std::to_string((now - lastRekeyMs) / 1000) +
+                         "s after the last one; the key rotates about every "
+                         "three days, so this one waits " +
+                         std::to_string((kRekeyCooldownMs - (now - lastRekeyMs)) / 1000) +
+                         "s rather than stopping the miner");
+                }
+                return true;        // keep mining the key we have
+            }
+            deferred.clear();
+            lastRekeyMs = now;
+
             if (!previous.empty()) {
                 Warn("RandomX key rotated; rebuilding. Hashing pauses for a moment.");
             } else {
@@ -754,6 +804,9 @@ struct Options {
     // refused rather than warned about: the warning scrolls away and the
     // password does not. This says the operator knows.
     bool        insecureRpc = false;
+    // Set by a stratum+ssl:// or stratum+tls:// url, and only reachable on a
+    // build that has TLS -- the parser refuses the scheme otherwise.
+    bool        tls = false;
     std::string network = "mainnet";
     int         pollSeconds = 5;
 
@@ -915,20 +968,29 @@ bool ParseOptions(int argc, char** argv, Options& opt, std::string& err)
                 if (proto.find("ssl") != std::string::npos ||
                     proto.find("tls") != std::string::npos ||
                     proto == "https") {
-                    err = "this miner speaks no TLS, so " + proto + ":// cannot "
-                          "be honoured and will not be silently downgraded.\n"
-                          "        Terminate TLS beside the miner and point it "
-                          "at the local end:\n"
-                          "          stunnel3 -c -d 127.0.0.1:3333 -r "
-                          "pool.wamcoin.org:3336\n"
-                          "          wam-miner -o stratum+tcp://127.0.0.1:3333 "
-                          "-u <your address>\n"
-                          "        or, with socat:\n"
-                          "          socat TCP-LISTEN:3333,fork,bind=127.0.0.1 "
-                          "OPENSSL:pool.wamcoin.org:3336\n"
-                          "        Native TLS in the miner is open work; see "
-                          "miner/README.md.";
-                    return false;
+                    // WHEN THIS BUILD HAS TLS, HONOUR IT. WHEN IT DOES NOT,
+                    // REFUSE RATHER THAN DOWNGRADE.
+                    //
+                    // The second half is the older fix and is still the
+                    // important one: a scheme asking for encryption used to
+                    // be stripped and the socket opened in cleartext, so the
+                    // operator who typed the pool's TLS port got the worst
+                    // outcome of the two. See plaintext.h.
+                    if (!wam::Transport::Available()) {
+                        err = "this build has no TLS, so " + proto + ":// "
+                              "cannot be honoured and will not be silently "
+                              "downgraded.\n"
+                              "        Build it where libssl is installed -- "
+                              "miner/build.sh links it when the headers\n"
+                              "        are there, and says which it did -- or "
+                              "terminate TLS beside the miner:\n"
+                              "          stunnel3 -c -d 127.0.0.1:3333 -r "
+                              "pool.wamcoin.org:3336\n"
+                              "          wam-miner -o "
+                              "stratum+tcp://127.0.0.1:3333 -u <your address>";
+                        return false;
+                    }
+                    opt.tls = true;
                 }
                 url = url.substr(scheme + 3);
             }
@@ -1393,7 +1455,11 @@ int Run(int argc, char** argv)
         }
     } else {
         const wam::HostKind where = wam::ClassifyHost(opt.host);
-        if (where != wam::HostKind::Loopback) {
+        if (opt.tls) {
+            Info("stratum over TLS (" + wam::Transport::Describe() + "); the "
+                 "pool's certificate is verified against this machine's trust "
+                 "store and its name");
+        } else if (where != wam::HostKind::Loopback) {
             Warn("this connection is plaintext stratum. Anyone on the path can "
                  "replace the");
             Warn("  block template, and then your hashrate pays their address "
@@ -1442,7 +1508,7 @@ int Run(int argc, char** argv)
     Info("threads  " + std::to_string(opt.threads) + " of " + std::to_string(cores) + " cores");
     Info("randomx  " + engine.Describe());
 
-    StratumClient client(opt.host, opt.port, opt.user, opt.pass);
+    StratumClient client(opt.host, opt.port, opt.user, opt.pass, opt.tls);
 
     // The pool path: a solution is a share, named by the job it belongs to.
     state.onSolution = [&client](const StratumJob& job, const Bytes&,
@@ -1472,6 +1538,10 @@ int Run(int argc, char** argv)
             Warn("share rejected: " + reason);
         }
     };
+
+    // A shutdown must land inside the line drain too, not only between
+    // polls -- see the note in stratum.h's Poll().
+    client.StopOn(state.running);
 
     client.onJob = [&](const StratumJob& incoming) {
         if (!PublishJob(engine, state, opt.threads, incoming)) state.running.store(false);

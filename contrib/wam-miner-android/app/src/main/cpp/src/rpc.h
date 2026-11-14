@@ -178,6 +178,20 @@ inline std::string DefaultCookiePath(const std::string& network)
     return c.front();
 }
 
+/**
+ * The most a node's reply may be, in bytes.
+ *
+ * A block is capped at 4,000,000 weight units; hex doubles that and the JSON
+ * adds a little, so an honest getblocktemplate is a few megabytes at the
+ * outside. See the note in Post().
+ */
+// A test may lower it; nothing else should. A bound that cannot be
+// exercised is a bound nobody has seen work.
+#ifndef WAM_MINER_MAX_REPLY_BYTES
+#define WAM_MINER_MAX_REPLY_BYTES 64u * 1024u * 1024u
+#endif
+constexpr size_t kMaxReplyBytes = WAM_MINER_MAX_REPLY_BYTES;
+
 class RpcClient {
 public:
     RpcClient(std::string host, int port, std::string user,
@@ -349,11 +363,41 @@ private:
             sent += size_t(n);
         }
 
+        // A REPLY HAS A CEILING, BECAUSE THE OTHER END CHOOSES ITS SIZE.
+        //
+        // This read until EOF with no bound at all: no Content-Length check,
+        // no maximum. One getblocktemplate answer is buffered whole, parsed
+        // whole, and its transaction data hex-decoded whole, so a hostile or
+        // compromised node -- or anyone on the path, since this link has no
+        // TLS unless the build has libssl -- could exhaust the miner's memory
+        // in a single poll.
+        //
+        // The ceiling is the chain's, not a guess. A WAM block is capped at
+        // 4,000,000 weight units, so the largest honest template is a few
+        // megabytes; the hex encoding doubles it, and the JSON around it adds
+        // a little. 64 MiB is an order of magnitude above anything real and
+        // still small enough that hitting it cannot hurt.
+        //
+        // It stops at the ceiling rather than reading on and discarding: the
+        // point is not to notice afterwards, it is not to hold it.
+        //
+        // Reported by Martam, 13 November 2026.
         std::string reply;
         char buf[8192];
         for (;;) {
             const long n = RecvSome(s, buf, sizeof(buf));
-            if (n > 0) { reply.append(buf, size_t(n)); continue; }
+            if (n > 0) {
+                if (reply.size() + size_t(n) > kMaxReplyBytes) {
+                    CloseSock(s);
+                    throw std::runtime_error(
+                        "the node's reply passed " +
+                        std::to_string(kMaxReplyBytes / (1024 * 1024)) +
+                        " MiB and was cut off. A block is capped at 4,000,000 "
+                        "weight units, so no honest template is this large.");
+                }
+                reply.append(buf, size_t(n));
+                continue;
+            }
             break;                      // Connection: close, so EOF ends it
         }
         CloseSock(s);

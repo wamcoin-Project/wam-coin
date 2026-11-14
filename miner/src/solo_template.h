@@ -57,6 +57,35 @@ struct TemplateTx {
 };
 
 /** Everything solo mining needs that a StratumJob has no place for. */
+/**
+ * The most money that can exist on this chain, in base units.
+ *
+ * 22,000,000 WAM -- WAM_MAX_MONEY in src/wam/wam-params.h, which is consensus.
+ * Nothing a node reports about a block can legitimately be larger, so it is
+ * the bound every money field from getblocktemplate is checked against.
+ */
+constexpr int64_t kMaxMoney = 2'200'000'000'000'000LL;
+
+/**
+ * A money amount from the node, or a refusal naming the field.
+ *
+ * AsInt answers "does this fit in an int64", which 2^62 does. This answers
+ * "is this an amount of WAM", which 2^62 is not. See the note at
+ * out.coinbaseValue.
+ */
+inline int64_t Money(const json::Value& v, const char* what)
+{
+    const int64_t n = v.AsInt();
+    if (n < 0 || n > kMaxMoney) {
+        throw std::runtime_error(
+            std::string("the node reported ") + what + " as " +
+            std::to_string(n) + ", which is not an amount of WAM: the whole "
+            "supply is " + std::to_string(kMaxMoney) + " base units. Refusing "
+            "to build a coinbase on that.");
+    }
+    return n;
+}
+
 struct SoloTemplate {
     StratumJob              job;
     std::vector<TemplateTx> txs;
@@ -272,7 +301,28 @@ inline SoloTemplate BuildSoloTemplate(const json::Value& t,
 {
     SoloTemplate out;
 
-    out.coinbaseValue = t["coinbasevalue"].AsInt();
+    // EVERY MONEY FIELD FROM THE NODE IS BOUNDED BEFORE IT IS USED.
+    //
+    // AsInt only asks whether a JSON number fits in an int64, so 2^62 passes
+    // it and then overflows the arithmetic below: `totalFees += fee` wraps on
+    // the second such transaction, and `subsidy * 5` wraps on the first. The
+    // miner then computes a nonsense treasury figure, throws, and
+    // SoloSession::Refresh re-polls every five seconds -- for ever. A
+    // persistent refuse-to-mine loop from one hostile template, on a link
+    // that has no TLS.
+    //
+    // Reported by Martam, 13 November 2026, reproduced under UBSan at both
+    // sites and by this project's own scripts/fuzz_miner.sh, which found the
+    // multiplication on its own at about 200,000 cases. It is not the AsInt
+    // finding of 8 November: that one was a double-to-int64 cast producing a
+    // value no number had; this is int64 arithmetic on values that are each
+    // representable and together are not.
+    //
+    // The bound is the consensus one. No amount on this chain can exceed the
+    // 22,000,000 cap, so every money field is checked against it before it is
+    // added or multiplied -- and with every term under 2.2e15, `subsidy * 5`
+    // is at most 1.1e16 against an int64 ceiling of 9.2e18.
+    out.coinbaseValue = Money(t["coinbasevalue"], "coinbasevalue");
     out.longPollId    = t["longpollid"].AsString();
     out.prevHashHex   = t["previousblockhash"].AsString();
 
@@ -285,7 +335,7 @@ inline SoloTemplate BuildSoloTemplate(const json::Value& t,
             "bad-cb-devfee-amount, so every block built from it would be "
             "wasted.");
     }
-    out.devFeeAmount = df["amount"].AsInt();
+    out.devFeeAmount = Money(df["amount"], "the treasury amount");
     const Bytes devScript = FromHex(df["script"].AsString());
 
     if (out.devFeeAmount < 0 || out.devFeeAmount >= out.coinbaseValue) {
@@ -309,7 +359,19 @@ inline SoloTemplate BuildSoloTemplate(const json::Value& t,
         for (size_t k = 0; k < 32; k++) entry.hash[k] = id[31 - k];
 
         const json::Value& fee = tx["fee"];
-        if (fee.IsNull()) feesKnown = false; else totalFees += fee.AsInt();
+        if (fee.IsNull()) {
+            feesKnown = false;
+        } else {
+            totalFees += Money(fee, "a transaction fee");
+            // The running total is money too, and a thousand legal fees can
+            // still add up to something that is not.
+            if (totalFees > kMaxMoney) {
+                throw std::runtime_error(
+                    "the template's fees add up to " + std::to_string(totalFees) +
+                    ", which is more money than exists on this chain. Refusing "
+                    "to build a coinbase on that.");
+            }
+        }
 
         out.txs.push_back(std::move(entry));
     }

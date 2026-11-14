@@ -50,6 +50,21 @@
 
 namespace wam {
 
+/**
+ * The most the remembered templates may hold, in bytes.
+ *
+ * A job is kept so that a share arriving against it can still be turned into
+ * a block, which is two generations of the chain -- a handful of entries on
+ * any real network. The cap is a backstop against a peer that chooses the
+ * size, and 256 MiB is far above anything honest. See Refresh().
+ */
+// A test may lower it; nothing else should. A bound that cannot be
+// exercised is a bound nobody has seen work.
+#ifndef WAM_MINER_MAX_ISSUED_BYTES
+#define WAM_MINER_MAX_ISSUED_BYTES 256u * 1024u * 1024u
+#endif
+constexpr size_t kMaxIssuedBytes = WAM_MINER_MAX_ISSUED_BYTES;
+
 class SoloSession {
 public:
     SoloSession(RpcClient& rpc, std::string address, NetAddressParams net,
@@ -127,7 +142,28 @@ public:
                 // mempool churns hard enough to mint thousands of templates
                 // between blocks, and it drops the oldest, which is the least
                 // likely to still be under a worker.
+                //
+                // AND A COUNT IS NOT A SIZE.
+                //
+                // Each entry holds that template's whole transaction set, so
+                // 4,096 of them is 4,096 times whatever the other end chose
+                // to send -- about 400 MB at 100 KB a template and 4 GB at
+                // one megabyte. Measured by Martam, 13 November 2026: a
+                // hundred refreshes of a 100 KB template on an unmoving tip
+                // took the miner from 3.4 MB to 15.2 MB, linear, with the
+                // count cap nowhere near firing.
+                //
+                // The honest bound is bytes, because bytes are what the
+                // other end chooses. 256 MiB is far above two generations of
+                // a real chain and far below hurting a machine that mines.
                 while (m_issued.size() > 4096) m_issued.pop_front();
+
+                size_t held = 0;
+                for (const auto& e : m_issued) held += IssuedBytes(e);
+                while (held > kMaxIssuedBytes && m_issued.size() > 1) {
+                    held -= IssuedBytes(m_issued.front());
+                    m_issued.pop_front();
+                }
             }
 
             m_current = std::move(st);
@@ -296,6 +332,15 @@ private:
         std::string             prevHashHex;
         std::vector<TemplateTx> txs;
     };
+
+    /** What one remembered job costs, near enough to bound it. */
+    static size_t IssuedBytes(const IssuedJob& j)
+    {
+        size_t n = j.jobId.size() + j.prevHashHex.size()
+                 + j.txs.size() * sizeof(TemplateTx);
+        for (const auto& t : j.txs) n += t.data.size();
+        return n;
+    }
     mutable std::mutex m_mutex;
     std::deque<IssuedJob> m_issued;
     std::string m_prevTipHex;    // tip the newest job was built on

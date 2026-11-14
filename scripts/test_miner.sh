@@ -79,7 +79,28 @@ fi
 OUT="${MINER_TEST_OUT:-$(mktemp -d)}"
 mkdir -p "$OUT"
 
-TESTS=(address_test plaintext_test solo_template_test stratum_hostile_test)
+TESTS=(address_test plaintext_test rpc_limits_test seed_flap_test solo_template_test stratum_hostile_test tls_test)
+
+# TLS IS OPTIONAL IN THE BINARY, SO IT IS OPTIONAL HERE -- AND SAID EITHER WAY.
+#
+# miner/build.sh links libssl when the headers are there and leaves the binary
+# exactly as it was when they are not. tls_test follows that: built with TLS it
+# raises a server on loopback with a self-signed certificate -- which is what
+# somebody in the path has -- and requires the client to refuse it. Built
+# without, it reports that the verification cases were not checked at all.
+#
+# The flags are per test rather than global: adding -lssl to every suite would
+# make this whole file need libssl before anything would compile.
+TLS_CXXFLAGS=""
+TLS_LDLIBS=""
+printf '#include <openssl/ssl.h>
+int main(){return 0;}
+' > "$OUT/tlsprobe.cpp"
+if g++ -std=c++17 "$OUT/tlsprobe.cpp" -lssl -lcrypto -o "$OUT/tlsprobe" >/dev/null 2>&1; then
+    TLS_CXXFLAGS="-DWAM_MINER_TLS"
+    TLS_LDLIBS="-lssl -lcrypto"
+fi
+rm -f "$OUT/tlsprobe.cpp" "$OUT/tlsprobe"
 
 printf '\n%s  the miner'"'"'s unit tests%s\n\n' "$BLD" "$OFF"
 
@@ -92,8 +113,16 @@ for t in "${TESTS[@]}"; do
         continue
     fi
 
-    if ! g++ -std=c++17 -I miner/src -O1 -pthread \
-             -o "$OUT/$t" "$src" 2> "$OUT/$t.build.log"; then
+    extra_cxx=""
+    extra_ld=""
+    if [ "$t" = "tls_test" ]; then
+        extra_cxx="$TLS_CXXFLAGS"
+        extra_ld="$TLS_LDLIBS"
+    fi
+
+    # shellcheck disable=SC2086
+    if ! g++ -std=c++17 -I miner/src -O1 -pthread $extra_cxx \
+             -o "$OUT/$t" "$src" $extra_ld 2> "$OUT/$t.build.log"; then
         printf '  %sFAIL%s  %s did not build\n' "$RED" "$OFF" "$t"
         sed -n '1,12p' "$OUT/$t.build.log" | sed 's/^/          /'
         failed=$((failed + 1))

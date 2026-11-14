@@ -37,8 +37,10 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import shutil
 import sys
+import textwrap
 from dataclasses import dataclass, field
 
 # ===========================================================================
@@ -341,6 +343,227 @@ REPLACEMENT_WAM026 = """    // WAM: the example address must be this chain's, no
     // no chain at all and cannot be paid to by accident.
     std::string addr = params.Bech32HRP() +
         "1p35yvjel7srp783ztf8v6jdra7dhfzk5jaun8xz2qp6ws7z80n4tq2jku9f";"""
+
+
+# ===========================================================================
+#  WAM-029 -- the inherited test cases that cannot hold on this chain
+# ===========================================================================
+#
+#  WHY THIS EXISTS
+#
+#  A clean build runs 130 Boost suites. Twenty-one of them aborted, and the
+#  measurement said "109 pass, 0 fail" -- which reads better than it is,
+#  because a suite that aborts is not a suite that passed. Underneath, 58
+#  cases were reported failing, and most of those were collateral: Boost runs
+#  a suite in one process, so one abort takes every later case with it.
+#
+#  Every one of them is Bitcoin's own expectation on a different chain. Not
+#  one is a defect in WAM:
+#
+#    its keys and addresses   version byte 0x80 against WAM's 190, "bc1"
+#                             against "wam", a version 5 P2SH address
+#    its money                21,000,000 and 50 BTC against 22,000,000 and
+#                             47.5 to the miner
+#    its proof of work        SHA256d and a 2016-block retarget against
+#                             RandomX and DarkGravityWave
+#    its network identity     port 8333, its message magic, signet, and the
+#                             string "bitcoin-cli"
+#    its coinbase             one output, where consensus rule WAM-1 requires
+#                             a treasury output below height 400,000
+#
+#  WHAT THIS DOES, AND WHAT IT REFUSES TO DO
+#
+#  It disables those cases BY NAME, each with the WAM fact it collides with
+#  written beside it, so the suites around them run. That is the point: the
+#  21 aborting suites hold 134 cases and only the rows below are gated, so
+#  the rest go from being thrown away to being checked on every build.
+#
+#  It does not delete them and it does not drop a suite from the Makefile.
+#  `test_bitcoin --list_content` still lists a gated case and Boost reports it
+#  as skipped, so the number is visible rather than absent, and
+#  scripts/check_gated_tests.py compares the tree against this table on every
+#  sweep -- a case cannot be quietly added to make a build green.
+#
+#  Two could be recovered by rewriting their fixtures to WAM's coinbase and
+#  subsidy: miner_tests/CreateNewBlock_validity and
+#  validation_block_tests/processnewblock_signals_ordering. That is writing
+#  new tests rather than repairing inherited ones, and both reasons below say
+#  so rather than leaving it to be guessed at.
+GATED_CASES = [
+    ('test/key_tests.cpp',
+     'BOOST_AUTO_TEST_CASE(key_test1)',
+     "its WIF keys carry Bitcoin's 0x80 version byte; WAM's is 190, so DecodeSecret returns nothing and CKey::GetPubKey aborts on an empty key"),
+    ('test/key_tests.cpp',
+     'BOOST_AUTO_TEST_CASE(key_signature_tests)',
+     "the same strSecret1: DecodeSecret returns an empty CKey, and Sign() on "
+     "one reads through a null pointer. It is not collateral from key_test1 -- "
+     "a bare run with that one gated left this as the only failure in 622 "
+     "cases, which is how it was found"),
+    ('test/key_tests.cpp',
+     'BOOST_AUTO_TEST_CASE(key_ellswift)',
+     "the same four secrets. It is the third case in this file to be found "
+     "independent rather than collateral, each by gating the one before it "
+     "and running the whole binary again -- which is the only way to tell the "
+     "two apart, because one abort ends the process"),
+    ('test/bloom_tests.cpp',
+     'BOOST_AUTO_TEST_CASE(bloom_create_insert_key)',
+     'same: a Bitcoin WIF, decoded into an empty CKey, aborts before the filter is ever exercised'),
+    ('test/key_io_tests.cpp',
+     'BOOST_AUTO_TEST_CASE(key_io_valid_parse)',
+     "test/data/key_io_valid.json is a table of Bitcoin addresses and WIFs; every one of them is invalid under WAM's version bytes and bech32 hrp"),
+    ('test/key_io_tests.cpp',
+     'BOOST_AUTO_TEST_CASE(key_io_valid_gen)',
+     "the same table read the other way: it expects EncodeDestination to produce '1FsSia9rv4Ne...', and WAM produces 'WdYUbVutkECb...'"),
+    ('test/descriptor_tests.cpp',
+     'BOOST_AUTO_TEST_CASE(descriptor_test)',
+     'every descriptor in it carries a Bitcoin WIF or xprv, so the parser refuses the key before any descriptor logic runs'),
+    ('test/script_standard_tests.cpp',
+     'BOOST_AUTO_TEST_CASE(script_standard_taproot_builder)',
+     "it expects EncodeDestination to return a 'bc1p' address; WAM's bech32m human-readable part is 'wam'"),
+    ('test/script_standard_tests.cpp',
+     'BOOST_AUTO_TEST_CASE(bip341_spk_test_vectors)',
+     "test/data/bip341_wallet_vectors.json carries bip350Address fields written with Bitcoin's hrp, for the same reason"),
+    ('test/rpc_tests.cpp',
+     'BOOST_AUTO_TEST_CASE(rpc_rawsign)',
+     "it signs to the P2SH address 3HqAe9LtNBjnsfM4CyYaWTnvCaUYT7v4oZ, which is Bitcoin's version 5; WAM refuses it as an address for another chain"),
+    ('test/util_tests.cpp',
+     'BOOST_AUTO_TEST_CASE(message_sign)',
+     "message signing is domain-separated by a magic string -- Bitcoin's is 'Bitcoin Signed Message:\\n' and WAM's is its own, so the same key over the same text gives a different signature by design"),
+    ('test/util_tests.cpp',
+     'BOOST_AUTO_TEST_CASE(message_verify)',
+     'the same magic, read the other way, over Bitcoin addresses'),
+    ('test/validation_tests.cpp',
+     'BOOST_AUTO_TEST_CASE(block_subsidy_test)',
+     "it asserts the subsidy never exceeds 50 BTC and halves every 210,000 blocks; WAM pays 50 WAM and halves every 200,000, and wam_monetary_tests holds WAM's schedule down instead"),
+    ('test/validation_tests.cpp',
+     'BOOST_AUTO_TEST_CASE(subsidy_limit_test)',
+     "it sums the emission against Bitcoin's 21,000,000 cap; WAM's is 22,000,000, proved by scripts/verify_supply.py and wam_monetary_tests"),
+    ('test/transaction_tests.cpp',
+     'BOOST_AUTO_TEST_CASE(tx_invalid)',
+     "one row of test/data/tx_invalid.json is labelled 'MAX_MONEY + 1 output' and carries 2,100,000,000,000,001 satoshi. That is above Bitcoin's cap and below WAM's, so CheckTransaction accepts it -- correctly -- and the row's BADTX marker is then read as a script flag"),
+    ('wallet/test/wallet_tests.cpp',
+     'BOOST_FIXTURE_TEST_CASE(coin_mark_dirty_immature_credit, TestChain100Setup)',
+     'it expects a coinbase to credit 50*COIN; a WAM coinbase credits 47.5 to the miner and 2.5 to the treasury by consensus rule WAM-1'),
+    ('wallet/test/wallet_tests.cpp',
+     'BOOST_FIXTURE_TEST_CASE(scan_for_wallet_transactions, TestChain100Setup)',
+     'same: two blocks are 95 WAM to the miner, not 100'),
+    ('wallet/test/wallet_tests.cpp',
+     'BOOST_FIXTURE_TEST_CASE(ListCoinsTest, ListCoinsTestingSetup)',
+     'same: it asserts each listed coin is 50*COIN'),
+    ('wallet/test/spend_tests.cpp',
+     'BOOST_FIXTURE_TEST_CASE(SubtractFee, TestChain100Setup)',
+     'it spends a coinbase assumed to be 50*COIN and checks the fee subtraction against that balance'),
+    ('wallet/test/spend_tests.cpp',
+     'BOOST_FIXTURE_TEST_CASE(wallet_duplicated_preset_inputs_test, TestChain100Setup)',
+     'same fixture and the same assumed balance'),
+    ('wallet/test/wallet_tests.cpp',
+     'BOOST_FIXTURE_TEST_CASE(importmulti_rescan, TestChain100Setup)',
+     "its expected JSON names Bitcoin addresses and the rescan window is measured in Bitcoin's block spacing"),
+    ('test/pow_tests.cpp',
+     'BOOST_AUTO_TEST_CASE(get_next_work)',
+     "CalculateNextWorkRequired is Bitcoin's 2016-block retarget. WAM retargets every block with DarkGravityWave, which wam_pow_tests covers"),
+    ('test/pow_tests.cpp',
+     'BOOST_AUTO_TEST_CASE(get_next_work_pow_limit)',
+     'same retarget'),
+    ('test/pow_tests.cpp',
+     'BOOST_AUTO_TEST_CASE(get_next_work_lower_limit_actual)',
+     'same retarget'),
+    ('test/pow_tests.cpp',
+     'BOOST_AUTO_TEST_CASE(get_next_work_upper_limit_actual)',
+     'same, plus PermittedDifficultyTransition, which WAM-006 makes unconditional because a per-block retarget has no window to bound'),
+    ('test/miner_tests.cpp',
+     'BOOST_AUTO_TEST_CASE(CreateNewBlock_validity)',
+     "it loads 110 blocks from a table of nonces pre-mined against SHA256d, and rebuilds each coinbase as a single empty output. WAM's proof of work is RandomX, so no nonce in that table fits, and consensus rule WAM-1 refuses a coinbase with no treasury output below height 400,000. Making it run means rewriting the fixture to WAM's coinbase and subsidy, which is writing a new test rather than repairing this one; CreateNewBlock is covered by wam_devfee_tests and by every block the pool has produced since 15 September"),
+    ('test/validation_block_tests.cpp',
+     'BOOST_AUTO_TEST_CASE(processnewblock_signals_ordering)',
+     "its FinalizeBlock grinds with CheckProofOfWork, which is SHA256d, and its Block() rebuilds the coinbase as two outputs with the treasury one removed -- so every block it produces fails WAM's proof of work and consensus rule WAM-1"),
+    ('test/validation_block_tests.cpp',
+     'BOOST_AUTO_TEST_CASE(mempool_locks_reorg)',
+     "the same FinalizeBlock and the same rebuilt coinbase as the case above: "
+     "it grinds with SHA256d and removes the treasury output, so every block "
+     "it builds fails WAM's proof of work and consensus rule WAM-1"),
+    ('test/blockmanager_tests.cpp',
+     'BOOST_AUTO_TEST_CASE(blockmanager_flush_block_file)',
+     "it writes junk to a block file and expects ReadBlockFromDisk to refuse it on the header's proof of work. WAM-010 moved that check to RandomX, whose key needs a buried block, so the read no longer rejects junk there -- the same trade already recorded at WAM_INDEX_POW_CHECK_REMOVED"),
+    ('test/bip324_tests.cpp',
+     'BOOST_AUTO_TEST_CASE(packet_test_vectors)',
+     "the v2 transport vectors are keyed by the network magic, and WAM's pchMessageStart is its own, so every session id differs"),
+    ('test/net_peer_connection_tests.cpp',
+     'BOOST_AUTO_TEST_CASE(test_addnode_getaddednodeinfo_and_connection_detection)',
+     "it waits for the log line 'Added connection to 127.0.0.1:8333'; 8333 is Bitcoin's default port and WAM's is 9555"),
+    ('test/validation_tests.cpp',
+     'BOOST_AUTO_TEST_CASE(signet_parse_tests)',
+     'WAM has no signet: there is no signet challenge to parse'),
+    ('test/rpc_tests.cpp',
+     'BOOST_AUTO_TEST_CASE(help_example)',
+     "it expects the help text to say 'bitcoin-cli'; this binary is wam-cli"),
+    ('test/denialofservice_tests.cpp',
+     'BOOST_AUTO_TEST_CASE(stale_tip_peer_management)',
+     "TipMayBeStale is measured in nPowTargetSpacing, and the test advances the clock by Bitcoin's 600 seconds against WAM's 120"),
+    ('test/validation_chainstatemanager_tests.cpp',
+     'BOOST_FIXTURE_TEST_CASE(chainstatemanager_activate_snapshot, SnapshotTestSetup)',
+     'the snapshot fixture counts 100 coins after 100 blocks. A WAM coinbase carries two outputs, miner and treasury, and genesis carries five, so the same chain holds 205'),
+    ('test/validation_chainstatemanager_tests.cpp',
+     'BOOST_FIXTURE_TEST_CASE(chainstatemanager_snapshot_completion, SnapshotTestSetup)',
+     'the same 100-against-205 count'),
+    ('test/validation_chainstatemanager_tests.cpp',
+     'BOOST_FIXTURE_TEST_CASE(chainstatemanager_snapshot_completion_hash_mismatch, SnapshotTestSetup)',
+     'the same count'),
+    ('test/validation_chainstatemanager_tests.cpp',
+     'BOOST_FIXTURE_TEST_CASE(chainstatemanager_snapshot_init, SnapshotTestSetup)',
+     'the same count'),
+    ('test/validation_chainstatemanager_tests.cpp',
+     'BOOST_FIXTURE_TEST_CASE(chainstatemanager_loadblockindex, TestChain100Setup)',
+     "it expects two block index candidates after loading a fixture chain built with Bitcoin's proof of work; none of those blocks is valid here"),# 43 gated, 0 problem(s)
+
+    ('test/validation_chainstate_tests.cpp',
+     'BOOST_FIXTURE_TEST_CASE(chainstate_update_tip, TestChain100Setup)',
+     'CreateAndActivateUTXOSnapshot serialises a UTXO set whose size and hash depend on the coinbase shape, for the same reason'),
+    ('test/validation_tests.cpp',
+     'BOOST_AUTO_TEST_CASE(test_assumeutxo)',
+     'it asserts a literal hash_serialized for the snapshot at height 110; that hash commits to every output in the set'),
+    ('test/txpackage_tests.cpp',
+     'BOOST_FIXTURE_TEST_CASE(package_validation_tests, TestChain100Setup)',
+     "its parent transactions spend coinbases from the fixture chain, whose values are WAM's 47.5 rather than Bitcoin's 50, so the hand-computed fees in the package no longer meet the policy they were written for"),
+    ('test/txpackage_tests.cpp',
+     'BOOST_FIXTURE_TEST_CASE(package_submission_tests, TestChain100Setup)',
+     'the same fees'),
+    ('test/txpackage_tests.cpp',
+     'BOOST_FIXTURE_TEST_CASE(package_witness_swap_tests, TestChain100Setup)',
+     'the same fees'),
+    ('test/txpackage_tests.cpp',
+     'BOOST_FIXTURE_TEST_CASE(package_cpfp_tests, TestChain100Setup)',
+     'the same fees'),
+    ('test/txpackage_tests.cpp',
+     'BOOST_FIXTURE_TEST_CASE(package_rbf_tests, TestChain100Setup)',
+     'the same fees'),
+]
+
+
+def _gate_edits():
+    """One Edit per row of GATED_CASES, with the reason left in the source."""
+    edits = []
+    for rel, decl, reason in GATED_CASES:
+        case = re.match(r"BOOST_(?:AUTO|FIXTURE)_TEST_CASE\(\s*([A-Za-z_0-9]+)",
+                        decl).group(1)
+        marker = "WAM_GATED_" + case
+        wrapped = textwrap.wrap("Disabled on this chain: " + reason + ".",
+                                width=74)
+        comment = ("// " + marker + "\n"
+                   "//\n"
+                   + "".join("// " + line + "\n" for line in wrapped)
+                   + "//\n"
+                   "// Not a defect and not a pass: it is still listed, Boost reports\n"
+                   "// it skipped, and scripts/check_gated_tests.py holds the tree to\n"
+                   "// the table in scripts/patch_upstream.py.\n")
+        edits.append(Edit(
+            file="src/" + rel,
+            description="gate " + case,
+            marker=marker,
+            anchor=decl,
+            replacement=comment + decl[:-1] + ", *boost::unit_test::disabled())",
+        ))
+    return edits
 
 
 def build_changes() -> list[Change]:
@@ -2284,6 +2507,19 @@ MAGIC_BYTES = {
                     "        }\n"),
             ),
         ],
+    ))
+
+    changes.append(Change(
+        id="WAM-029",
+        title="Gate the inherited test cases that cannot hold on this chain",
+        rationale=(
+            "Twenty-one upstream suites aborted on a clean build, every one of "
+            "them on Bitcoin's own expectations -- its keys and addresses, its "
+            "21,000,000 cap and 50 BTC subsidy, SHA256d and the 2016-block "
+            "retarget, port 8333 and its message magic, and a coinbase with no "
+            "treasury output. Those cases are disabled by name, each with the "
+            "fact it collides with, so the rest of their suites run."),
+        edits=_gate_edits(),
     ))
 
     return changes
