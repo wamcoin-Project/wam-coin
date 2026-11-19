@@ -49,15 +49,33 @@ if (files.length === 0) {
     process.exit(2);
 }
 
-const RED = '\x1b[31m', GRN = '\x1b[32m', BLD = '\x1b[1m', OFF = '\x1b[0m';
+const RED = '\x1b[31m', GRN = '\x1b[32m', YLW = '\x1b[33m',
+      BLD = '\x1b[1m', OFF = '\x1b[0m';
 const failed = [];
+const unchecked = [];
+
+// EXIT 2 IS "NOTHING WAS CHECKED", AND IT IS NOT A PASS.
+//
+// atomic-against-redis.test.js needs a redis-server to run the real scripts
+// against, and on a machine without one there is nothing to report either
+// way. Folding that into 0 would print a green tick for cases that never
+// ran -- which is the fault this runner was written for, one level up.
+// Folding it into 1 would make an absent optional dependency look like a
+// broken pool. It gets its own line, its own colour, and its own count in
+// the summary, exactly as scripts/test_miner.sh already does for a missing
+// compiler.
+const COULD_NOT_CHECK = 2;
 
 for (const f of files) {
     const r = spawnSync(process.execPath, [path.join(DIR, f)], {
         stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8'
     });
     const out = (r.stdout || '') + (r.stderr || '');
-    if (r.status === 0) {
+    if (r.status === COULD_NOT_CHECK) {
+        unchecked.push(f);
+        console.log(`${YLW}!!${OFF}    ${f}`);
+        console.log(out.split('\n').map((l) => '      ' + l).join('\n'));
+    } else if (r.status === 0) {
         console.log(`${GRN}ok${OFF}    ${f}`);
     } else {
         failed.push(f);
@@ -69,10 +87,18 @@ for (const f of files) {
 }
 
 console.log();
-if (failed.length === 0) {
+if (failed.length === 0 && unchecked.length === 0) {
     console.log(`${GRN}${BLD}all ${files.length} test file(s) passed${OFF}`);
+} else if (failed.length === 0) {
+    console.log(`${YLW}${BLD}${files.length - unchecked.length} test file(s) passed; `
+                + `${unchecked.length} could not be checked here${OFF}`);
+    unchecked.forEach((f) => console.log(`  - ${f}`));
 } else {
     console.log(`${RED}${BLD}${failed.length} of ${files.length} test file(s) failed${OFF}`);
     failed.forEach((f) => console.log(`  - ${f}`));
+    unchecked.forEach((f) => console.log(`  ${YLW}!!${OFF} ${f} could not be checked here`));
 }
+// A file that could not be checked does not fail the run -- the gate that
+// must not let it slide is scripts/preflight.sh before a release, where the
+// pool's own redis is running.
 process.exit(failed.length === 0 ? 0 : 1);

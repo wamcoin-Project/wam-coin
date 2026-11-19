@@ -97,10 +97,47 @@
  *
  * Returns 1 if this caller claimed it, 0 if somebody else already had.
  *
- * HDEL first so the return value decides, exactly as the two-command version
- * did -- the difference is that nothing can run between the two lines.
+ * HDEL decides, so HDEL comes before the LPUSH: the return value is what
+ * makes exactly one caller the winner, and inside a MULTI it would not be
+ * readable until the whole thing had run. That much is unchanged.
+ *
+ * WHAT A SCRIPT PREVENTS, AND WHAT IT DOES NOT.
+ *
+ * This file was written in October to close a crash window, and the header
+ * above says what a script buys: redis runs it to completion before anything
+ * else, so nothing can interrupt between the two lines. True, and it is not
+ * the whole hazard. A script is not rolled back when a command inside it is
+ * REFUSED at run time -- redis keeps what already ran and hands the error
+ * back -- so with the evidence list holding the wrong type, the HDEL above
+ * succeeded and the LPUSH did not. That leaves the block deleted from
+ * blocks:pending, absent from blocks:maturing and not credited: the exact
+ * state described at the top of this file, where the only surviving
+ * statement of what every miner in the round is owed no longer exists and
+ * nothing anywhere can reconstruct it. The crash window was closed and the
+ * refusal window was left open, in the one script that guards the
+ * irreplaceable value.
+ *
+ * The other four scripts in this file learned that lesson one at a time --
+ * the share credit and the payment commit on 10 November, the maturation
+ * credit on 13 November -- and each carries a note saying so. This one was
+ * written first and was never revisited, so it kept the shape the others had
+ * abandoned. Found by reading the whole file on 17 November 2026 rather than
+ * the script that was asked about.
+ *
+ * Both checks are reads, so putting them above HDEL changes nothing about
+ * who wins the race. KEYS[1] would fail safely without its check -- HDEL
+ * refuses before anything is written -- and it is checked anyway so that an
+ * operator is told which key is wrong instead of reading WRONGTYPE with no
+ * name attached.
  */
 const CLAIM_AND_RECORD = `
+if redis.call('EXISTS', KEYS[1]) == 1 and redis.call('TYPE', KEYS[1])['ok'] ~= 'hash' then
+  return redis.error_reply('wamClaimAndRecord refused: blocks:pending is not a hash')
+end
+if redis.call('EXISTS', KEYS[2]) == 1 and redis.call('TYPE', KEYS[2])['ok'] ~= 'list' then
+  return redis.error_reply('wamClaimAndRecord refused: the evidence list is not a list')
+end
+
 if redis.call('HDEL', KEYS[1], ARGV[1]) ~= 1 then
   return 0
 end
