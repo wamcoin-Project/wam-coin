@@ -212,6 +212,56 @@ function fakeRes() {
             + 'the whole pool');
     });
 
+    await test('behind a proxy it does not trust, it limits nobody', async () => {
+        // THIS IS THE CASE THAT TOOK THE LIVE DASHBOARD DOWN.
+        //
+        // The case above proves the limiter works when apiTrustProxy is set.
+        // Nothing covered the pool that is behind a proxy and has NOT set
+        // it -- which is what pool.wamcoin.org was, because the operator's
+        // own config.json never gained the key the shipped
+        // config.mainnet.json carries.
+        //
+        // _caller() returned the socket address, every visitor arrives from
+        // 127.0.0.1 through nginx, and the whole internet shared one
+        // bucket. The dashboard's own page exhausted it and the site showed
+        // "API unreachable: /api/miners -> HTTP 429", flickering red and
+        // green as the window refilled. Every reader throttled every other
+        // reader, and the busier the pool was the worse it got.
+        //
+        // Callers that cannot be told apart must not be limited as though
+        // they were one. Measured on the live site, 19 November 2026.
+        const api = make({ apiLookupsPerMinute: 2 });   // no apiTrustProxy
+        api.shares = { async getMinerStats() { return {}; } };
+        const ADDR = 'twam1qtekdutqnwmqwtsh4rddncxru2s0y3vp5ea7ljs';
+        const codes = [];
+        for (let i = 0; i < 10; i++) {
+            const res = await get(api, `/api/miner?address=${ADDR}`, '127.0.0.1',
+                                  { 'x-forwarded-for': `203.0.113.${i}` });
+            codes.push(res.code);
+        }
+        assert.ok(!codes.includes(429),
+            `ten visitors behind one proxy got ${codes.join(',')}. They are `
+            + 'ten different people and the pool cannot tell them apart, so '
+            + 'it counted them as one and refused them for each other');
+    });
+
+    await test('and with nothing in front of it, it still limits', async () => {
+        // The other direction: a pool reached directly must still be
+        // protected. A fix that turns the limiter off everywhere is not a
+        // fix.
+        const api = make({ apiLookupsPerMinute: 2 });
+        api.shares = { async getMinerStats() { return {}; } };
+        const ADDR = 'twam1qtekdutqnwmqwtsh4rddncxru2s0y3vp5ea7ljs';
+        let refused = false;
+        for (let i = 0; i < 8; i++) {
+            const res = await get(api, `/api/miner?address=${ADDR}`, '203.0.113.9');
+            if (res.code === 429) refused = true;
+        }
+        assert.ok(refused,
+            'one caller with no proxy in the way was never throttled, so the '
+            + 'limiter protects nothing at all');
+    });
+
     await test('a forged forwarded header cannot shed the real client', async () => {
         // nginx APPENDS the real client, so the last entry is the one it
         // wrote. A client may prepend as many lies as it likes.

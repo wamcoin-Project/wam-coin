@@ -546,7 +546,40 @@ class StratumServer extends EventEmitter {
         // Accepts base58 (P2PKH/P2SH) and bech32/bech32m (P2WPKH/P2WSH/P2TR).
         // Rejecting segwit here would turn away most miners, since that is what
         // a default `getnewaddress` produces.
-        return validateAddress(address, this.config.netVersions);
+        const ok = validateAddress(address, this.config.netVersions);
+        if (!ok.ok) return ok;
+
+        // AN ADDRESS NOBODY MINING CAN SPEND FROM IS NOT A PAYOUT ADDRESS.
+        //
+        // Somebody authorized with the project's own treasury address and
+        // mined into it for weeks. Measured on 19 November 2026: 372 payout
+        // batches, 666.49347736 WAM, every satoshi of it paid by this pool
+        // to an address whose key this project holds and they do not.
+        //
+        // Two explanations and the chain tells them apart for nobody. A
+        // deliberate donation, or -- far likelier -- somebody who copied the
+        // treasury address off wamcoin.org/security, where it is printed
+        // beside the command for checking its balance, and took it for the
+        // pool's address. On that reading they worked for weeks and were
+        // paid nothing, and nothing anywhere told them.
+        //
+        // The pool cannot know whose an address is, and does not need to
+        // here: it knows this one. Refusing it costs a donor one message
+        // telling them how to donate properly, and saves the other person
+        // every hour they would otherwise lose.
+        const reserved = this.config.reservedAddresses || [];
+        if (reserved.includes(address)) {
+            return {
+                ok: false,
+                reason: 'that is this project\'s treasury address, not a ' +
+                        'payout address. Mining to it pays the project and ' +
+                        'not you, and the key is not yours. Use an address ' +
+                        'from your own wallet. If you meant to give to the ' +
+                        'project, send coins to it directly -- do not mine ' +
+                        'into it, because then nothing records that you did.'
+            };
+        }
+        return ok;
     }
 
     ban(ip) {

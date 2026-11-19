@@ -232,7 +232,13 @@ const ADDR = 'WdMMqW1DcgWZ6HtyJuEMdce6QkKg4raGmE';
         api.close();
         const body = JSON.parse(r.raw.toString());
 
-        for (const leak of ['memoryMb', 'uptimeSec', 'connections']) {
+        assert.ok('uptimeSec' in body,
+            'uptime was withheld from a stranger. This pool prints it on its '
+            + 'own front page -- "healthy . up 6d 12h" -- and the page reads '
+            + 'it from here, so withholding it showed "up --" to every '
+            + 'visitor on the live site. A number we publish ourselves is '
+            + 'not a secret we are keeping.');
+        for (const leak of ['memoryMb', 'connections']) {
             assert.ok(!(leak in body),
                 `/api/health tells anyone who asks the pool's ${leak}. Behind `
                 + 'a reverse proxy the socket address is the proxy, so a check '
@@ -252,7 +258,7 @@ const ADDR = 'WdMMqW1DcgWZ6HtyJuEMdce6QkKg4raGmE';
         const r = await get(port, '/api/health');
         api.close();
         const body = JSON.parse(r.raw.toString());
-        for (const kept of ['memoryMb', 'uptimeSec', 'connections']) {
+        for (const kept of ['memoryMb', 'connections']) {
             assert.ok(kept in body,
                 `the operator's own monitoring lost ${kept}, which is what it `
                 + 'reads this endpoint for');

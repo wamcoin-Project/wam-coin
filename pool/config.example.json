@@ -17,6 +17,8 @@
   "rewardMode": "pplns",
   "_rewardMode": "'pplns' (hopping-resistant, recommended) or 'prop' (per-round).",
 
+  "reservedAddresses": ["WdMMqW1DcgWZ6HtyJuEMdce6QkKg4raGmE"],
+  "_reservedAddresses": "Addresses a miner must not be paid at, refused at mining.authorize with a message saying why. The project's treasury address is here because somebody authorized with it and mined into it for weeks -- 372 payout batches, 666.49347736 WAM, all of it paid to a key this project holds and they do not. Either a deliberate gift or, far more likely, a miner who copied the address off the security page where it sits beside the command for checking its balance. Refusing it costs a donor one message and saves the other person every hour they work.",
   "poolFeePercent": 1.0,
   "_poolFeePercent": "The OPERATOR's fee, taken after the chain's 5% treasury output. These are two entirely separate fees; miners see 5% + this.",
 

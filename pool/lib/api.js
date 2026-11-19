@@ -211,7 +211,41 @@ class ApiServer {
      */
     _caller(req) {
         const socketIp = (req.socket && req.socket.remoteAddress) || '?';
-        if (!this.config.apiTrustProxy) return socketIp;
+        if (!this.config.apiTrustProxy) {
+            // A PROXY WE WERE NOT TOLD ABOUT MAKES EVERYONE ONE CALLER.
+            //
+            // Returning the socket address here looks harmless and is not.
+            // Behind nginx every visitor arrives from 127.0.0.1, so the
+            // whole internet shares one bucket: the dashboard's own page
+            // exhausted it and the live site showed
+            //
+            //     API unreachable: /api/miners -> HTTP 429
+            //
+            // flickering red and green as the window refilled. Every reader
+            // was rate-limited by every other reader, and the busier the
+            // pool got the worse it was.
+            //
+            // If the request carries X-Forwarded-For we are behind
+            // something, and without apiTrustProxy we cannot say who sent
+            // it. Callers that cannot be told apart must not be limited as
+            // if they were one. Same answer as the branch below, for the
+            // same reason, and it says so out loud.
+            if (req.headers && req.headers['x-forwarded-for']) {
+                if (!this._warnedAboutUntrustedProxy) {
+                    this._warnedAboutUntrustedProxy = true;
+                    this.log.warn(
+                        'requests carry X-Forwarded-For but apiTrustProxy is ' +
+                        'not set, so every visitor looks like the proxy and ' +
+                        'cannot be told apart. The API rate limit is NOT ' +
+                        'being applied -- limiting them as one caller would ' +
+                        'mean each reader throttling all the others. Set ' +
+                        'apiTrustProxy once the proxy is known to append ' +
+                        '$proxy_add_x_forwarded_for.');
+                }
+                return null;
+            }
+            return socketIp;
+        }
         const fwd = req.headers['x-forwarded-for'];
         if (fwd) {
             const hops = String(fwd).split(',').map((s) => s.trim()).filter(Boolean);
@@ -820,11 +854,29 @@ class ApiServer {
         const out = {
             ok: problems.length === 0,
             problems,
-            templateAgeSec: Math.round(templateAgeSec)
+            templateAgeSec: Math.round(templateAgeSec),
+            // UPTIME IS PUBLISHED ON PURPOSE, SO IT IS NOT WITHHELD HERE.
+            //
+            // The first version of this fix took all three fields away from
+            // a stranger, and uptime was not one of the three to take. This
+            // pool's own front page has always printed "healthy · up 6d 12h"
+            // in its header -- a deliberate public statement about how long
+            // it has stayed up, which is most of what a miner is choosing
+            // between pools on. The page reads it from here, so hiding it
+            // here turned that into "healthy · up —" on the live site, and
+            // the founder found it by looking at the page.
+            //
+            // Withholding a number we print ourselves is not privacy. It is
+            // the same number, missing from one of the two places it was.
+            uptimeSec: Math.round(process.uptime())
         };
         if (detailed) {
+            // These two are published nowhere. Resident memory says how hard
+            // the process is working and roughly how much it is holding;
+            // the live connection count says how many miners would notice an
+            // outage. /api/miners answers what a reader actually wants from
+            // the second one, with the addresses redacted.
             out.connections = this.stratum.clients.size;
-            out.uptimeSec = Math.round(process.uptime());
             out.memoryMb = Math.round(process.memoryUsage().rss / 1048576);
         }
         return out;
