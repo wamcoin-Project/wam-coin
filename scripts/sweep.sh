@@ -429,6 +429,20 @@ run "no page promises and forgets"  "$PY" scripts/check_promises.py
 # docs/TREASURY_LEDGER.md.
 run "treasury claims match the ledger" "$PY" scripts/check_treasury_claims.py
 
+# AND THE BOUNTY RECORD AGAINST ITSELF.
+#
+# SECURITY.md keeps a summary near the top and a detailed entry for every
+# finding further down, and they drifted -- found by the founder reading the
+# page, not by anything here. The prose said "1,950 to three people on
+# 9 November, and 650 to two more on 13 November": correct arithmetic naming
+# nobody, so no reader could check one figure against one entry. And one
+# entry carried two findings under one number, 10,250, which the reporter had
+# himself priced as 10,000 and 250 separately.
+#
+# Multisets, not sums: 10,000 + 250 and one 10,250 add to the same total, and
+# telling them apart is the whole point.
+run "one row per finding"        "$PY" scripts/check_bounty_rows.py
+
 # And two plans cut in one sitting cannot take the same coin. --parts keeps
 # the parts of one payment apart; until 9 November nothing kept two separate
 # plans apart, and three people were owed that day. The failure would have

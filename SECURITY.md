@@ -140,14 +140,38 @@ bounty" — while three other places in the repository said "there is a bounty"
 and linked here. A reviewer followed our own sentence to our own file and found
 it contradicted. He was right and the file was wrong.
 
-**What has been paid is in the ledger, and nothing else has.** 10,000 WAM went
-to chovy on 1–2 October 2026, 10,000 to Alboy on 11 October, 1,000 to
-Smooth Jazz Crypto on 13 October, 250 to ahten on 15 October, and 10,250 to
-bobbyning on 8 November, 1,950 to three people on 9 November, and 650 to two
-more on 13 November — 34,100 WAM in bounties. What has been accepted and
-not yet paid says so in its own entry below, with what it is waiting on. This
-sentence used to count them, and a count is wrong again by the next payment;
-the entries cannot be. Until 2 October this paragraph opened
+**What has been paid is in the ledger, and nothing else has.** Every finding
+below, with who found it and what it was classified at. One row per finding,
+never one row per payment: two findings from the same person are two rows
+even when one transaction paid them both, because a reader asking what a
+given report was worth cannot answer it from a sum.
+
+| who | finding | | paid |
+|---|---|---|---|
+| chovy | pool accounting, the same pending block maturing more than once | 10,000 | 1–2 Oct 2026 |
+| Alboy | WAM-F5, one proof credited once per live job instead of once | 10,000 | 11 Oct 2026 |
+| Alboy | WAM-F6, a consensus field no network assigned | 250 | not claimed |
+| Smooth Jazz Crypto | pool maturation, a block losing every trace of who earned it | 1,000 | 13 Oct 2026 |
+| ahten | valid base58 payout addresses refused as bech32 | 250 | 15 Oct 2026 |
+| 0xkerochan | the block spool emptied at the start of the window it exists for | 250 | 9 Nov 2026 |
+| bobbyning | a broadcast payment committed a second time | 10,000 | 8 Nov 2026 |
+| bobbyning | a share called accepted while its accounting had failed | 250 | 8 Nov 2026 |
+| bobbyning | a punished peer still bought twenty milliseconds a header | 400 | 9 Nov 2026 |
+| bobbyning | the treasury comment described the opposite of the value under it | 250 | 9 Nov 2026 |
+| bobbyning | one hostile template field hung the solo miner | 250 | 9 Nov 2026 |
+| Radenlingga | a found block's payout table destroyed instead of written | 400 | 9 Nov 2026 |
+| Radenlingga | the fix for that threw where nothing caught | 400 | 9 Nov 2026 |
+| Radenlingga | the punished-peer guard covered one of its two doors | 400 | 13 Nov 2026 |
+| dang150296 | `getsupplyinfo` named the last block of the old epoch as the next halving | 250 | recorded, not claimed |
+| 0xpack | a stranger could write lines in the operator's log | 250 | 13 Nov 2026 |
+| an independent reviewer | three of four `/api/*` endpoints returned every miner's payout address | 1,000 | unpaid, see its entry |
+
+Each row has an entry below with its reasoning, its transaction id and what
+it is waiting on if it is waiting. The rows are the record and this section
+carries no total: a total is a sentence that stops being true at the next
+payment, and one here was wrong for a month because the prose aggregated
+"1,950 to three people" and "650 to two more" — correct arithmetic that named
+nobody, so no reader could check a single figure in it against anything. Until 2 October this paragraph opened
 "nothing has been paid yet", which stayed after it stopped being true and
 contradicted the line further down this same file. Between 14 and 15 September
 it claimed the opposite error: that 1,000 WAM had already been paid to the reviewer who
@@ -417,10 +441,21 @@ Classified at 250, the hardening rung, which is where the reporter classified
 it — he wrote that he was not inflating it. The payment is waiting on a
 mainnet address from him.
 
-**10,250 WAM — a broadcast payment paid a second time, and three more faults
-in the same accounting, accepted 7 November 2026, PAID 8 November 2026.** Ten
-transactions of 1,025 WAM, all in block 37,299, and in
+**10,000 WAM — a broadcast payment committed a second time, accepted
+7 November 2026, PAID 8 November 2026.** Paid with the finding below it, in
+ten transactions of 1,025 WAM, all in block 37,299, and in
 `docs/TREASURY_LEDGER.md` with the rest.
+
+**250 WAM — a share was called accepted while its accounting had failed,
+accepted 7 November 2026, PAID 8 November 2026.** Part of the same ten
+transactions as the finding above.
+
+These two were one entry reading "10,250 WAM — a broadcast payment paid a
+second time, and three more faults in the same accounting" until 19 November
+2026. They are two findings at two rungs, and the reporter named both rungs
+himself; printed as one figure, neither could be checked against the table
+above, and a later reporter of either one could not be told what the first
+had been worth. One row per finding, here and everywhere on this page.
 
 ioredis `pipeline()` is a batch, not a transaction, and its `exec()` resolves
 with `[error, result]` pairs: a command that fails arrives as data, not as a
