@@ -187,8 +187,28 @@ BALANCE = re.compile(
     r"at\s*height\s*([\d,]+)", re.S)
 
 EXAMPLE = re.compile(
-    r"At height ([\d,]+) that is `2\.5 × ([\d,]+) − ([\d,.]+) − ([\d,.]+) =\s*"
-    r"([\d,.]+)`", re.S)
+    r"At height ([\d,]+) that is `2\.5 × ([\d,]+) − ([\d,.]+) − ([\d,.]+) \+\s*"
+    r"([\d,.]+) =\s*([\d,.]+)`", re.S)
+
+# WHAT ARRIVED THAT CONSENSUS DID NOT PAY.
+#
+# The identity was accrued - spent for two months and was true, until
+# somebody authorized on this project's own pool with the TREASURY address
+# as their payout address and mined into it: 666.49347736 WAM across 372
+# payout batches, the pool's records and the chain agreeing to the satoshi.
+#
+# This check is how it was found. It reported the chain holding exactly that
+# much more than the table accounted for, which reads as a spend recorded
+# twice -- and every one of the 36 rows then checked out against the chain,
+# each one's net effect equalling its amount plus its fee. The rows were
+# right and the equation was short a term.
+#
+# The figure is READ FROM THE LEDGER rather than written here, so there is
+# one place to change it and the document a reader checks is that place. It
+# is closed: since 19 November 2026 the pool refuses that address at
+# mining.authorize, so nothing adds to it. If anything does, this check
+# fails again, which is what it is for.
+ARRIVED = re.compile(r"\+\s*([\d,.]+)\s+\(see \"Money that arrived\"", re.S)
 
 
 def num(s):
@@ -339,9 +359,20 @@ def main() -> int:
               f"says, for the fee it says")
 
     # --- 2 and 3. the identity ---------------------------------------------
-    expected = accrued_through(tip, k) - spent
+    #
+    # Three terms, not two. See ARRIVED above for why the third exists and
+    # why it is read from the ledger rather than written here.
+    am = ARRIVED.search(text)
+    arrived = atoms(num(am.group(1))) if am else 0
+    if not am:
+        print(f"  {YEL}the ledger states no arrived figure, so the identity "
+              f"is read as accrued - spent{OFF}")
+
+    expected = accrued_through(tip, k) - spent + arrived
     print(f"\n  accrued through {tip}   {accrued_through(tip, k) / ATOM:>18.8f}")
     print(f"  less the table         {spent / ATOM:>18.8f}")
+    if arrived:
+        print(f"  plus what arrived      {arrived / ATOM:>18.8f}")
     print(f"  = should be held       {expected / ATOM:>18.8f}")
     print(f"  the chain holds        {held / ATOM:>18.8f}")
 
@@ -401,7 +432,12 @@ def main() -> int:
                          "adds up to %.8f and %.8f"
                          % (m.group(3), m.group(4), amounts / ATOM,
                             fees / ATOM))
-        elif atoms(num(m.group(5))) != accrued_through(at_h, k) - amounts - fees:
+        elif atoms(num(m.group(5))) != arrived:
+            stale.append("the worked example adds %s as what arrived; the "
+                         "equation above it says %.8f"
+                         % (m.group(5), arrived / ATOM))
+        elif (atoms(num(m.group(6)))
+              != accrued_through(at_h, k) - amounts - fees + arrived):
             stale.append("the worked example does not come out at the number "
                          "it prints")
 

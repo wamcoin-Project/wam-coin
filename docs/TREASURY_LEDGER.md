@@ -30,15 +30,48 @@ block at the current subsidy — once per block, for heights 1 to 400,000. So
 the balance at any height is:
 
     2.5 × height  −  (every amount below + every fee below)
+                  +  666.49347736   (see "Money that arrived", below)
 
 The fee has a column of its own because a spend costs the treasury what it
 sent *and* what it paid to send it. A fee left out of the arithmetic is a
 number this file cannot be checked against, which defeats the point of it.
 
-At height 38,089 that is `2.5 × 38089 − 33,950.00000000 − 0.40409680 =
-61,272.09590320`, which is what `scantxoutset` returns, in 24,489 unspent
-outputs. Two independent routes to the same number, to the last decimal
-place.
+At height 45,189 that is `2.5 × 45189 − 34,600.00000000 − 0.41194240 +
+666.49347736 = 79,038.58153496`, which is what `scantxoutset` returns, in
+31,699 unspent outputs. Two independent routes to the same number, to the
+last decimal place.
+
+## Money that arrived
+
+The third term is not income this project arranged, and the equation above
+did not have it until 20 November 2026. For two months it read
+`2.5 × height − spends`, and that was true until somebody started mining
+into the treasury.
+
+**666.49347736 WAM, in 372 payout batches.** Every satoshi of it was paid by
+this project's own mining pool to a miner who had authorized with the
+treasury address as their payout address. The pool's records and the chain
+agree on the figure exactly: `wam-main:paid` held 66649347736 satoshi for
+that address, and the chain holds exactly that much more than the spends
+account for.
+
+Nobody arranged it and nobody can say which of two things it was. A
+deliberate gift, or — likelier — somebody who copied the address off
+wamcoin.org/security, where it is printed beside the command for checking
+its balance, and took it for the pool's own address. On that reading they
+mined for weeks, were paid nothing, and nothing anywhere told them so. The
+pool knows only an address; it has no name for them.
+
+**It has stopped.** Since 19 November 2026 the pool refuses the treasury
+address at `mining.authorize` and says why, so no one can lose their work
+that way again. The figure above is therefore closed and will not grow. If
+it ever does, `scripts/check_treasury_ledger.py` fails, which is how this
+was found in the first place: it reported the chain holding 666.49347736
+more than the ledger accounted for, which reads as a spend recorded twice.
+Every one of the 36 rows below was then checked against the chain, each
+one's net effect on the treasury equalling its amount plus its fee, with
+every input treasury-owned. The rows were right. The equation was short a
+term.
 
 ---
 
