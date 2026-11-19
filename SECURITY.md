@@ -167,11 +167,22 @@ given report was worth cannot answer it from a sum.
 | an independent reviewer | three of four `/api/*` endpoints returned every miner's payout address | 1,000 | unpaid, see its entry |
 
 Each row has an entry below with its reasoning, its transaction id and what
-it is waiting on if it is waiting. The rows are the record and this section
-carries no total: a total is a sentence that stops being true at the next
-payment, and one here was wrong for a month because the prose aggregated
-"1,950 to three people" and "650 to two more" — correct arithmetic that named
-nobody, so no reader could check a single figure in it against anything. Until 2 October this paragraph opened
+it is waiting on if it is waiting.
+
+**34,100 WAM** has been paid in bounties, which is every row above with a
+date in its last column. That figure is not typed here and trusted:
+`scripts/check_bounty_total.py` adds up `docs/TREASURY_LEDGER.md`, which is
+itself checked against the chain, and fails the build if this page disagrees
+with it. A second check, `scripts/check_bounty_rows.py`, holds the table
+against the entries below it — by multiset and not by sum, because 10,000
+plus 250 and a single 10,250 total the same and telling them apart is the
+point.
+
+Both checks exist because this section has been wrong twice. It aggregated
+"1,950 to three people" and "650 to two more" — correct arithmetic naming
+nobody, so no reader could check one figure in it against one entry. And one
+entry carried two findings under one number, which the reporter had priced
+separately himself. Until 2 October this paragraph opened
 "nothing has been paid yet", which stayed after it stopped being true and
 contradicted the line further down this same file. Between 14 and 15 September
 it claimed the opposite error: that 1,000 WAM had already been paid to the reviewer who
