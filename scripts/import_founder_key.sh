@@ -38,6 +38,7 @@ set -uo pipefail
 # value rather than an error. Refuse instead.
 SCRIPTS_DIR="${SCRIPTS_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)}"
 . "$SCRIPTS_DIR/lib/pcre.sh"
+. "$SCRIPTS_DIR/lib/secret.sh"
 
 
 NETWORK="testnet"
@@ -177,7 +178,13 @@ CHECKSUM=$(printf '%s' "$INFO" | grep -oP '"checksum"\s*:\s*"\K[^"]+')
 if [ -z "$CHECKSUM" ]; then
     echo "  FAILED to build a descriptor from that key."
     echo "  The node said:"
-    printf '%s\n' "$INFO" | grep -v "$WIF" | sed 's/^/    /' | head -5
+    # `grep -v "$WIF"` was here, and it put the founder key in grep's own
+    # argv -- readable in /proc/<pid>/cmdline by any user on the machine for
+    # as long as the process lives. This file's own header documents that
+    # hazard for wam-cli, three functions up, and then the filter protecting
+    # the key walked into it. redact_secret takes VARIABLE NAMES and does
+    # the replacement inside this shell.
+    redact_secret INFO WIF | sed 's/^/    /' | head -5
     echo
     echo "  Most likely the WIF has a wrong character. Re-read your paper copy."
     unset WIF
@@ -189,13 +196,30 @@ REQ=$(printf '[{"desc":"pkh(%s)#%s","timestamp":0,"internal":false,"active":fals
       "$WIF" "$CHECKSUM")
 
 RESULT=$(printf '%s\n' "$REQ" | cli_stdin "-rpcwallet=$WALLET" importdescriptors 2>&1)
+
+# AND THIS IS THE RESPONSE THAT ACTUALLY CARRIES THE KEY.
+#
+# The failure above was filtered and this one was not, which is the wrong
+# way round: getdescriptorinfo refuses a malformed descriptor and says so,
+# while importdescriptors is the call whose error interpolates the whole
+# descriptor it was handed -- "Could not add descriptor: pkh(<WIF>)#..."
+# (Core v28.1, src/wallet/rpc/backup.cpp). So the branch printing twelve
+# raw lines was printing the founder WIF among them, and it ran after
+# `unset WIF`, leaving nothing to filter with even if somebody had tried.
+#
+# Built before the unset, printed after. Found while fixing the same defect
+# in psbt_rehearsal.sh.
+RESULT_SAFE=$(redact_secret RESULT WIF)
 unset WIF REQ    # the key leaves this shell here
 
 if printf '%s' "$RESULT" | grep -q '"success": *true'; then
+    unset RESULT RESULT_SAFE
     echo "  import: SUCCESS"
 else
+    unset RESULT
     echo "  import: FAILED"
-    printf '%s\n' "$RESULT" | sed 's/^/    /' | head -12
+    printf '%s\n' "$RESULT_SAFE" | sed 's/^/    /' | head -12
+    unset RESULT_SAFE
     exit 1
 fi
 

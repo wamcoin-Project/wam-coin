@@ -30,6 +30,54 @@ SCRIPTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 . "$SCRIPTS_DIR/lib/python.sh"
 
 # --- pinned upstream -------------------------------------------------------
+#
+# A TAG IS A MUTABLE REF. THE COMMIT BELOW IS THE PIN.
+#
+# The header above has said "the upstream tag is PINNED" since August and it
+# was not true: this cloned by tag NAME, and an existing clone re-fetched
+# tags and checked the name out again. Whoever can move bitcoin/bitcoin's
+# v28.1 -- or point UPSTREAM_REPO at a copy of it -- chooses the consensus
+# code of every WAM node, miner and pool binary, and patch_upstream.py then
+# applies our transforms on top and sign_release.sh signs the result. The
+# attacker's code would ship carrying this project's own signature.
+#
+# The existing-clone guard compared `git describe --tags --exact-match`
+# against the tag name, which a moved tag satisfies exactly.
+#
+# Reported by Fahrizal, 18 November 2026, reproduced with local git
+# fixtures: a tag moved from commit A to commit B was adopted by a fresh
+# clone and by an existing one, ten runs out of ten, with no verification
+# output at all.
+#
+# These two are deliberately NOT read from the environment. A pin that the
+# caller can replace is not a pin, and upgrading upstream is a decision that
+# belongs in a reviewed commit to this file, not in a shell variable.
+#
+# How they were obtained, so the next person can redo it rather than trust
+# this line: both were read from the clones this machine had already built
+# the released binaries from.
+#
+#   bitcoin/bitcoin v28.1 is an ANNOTATED, SIGNED tag. Its signature is by
+#   RSA key 152812300785C96444D3334D17565732E08E5E41. That key is not in
+#   this machine's keyring, so the signature is reported and not required --
+#   see check_upstream_signature() below, which says which of the two
+#   happened rather than passing quietly.
+#
+#   tevador/RandomX v1.2.1 is a LIGHTWEIGHT tag: a bare ref to a commit,
+#   with no tag object and no signature. `git verify-tag` can never succeed
+#   on it, by anybody. For RandomX the commit pin is not one defence of two;
+#   it is the only one there is.
+UPSTREAM_COMMIT_PINNED=32efe850438ef22e2de39e562af557872a402c31
+RANDOMX_COMMIT_PINNED=102f8acf90a7649ada410de5499a7ec62e49e1da
+UPSTREAM_SIGNING_KEY=152812300785C96444D3334D17565732E08E5E41
+
+# Which of these the caller supplied, recorded before the defaults land.
+UPSTREAM_OVERRIDES=""
+for _v in UPSTREAM_REPO UPSTREAM_TAG RANDOMX_REPO RANDOMX_TAG; do
+    [ -n "${!_v+supplied}" ] && UPSTREAM_OVERRIDES="$UPSTREAM_OVERRIDES $_v"
+done
+unset _v
+
 UPSTREAM_REPO="${UPSTREAM_REPO:-https://github.com/bitcoin/bitcoin.git}"
 UPSTREAM_TAG="${UPSTREAM_TAG:-v28.1}"
 
@@ -43,8 +91,95 @@ CORE_DIR="$BUILD_DIR/wam-core"
 RANDOMX_DIR="$BUILD_DIR/randomx"
 
 log()  { printf '\033[0;36m==>\033[0m %s\n' "$*"; }
+
+# ---------------------------------------------------------------------------
+#  The pin, enforced.
+# ---------------------------------------------------------------------------
+
+# Abort unless the tree really is at the commit this file names.
+#
+# HEAD^{commit} rather than HEAD: for an annotated tag the two differ, and
+# comparing a tag object's own hash against a commit hash would fail on an
+# honest tree for a reason nobody would guess from the message.
+verify_pin() {
+    local what="$1" dir="$2" tag="$3" expected="$4" got
+    got="$(git -C "$dir" rev-parse 'HEAD^{commit}')"
+    if [ "$got" != "$expected" ]; then
+        die "$what $tag is commit
+         $got
+     and this repository is pinned to
+         $expected
+
+     Nothing here can tell you WHY they differ. The two possibilities are
+     an upstream tag that has been moved or replaced -- which means the
+     consensus code of every binary built from this tree is not the code
+     that was reviewed -- or a deliberate upstream upgrade whose pin was
+     not updated.
+
+     If it is an upgrade: read the diff between those two commits, then
+     change the pin in scripts/fetch-upstream.sh in a commit of its own.
+     Do not set an environment variable to get past this."
+    fi
+    log "     $what $tag is $got, as pinned"
+}
+
+# Say what the tag's signature does or does not prove. NEVER PASS QUIETLY.
+#
+# A missing public key and a good signature are different facts and this
+# prints which one it found. The project's own rule, in the other
+# direction: a check that could not run has not passed.
+check_upstream_signature() {
+    local dir="$1" tag="$2" out
+    if [ "$(git -C "$dir" cat-file -t "$tag" 2>/dev/null)" != "tag" ]; then
+        log "     $tag is a lightweight tag: unsigned by construction, so the"
+        log "     commit pin above is the whole of the verification"
+        return 0
+    fi
+    out="$(git -C "$dir" verify-tag "$tag" 2>&1 || true)"
+    if printf '%s' "$out" | grep -q "Good signature"; then
+        if printf '%s' "$out" | grep -qF "$UPSTREAM_SIGNING_KEY"; then
+            log "     $tag: good signature by the expected key"
+        else
+            die "$tag carries a GOOD signature by a key this repository does
+     not expect. Expected $UPSTREAM_SIGNING_KEY. The node said:
+$(printf '%s' "$out" | sed 's/^/         /')"
+        fi
+    elif printf '%s' "$out" | grep -q "No public key"; then
+        log "     $tag is signed by a key not in this keyring, so the signature"
+        log "     was NOT checked. The commit pin above is what is holding."
+    else
+        log "     $tag: the signature could not be read ($(printf '%s' "$out" | head -1))"
+    fi
+}
+
 warn() { printf '\033[0;33m!!\033[0m  %s\n' "$*"; }
 die()  { printf '\033[0;31mERROR:\033[0m %s\n' "$*" >&2; exit 1; }
+
+# An overridden source is half the reported attack, so it is not silent.
+#
+# Placed after die() and not beside the pin it guards: this runs at once,
+# and a `die` that is not yet defined exits with "command not found"
+# instead of the explanation below. The functions above only run when they
+# are called, so their order does not matter; this one's does.
+if [ -n "$UPSTREAM_OVERRIDES" ]; then
+    if [ "${WAM_UPSTREAM_UNPINNED:-0}" != "1" ]; then
+        die "the upstream source was overridden from the environment:
+        ${UPSTREAM_OVERRIDES# }
+
+     These are where the consensus code of every WAM binary comes from. A
+     build environment that supplies them chooses that code, and until
+     today nothing said so or checked the result.
+
+     To fetch a different tree deliberately -- to test an upgrade, or to
+     build from a mirror -- say so:
+
+         WAM_UPSTREAM_UNPINNED=1 $0
+
+     The commit pin is then still checked and will still refuse, which is
+     the point: you are meant to update the pin, not step around it."
+    fi
+    log "WAM_UPSTREAM_UNPINNED=1:${UPSTREAM_OVERRIDES# } came from the environment"
+fi
 
 command -v git >/dev/null    || die "git is not installed"
 command -v "$PY" >/dev/null || die ""$PY" is not installed"
@@ -63,6 +198,8 @@ else
     git clone --quiet --depth 1 --branch "$RANDOMX_TAG" "$RANDOMX_REPO" "$RANDOMX_DIR"
 fi
 git -C "$RANDOMX_DIR" checkout --quiet "$RANDOMX_TAG"
+check_upstream_signature "$RANDOMX_DIR" "$RANDOMX_TAG"
+verify_pin "RandomX" "$RANDOMX_DIR" "$RANDOMX_TAG" "$RANDOMX_COMMIT_PINNED"
 
 # ARCH=x86-64, not native.
 #
@@ -246,6 +383,15 @@ else
     git clone --quiet --depth 1 --branch "$UPSTREAM_TAG" "$UPSTREAM_REPO" "$CORE_DIR"
     PATCHED=0
 fi
+
+# RECORDING A COMMIT IS NOT CHECKING IT.
+#
+# This line wrote the fetched commit into the build log and that was the
+# whole of the verification: a number nobody compared to anything, in a log
+# nobody reads unless something has already gone wrong. The two lines below
+# are the comparison.
+check_upstream_signature "$CORE_DIR" "$UPSTREAM_TAG"
+verify_pin "Bitcoin Core" "$CORE_DIR" "$UPSTREAM_TAG" "$UPSTREAM_COMMIT_PINNED"
 
 # Record the exact commit so a build is reproducible from the log alone.
 UPSTREAM_COMMIT="$(git -C "$CORE_DIR" rev-parse HEAD)"

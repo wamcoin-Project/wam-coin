@@ -47,6 +47,7 @@ set -uo pipefail
 # value rather than an error. Refuse instead.
 SCRIPTS_DIR="${SCRIPTS_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)}"
 . "$SCRIPTS_DIR/lib/pcre.sh"
+. "$SCRIPTS_DIR/lib/secret.sh"
 
 
 # An interpreter that is actually Python: `python3` on Windows is a
@@ -146,12 +147,34 @@ fi
 
 IMP=$(printf '[{"desc":"pkh(%s)#%s","timestamp":0,"internal":false,"active":false,"label":"founder"}]' \
       "$WIF" "$CHK" | "${OFFLINE[@]}" -rpcwallet=founder_cold -stdin importdescriptors 2>&1)
+
+# THE RESPONSE IS KEY-BEARING, SO IT IS REDACTED BEFORE THE KEY IS FORGOTTEN.
+#
+# Core builds an import failure by interpolating the descriptor it was
+# handed -- "Could not add descriptor: pkh(<WIF>)#..." -- and the descriptor
+# here is the founder key. This used to print $IMP straight to the terminal,
+# so an import that failed for any ordinary wallet reason (a keypool top-up
+# that returns nullptr is enough) put the founder WIF in scrollback, in a
+# tmux log, and in anything recording the session. On the one machine where
+# that key is ever typed.
+#
+# The order matters and is the whole of the fix besides the filter: `unset
+# WIF CHK` ran HERE, one line above, so the redactor would have had nothing
+# to match. The safe text is built first and the key is forgotten after.
+#
+# Reported by Fahrizal, 18 November 2026.
+IMP_SAFE=$(redact_secret IMP WIF)
 unset WIF CHK
 
 if printf '%s' "$IMP" | grep -q '"success": *true'; then
+    unset IMP IMP_SAFE
     ok "key imported into the OFFLINE wallet only"
 else
-    bad "import failed"; printf '%s\n' "$IMP" | head -6 | sed 's/^/        /'; exit 1
+    unset IMP
+    bad "import failed"
+    printf '%s\n' "$IMP_SAFE" | head -6 | sed 's/^/        /'
+    unset IMP_SAFE
+    exit 1
 fi
 
 GOT=$("${OFFLINE[@]}" -rpcwallet=founder_cold getaddressesbylabel founder 2>/dev/null \
