@@ -214,36 +214,63 @@ const ADDR = 'WdMMqW1DcgWZ6HtyJuEMdce6QkKg4raGmE';
             'a health check must still answer the question it is for');
     });
 
-    await test('and from off this machine it carries no internals', async () => {
+    await test('and from behind the proxy it carries none of it', async () => {
+        // THE SHAPE THIS POOL IS ACTUALLY DEPLOYED IN.
+        //
+        // nginx sits in front, so every request reaches the API from
+        // 127.0.0.1. The first version of this case called _health() with a
+        // hand-made object carrying a public remoteAddress, which no real
+        // request ever has here -- it passed while the live site went on
+        // serving memoryMb, uptimeSec and connections to anyone who asked,
+        // measured against pool.wamcoin.org on 19 November 2026.
+        //
+        // A real request with the header nginx sends is the only version of
+        // this test worth having.
         const { api, port } = await listen();
-        let body = null;
-        api._json = (res, status, b) => { body = b; res.writeHead(status); res.end('{}'); };
-        // Pretend the request arrived from elsewhere, which is what the
-        // header check reads.
-        const orig = api._health.bind(api);
-        body = await orig({ socket: { remoteAddress: '203.0.113.9' } });
+        const r = await get(port, '/api/health',
+                            { 'X-Forwarded-For': '203.0.113.9' });
         api.close();
+        const body = JSON.parse(r.raw.toString());
 
         for (const leak of ['memoryMb', 'uptimeSec', 'connections']) {
             assert.ok(!(leak in body),
-                `/api/health tells anyone who asks the pool's ${leak} -- `
-                + 'resident memory says how hard it is working, uptime says '
-                + 'when it last restarted, and the connection count says how '
-                + 'many miners would notice');
+                `/api/health tells anyone who asks the pool's ${leak}. Behind `
+                + 'a reverse proxy the socket address is the proxy, so a check '
+                + 'written against it calls the whole internet the operator -- '
+                + 'resident memory says how hard the pool is working, uptime '
+                + 'says when it last restarted, and the connection count says '
+                + 'how many miners would notice');
         }
         assert.ok('ok' in body && 'problems' in body,
             'it stopped answering the question it exists for');
     });
 
-    await test('while the operator, on the loopback, still gets all of it', async () => {
+    await test('while the operator reading it directly still gets all of it',
+               async () => {
+        // No proxy header: the request really did come from this machine.
         const { api, port } = await listen();
-        const body = await api._health({ socket: { remoteAddress: '127.0.0.1' } });
+        const r = await get(port, '/api/health');
         api.close();
+        const body = JSON.parse(r.raw.toString());
         for (const kept of ['memoryMb', 'uptimeSec', 'connections']) {
             assert.ok(kept in body,
                 `the operator's own monitoring lost ${kept}, which is what it `
                 + 'reads this endpoint for');
         }
+    });
+
+    await test('and an operator behind a proxy can still ask for it', async () => {
+        // apiHealthDetail is the way back for monitoring that does sit
+        // behind something. Without it, such an operator has no route at
+        // all and will reach for a worse one.
+        const { api, port } = await listen({ apiHealthDetail: true });
+        const r = await get(port, '/api/health',
+                            { 'X-Forwarded-For': '203.0.113.9' });
+        api.close();
+        const body = JSON.parse(r.raw.toString());
+        assert.ok('memoryMb' in body,
+            'apiHealthDetail no longer does anything, so a proxied operator '
+            + 'has no way to read their own pool');
     });
 
     console.log();

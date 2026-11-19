@@ -790,8 +790,32 @@ class ApiServer {
         // this over the loopback, where it still gets everything.
         //
         // Reported by Radenlingga, 14 November 2026.
+        //
+        // AND BEHIND A PROXY, THE LOOPBACK IS EVERYONE.
+        //
+        // The first fix read req.socket.remoteAddress and called a loopback
+        // caller the operator. This pool is served through nginx, so EVERY
+        // request arrives from 127.0.0.1 and the test was true for the whole
+        // internet. Deployed on 19 November 2026 and measured the same hour
+        // against the live site: memoryMb, uptimeSec and connections were
+        // still in the reply. The fix shipped and changed nothing.
+        //
+        // _caller() already knows how to answer this, for the rate limiter:
+        // the socket address when nothing is in front, and the last
+        // X-Forwarded-For hop when apiTrustProxy says a proxy is. Using it
+        // here is the whole correction.
+        //
+        // A request carrying X-Forwarded-For when apiTrustProxy is NOT set
+        // came through something we have been told nothing about, so the
+        // header cannot be believed and neither can the socket address. That
+        // is not the operator, and detail is refused. An operator whose
+        // monitoring does sit behind such a proxy sets apiHealthDetail.
+        const caller = req ? this._caller(req) : null;
+        const throughUnknownProxy =
+            !this.config.apiTrustProxy
+            && !!(req && req.headers && req.headers['x-forwarded-for']);
         const detailed = this.config.apiHealthDetail === true
-            || (req && req.socket && isLoopback(req.socket.remoteAddress));
+            || (!throughUnknownProxy && caller !== null && isLoopback(caller));
 
         const out = {
             ok: problems.length === 0,
