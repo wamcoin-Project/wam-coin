@@ -21,6 +21,53 @@ function hashrate(hs) {
   return `${hs.toFixed(hs < 10 ? 2 : 1)} ${units[i]}`;
 }
 
+/**
+ * A difficulty, printed so that a small one is still a number.
+ *
+ * ONE FUNCTION, BECAUSE THE FIX WAS WRITTEN ONCE AND MISSED TWICE.
+ *
+ * The network tile below already carried this, with a comment saying why:
+ * toLocaleString's default caps fraction digits at 3, and WAM's difficulty
+ * at the floor is 0.00024414, so the page said "difficulty 0" on the evening
+ * a tester watched the chain fall to minimum.
+ *
+ * The miners table did `Number(m.difficulty).toLocaleString()` and the
+ * payments table did `String(p.difficulty)`. Every vardiff value this pool
+ * assigns is far below the floor -- measured live on 14 November 2026 at
+ * 1e-6 to 7.7e-5 across 270 rows -- so that column printed "0" for every
+ * miner on the page, carrying no information at all.
+ *
+ * Reported by Radenlingga, 14 November 2026, reproduced twice against the
+ * live site.
+ */
+/**
+ * Confirmations a coinbase needs before the pool credits it.
+ *
+ * COINBASE_MATURITY is 100 and spendable depth is 101 -- the two differ by
+ * exactly one, and that one block is what this used to get wrong. See the
+ * note at the badge.
+ */
+const MATURITY = 101;
+
+function difficulty(value) {
+  // AN ABSENT FIELD MUST NOT BORROW THE CLAIM THAT "0" MAKES.
+  //
+  // null, undefined and '' all pass through Number() as 0, and 0 is a
+  // statement: it says this miner's target is the easiest the pool hands
+  // out. A field the payload did not carry says nothing, and printing a
+  // confident 0 for it is the same defect this function exists to fix, one
+  // column over. The payments table guarded `== null` at its own call site
+  // and the miners table did not, which is the usual reason to move a
+  // guard inside: one of the two call sites always forgets.
+  if (value === null || value === undefined || value === '') return '—';
+  const d = Number(value);
+  if (!Number.isFinite(d)) return '—';
+  if (d === 0) return '0';
+  return d < 1
+    ? d.toLocaleString(undefined, { maximumSignificantDigits: 3 })
+    : d.toLocaleString(undefined, { maximumFractionDigits: 2 });
+}
+
 function wam(baseUnits, dp = 8) {
   if (baseUnits === null || baseUnits === undefined) return '—';
   return (baseUnits / COIN).toLocaleString('en-US',
@@ -124,9 +171,7 @@ function renderStats(s) {
   // decimal places, so a small number stays a number and a large one does not
   // grow a tail.
   const d = net.difficulty || 0;
-  const diffText = `difficulty ${d > 0 && d < 1
-    ? d.toLocaleString(undefined, { maximumSignificantDigits: 3 })
-    : d.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
+  const diffText = `difficulty ${difficulty(d)}`;
   text($('netDifficulty'), net.secondsSinceBlock == null
     ? diffText
     : stale
@@ -216,7 +261,7 @@ function renderStats(s) {
   for (const p of ports) {
     const tr = document.createElement('tr');
     cell(tr, p.tls ? `${p.port}  🔒` : String(p.port));
-    cell(tr, String(p.difficulty ?? '—'), 'num');
+    cell(tr, difficulty(p.difficulty), 'num');
     cell(tr, p.description || '');
     portTable.appendChild(tr);
   }
@@ -238,8 +283,23 @@ function renderStats(s) {
 
   // ---- randomx -----------------------------------------------------------
   const rx = s.randomx || {};
-  text($('seedHeight'), rx.seedHeight === 0 ? 'bootstrap'
-    : (rx.seedHeight ?? '—').toLocaleString ? rx.seedHeight.toLocaleString() : '—');
+  // A FALLBACK THAT IS NOT USED IS NOT A FALLBACK.
+  //
+  // This read `(rx.seedHeight ?? '—').toLocaleString ? rx.seedHeight
+  // .toLocaleString() : '—'`. The ?? guards the TEST and not the call: with
+  // seedHeight absent, the test asks whether the string '—' has
+  // toLocaleString -- it does -- and the branch then dereferences undefined.
+  // The throw escapes into the surrounding handler, which reports the whole
+  // dashboard as unreachable.
+  //
+  // Reported by Radenlingga, 14 November 2026, as latent: the live payload
+  // serves seedHeight normally. Latent is still a crash with a date on it.
+  const seed = rx.seedHeight;
+  text($('seedHeight'),
+    seed === 0 ? 'bootstrap'
+      : (typeof seed === 'number' && Number.isFinite(seed))
+        ? seed.toLocaleString()
+        : '—');
   text($('seedRotate'), rx.nextRotationInBlocks
     ? `${rx.nextRotationInBlocks} blocks (~${duration(rx.nextRotationInBlocks * 120)})`
     : '—');
@@ -255,7 +315,14 @@ function renderHealth(h) {
     text($('healthText'), `healthy · up ${duration(h.uptimeSec)}`);
   } else {
     pill.classList.add('bad');
-    text($('healthText'), h.problems.join(' · '));
+    // Same shape, same reason: `problems` is read without being checked, so
+    // a payload that says ok:false and carries no list turns one missing
+    // field into a dashboard that reports itself unreachable. The pool
+    // always sends an array today; the page must not depend on that to
+    // render at all.
+    const problems = Array.isArray(h.problems) ? h.problems : [];
+    text($('healthText'),
+      problems.length ? problems.join(' · ') : 'the pool reports a problem');
   }
 }
 
@@ -263,7 +330,7 @@ function renderMiners(miners) {
   const tbody = $('minersTable').querySelector('tbody');
   text($('connectedCount'), miners.length ? `(${miners.length})` : '');
 
-  if (!miners.length) return emptyRow(tbody, 6, 'no miners connected');
+  if (!miners.length) return emptyRow(tbody, 7, 'no miners connected');
 
   tbody.replaceChildren();
   miners.sort((a, b) => b.validShares - a.validShares);
@@ -271,8 +338,23 @@ function renderMiners(miners) {
   for (const m of miners) {
     const tr = document.createElement('tr');
     cell(tr, m.worker || '—', 'mono');
+    // ONE MACHINE WITH SIXTY-FOUR CONNECTIONS IS NOT SIXTY-FOUR MINERS.
+    //
+    // The worker label is the only thing this table showed, and it is
+    // redacted to its first and last characters -- so a miner running one
+    // process per core appeared as dozens of rows a reader cannot tell
+    // apart. Measured live on 14 November 2026: 270 rows for 166 distinct
+    // labels, with `wam1q66gen...t2wan.rig1` appearing sixty-four times.
+    //
+    // The payload already carried the per-connection id and nothing printed
+    // it. It is the stratum connection counter -- it identifies a socket on
+    // this pool and nothing beyond it, which is exactly what is needed to
+    // tell two rows apart without saying anything about anybody.
+    //
+    // Reported by Radenlingga, 14 November 2026.
+    cell(tr, m.id == null ? '—' : String(m.id), 'num');
     cell(tr, m.userAgent || 'unknown');
-    cell(tr, Number(m.difficulty).toLocaleString(), 'num');
+    cell(tr, difficulty(m.difficulty), 'num');
     cell(tr, String(m.validShares), 'num');
     cell(tr, String(m.invalidShares), 'num');
     cell(tr, duration(m.connectedFor), 'num');
@@ -299,8 +381,20 @@ function renderBlocks(data) {
     const td = document.createElement('td');
     const badge = document.createElement('span');
     badge.className = `badge ${b.status}`;
+    // A COINBASE IS SPENDABLE AT 101, NOT 100.
+    //
+    // Core's wallet computes max(0, (COINBASE_MATURITY + 1) - depth), so the
+    // pool credits at 101 -- it was changed to, after crediting at 100 left
+    // 47.5 WAM standing between what was owed and what could be sent. This
+    // badge kept the old denominator, so a block at exactly 100 showed
+    // "100/100" while it was not yet credited: a full bar for a block that
+    // had not arrived.
+    //
+    // Reported by Radenlingga, 14 November 2026, from the live /api/blocks
+    // payload: no pending block passes 100, and no confirmed block is below
+    // 101.
     badge.textContent = b.status === 'pending'
-      ? `${b.confirmations ?? 0}/100` : b.status;
+      ? `${b.confirmations ?? 0}/${MATURITY}` : b.status;
     td.appendChild(badge);
     tr.appendChild(td);
 

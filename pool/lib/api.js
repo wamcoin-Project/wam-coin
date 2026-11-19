@@ -10,6 +10,7 @@
 // accepts a body.
 
 const http = require('http');
+const zlib = require('zlib');
 const fs = require('fs');
 const path = require('path');
 
@@ -116,6 +117,22 @@ function redactIdentities(value, keyName = null) {
 // asks about hundreds of addresses.
 //
 // Reported 13 November 2026.
+/**
+ * Is this request from this machine?
+ *
+ * The operator's monitoring reads /api/health over the loopback and gets the
+ * whole of it; a stranger on the internet gets the one bit it is for. See
+ * _health.
+ */
+function isLoopback(addr) {
+    if (!addr) return false;
+    const a = String(addr).replace(/^::ffff:/, '');
+    return a === '127.0.0.1' || a === '::1' || a.startsWith('127.');
+}
+
+/** Below this, compressing costs more than it saves. /api/health is ~100 B. */
+const SMALL_BODY = 1024;
+
 class RateLimiter {
     constructor({ perMinute, lookupsPerMinute, maxCallers, log }) {
         this.perMinute = perMinute;
@@ -220,7 +237,11 @@ class ApiServer {
             });
         });
 
-        const port = this.config.apiPort || 8080;
+        // ?? and not ||, because 0 is a port: it asks the system for a
+        // free one, which is what a second instance and every test wants.
+        // With || it became 8080 silently, so two servers in one process
+        // fought over the same socket and the loser called process.exit.
+        const port = this.config.apiPort ?? 8080;
         const bind = this.config.apiBind || '0.0.0.0';
 
         this.server.on('error', (err) => {
@@ -275,6 +296,39 @@ class ApiServer {
         res.setHeader('X-Content-Type-Options', 'nosniff');
         res.setHeader('Referrer-Policy', 'no-referrer');
 
+        // THE HEADERS A BROWSER ACTS ON, NOT ONLY THE TWO WE HAD.
+        //
+        // nosniff and Referrer-Policy were here and the rest were not, so the
+        // dashboard could be framed by any page, could be downgraded to plain
+        // HTTP on the next visit, and had no policy bounding what it may
+        // load. None of that touches a payout -- it is the page a miner reads
+        // his own figures on, and the page is what an attacker would dress up.
+        //
+        // Reported by Radenlingga, 14 November 2026.
+        //
+        // frame-ancestors 'none' rather than X-Frame-Options: it is the
+        // header that replaced it, every browser this page works in honours
+        // it, and saying it twice is two things to keep in step.
+        //
+        // The policy is tight because the page earns it: one stylesheet, one
+        // script, no fonts, no images from anywhere, and it talks only to the
+        // host it came from.
+        res.setHeader('Content-Security-Policy',
+                      "default-src 'none'; " +
+                      "script-src 'self'; style-src 'self'; " +
+                      "img-src 'self' data:; connect-src 'self'; " +
+                      "base-uri 'none'; form-action 'none'; " +
+                      "frame-ancestors 'none'");
+
+        // HSTS is only sent over TLS. A pool on a LAN, or one a developer
+        // runs on localhost, must not be pinned to https for six months by
+        // its own dashboard -- that is a foot-gun with a long memory, and it
+        // is why this reads the connection rather than a setting.
+        if (req.socket && req.socket.encrypted) {
+            res.setHeader('Strict-Transport-Security',
+                          'max-age=15552000; includeSubDomains');
+        }
+
         if (pathname.startsWith('/api/')) {
             const caller = this._caller(req);
             if (caller !== null) {
@@ -287,18 +341,18 @@ class ApiServer {
                     });
                 }
             }
-            return this._api(pathname, parsed.searchParams, res);
+            return this._api(pathname, parsed.searchParams, res, req);
         }
         return this._static(pathname, res);
     }
 
-    async _api(pathname, query, res) {
+    async _api(pathname, query, res, req = null) {
         // Small TTL cache: a dashboard open in fifty tabs must not turn into
         // fifty Redis round trips per second.
         const cacheKey = pathname + '?' + query.toString();
         const hit = this.cache.get(cacheKey);
         if (hit && Date.now() - hit.at < this.cacheMs) {
-            return this._json(res, 200, hit.body, true);
+            return this._json(res, 200, hit.body, true, req);
         }
 
         let body;
@@ -348,7 +402,7 @@ class ApiServer {
             break;
         case '/api/miner': {
             const address = query.get('address');
-            if (!address) return this._json(res, 400, { error: 'address required' });
+            if (!address) return this._json(res, 400, { error: 'address required' }, false, req);
 
             // Reject before doing any work, and before this string becomes a
             // cache key. Anything that is not shaped like an address cannot
@@ -356,21 +410,38 @@ class ApiServer {
             // cache entry to tell someone what they already knew.
             // validateAddress returns {ok, reason}, never a boolean: `!result`
             // is always false and would wave everything through.
-            const check = validateAddress(address, this.config.netVersions);
+            // A MINER KNOWS HIMSELF AS <address>.<worker>.
+            //
+            // That is the name the pool itself teaches him to authorize with,
+            // it is the name printed in his own miner's log, and it is the
+            // name shown in the miners table on this very page. Pasted into
+            // the lookup it answered
+            //
+            //     400 invalid base58 character '.'
+            //
+            // which tells a miner nothing except that he is wrong about his
+            // own name. Balances are per address -- the label after the dot
+            // identifies a machine and nothing on the chain -- so the lookup
+            // takes it off and answers, which is what the data was always
+            // able to do.
+            //
+            // Reported by Radenlingga, 14 November 2026.
+            const bare = address.split('.')[0];
+            const check = validateAddress(bare, this.config.netVersions);
             if (!check.ok) {
-                return this._json(res, 400, { error: check.reason });
+                return this._json(res, 400, { error: check.reason }, false, req);
             }
-            body = await this.shares.getMinerStats(address);
+            body = await this.shares.getMinerStats(bare);
             break;
         }
         case '/api/network':
             body = await this._network();
             break;
         case '/api/health':
-            body = await this._health();
+            body = await this._health(req);
             break;
         default:
-            return this._json(res, 404, { error: 'unknown endpoint' });
+            return this._json(res, 404, { error: 'unknown endpoint' }, false, req);
         }
 
         // Before the cache, so a cached hit cannot serve what a fresh
@@ -379,7 +450,7 @@ class ApiServer {
             body = redactIdentities(body);
         }
         this._cacheSet(cacheKey, body);
-        return this._json(res, 200, body);
+        return this._json(res, 200, body, false, req);
     }
 
     /**
@@ -696,7 +767,7 @@ class ApiServer {
         };
     }
 
-    async _health() {
+    async _health(req = null) {
         const job = this.jobManager.getStatus();
         const templateAgeSec = (Date.now() - this.jobManager.lastTemplateAt) / 1000;
 
@@ -705,14 +776,34 @@ class ApiServer {
         if (templateAgeSec > 120) problems.push(`template is ${Math.round(templateAgeSec)}s old`);
         if (this.stratum.clients.size === 0) problems.push('no miners connected');
 
-        return {
+        // WHAT A STRANGER NEEDS FROM A HEALTH CHECK, AND NOTHING ELSE.
+        //
+        // This answered memoryMb, uptimeSec and the live connection count to
+        // anyone who asked. None of it is secret and all of it is useful to
+        // somebody deciding when this pool is worth pushing: resident memory
+        // says how long it has been up and how hard it is working, uptime
+        // says when it last restarted, and the connection count says how
+        // many miners would notice.
+        //
+        // What a health check is FOR is one bit -- is this pool working --
+        // plus enough to say why not. The operator's own monitoring reads
+        // this over the loopback, where it still gets everything.
+        //
+        // Reported by Radenlingga, 14 November 2026.
+        const detailed = this.config.apiHealthDetail === true
+            || (req && req.socket && isLoopback(req.socket.remoteAddress));
+
+        const out = {
             ok: problems.length === 0,
             problems,
-            templateAgeSec: Math.round(templateAgeSec),
-            connections: this.stratum.clients.size,
-            uptimeSec: Math.round(process.uptime()),
-            memoryMb: Math.round(process.memoryUsage().rss / 1048576)
+            templateAgeSec: Math.round(templateAgeSec)
         };
+        if (detailed) {
+            out.connections = this.stratum.clients.size;
+            out.uptimeSec = Math.round(process.uptime());
+            out.memoryMb = Math.round(process.memoryUsage().rss / 1048576);
+        }
+        return out;
     }
 
     // -----------------------------------------------------------------------
@@ -737,13 +828,57 @@ class ApiServer {
         });
     }
 
-    _json(res, status, body, cached = false) {
+    /**
+     * Send a JSON body, compressed when the caller asked and it is worth it.
+     *
+     * TWO GIGABYTES A DAY, PER OPEN TAB.
+     *
+     * The HTML was compressed by nginx and the JSON was not: one dashboard
+     * refresh moved about 184 KB -- /api/stats 69.7 KB, /api/miners 46 KB,
+     * /api/payments 40 KB, /api/blocks 28 KB -- and the page refreshes every
+     * eight seconds. That is roughly 2 GB a day for one tab left open, paid
+     * twice: by the miner's connection and by this pool's egress.
+     *
+     * These payloads are repetitive JSON and compress by an order of
+     * magnitude. Measured by Radenlingga on 14 November 2026, reported the
+     * same day.
+     *
+     * gzip rather than brotli: every client that has one has the other, and
+     * zlib is in node already. Below kSmallBody it is not worth the CPU or
+     * the header -- /api/health is 100 bytes.
+     */
+    _json(res, status, body, cached = false, req = null) {
         const text = JSON.stringify(body);
-        res.writeHead(status, {
+        const head = {
             'Content-Type': 'application/json; charset=utf-8',
-            'Content-Length': Buffer.byteLength(text),
             'X-Cache': cached ? 'HIT' : 'MISS'
-        });
+        };
+
+        const accepts = String((req && req.headers &&
+                                req.headers['accept-encoding']) || '');
+        if (text.length >= SMALL_BODY && /(?:^|[ ,])gzip(?:[;, ]|$)/.test(accepts)) {
+            let packed = null;
+            try {
+                packed = zlib.gzipSync(text);
+            } catch (err) {
+                // A body that cannot be compressed is still a body. This is
+                // not the place to lose a reply.
+                this.log.warn(`could not compress a ${text.length}-byte ` +
+                              `reply (${err.message}); sending it plain`);
+            }
+            if (packed) {
+                head['Content-Encoding'] = 'gzip';
+                head['Content-Length'] = packed.length;
+                head['Vary'] = head['Vary'] ? head['Vary'] + ', Accept-Encoding'
+                                            : 'Accept-Encoding';
+                res.writeHead(status, head);
+                res.end(packed);
+                return;
+            }
+        }
+
+        head['Content-Length'] = Buffer.byteLength(text);
+        res.writeHead(status, head);
         res.end(text);
     }
 }

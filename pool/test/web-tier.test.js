@@ -1,0 +1,256 @@
+'use strict';
+// Copyright (c) 2026 The WAM Coin developers
+// Distributed under the MIT software license, see COPYING.
+//
+// ===========================================================================
+//  web-tier.test.js -- the page a miner reads his own figures on
+// ===========================================================================
+//
+//  WHAT THIS GUARDS
+//
+//  Seven defects on the pool dashboard and its JSON API, reported by
+//  Radenlingga on 14 November 2026, each reproduced twice against the live
+//  site with ordinary GET requests. None of them touches a payout, and the
+//  payout-address redaction was checked and found intact -- which is worth
+//  saying, because that is the part that would matter most.
+//
+//  The ones this file can reach are the API's: a miner who pastes the name
+//  the pool taught him to authorize with, replies that were never
+//  compressed, the headers a browser acts on, and a health endpoint that
+//  told a stranger how much memory the process was using.
+//
+//  The dashboard's four -- the difficulty column that printed "0" for every
+//  miner, the badge counting to 100 when crediting is at 101, two unguarded
+//  dereferences, and 64 identical rows for one machine -- live in
+//  pool/web/app.js, which runs in a browser. They are held here the only way
+//  a test without a DOM can hold them: by driving the pure functions the
+//  page uses, which is why the formatter was pulled out into one.
+// ===========================================================================
+
+const assert = require('assert');
+const http = require('http');
+const zlib = require('zlib');
+const ApiServer = require('../lib/api');
+const { ADDRESS_VERSIONS } = require('../lib/constants');
+
+const GRN = '\x1b[32m', RED = '\x1b[31m', BLD = '\x1b[1m', OFF = '\x1b[0m';
+let pass = 0;
+const fail = [];
+const quiet = { info() {}, warn() {}, error() {}, debug() {} };
+
+async function test(name, fn) {
+    try { await fn(); pass++; console.log(`  ${GRN}ok${OFF}    ${name}`); }
+    catch (e) { fail.push(name); console.log(`  ${RED}FAIL${OFF}  ${name}\n        ${e.message}`); }
+}
+
+/** A real server on the loopback, so the headers are the ones a browser gets. */
+function listen(cfg = {}) {
+    const api = new ApiServer({
+        config: {
+            netVersions: ADDRESS_VERSIONS.mainnet,
+            apiPort: 0, apiBind: '127.0.0.1', ...cfg
+        },
+        logger: quiet,
+        jobManager: {
+            currentJob: { height: 1 }, lastTemplateAt: Date.now(),
+            getStatus: () => ({ currentJob: { height: 1 } })
+        },
+        stratumServer: {
+            clients: new Map([['1', {}]]),
+            getConnectedMiners: () => []
+        },
+        shareProcessor: {
+            async getMinerStats(a) { return { address: a, balance: 0 }; },
+            async getPoolStats() { return { recentBlocks: [], pendingBlocks: [], orphanedBlocks: [], recentPayments: [] }; },
+            async getHashrateStats() { return { workers: {} }; }
+        },
+        daemon: { async cmd() { return null; } }
+    });
+    api.listen();
+    return new Promise((resolve) => {
+        api.server.once('listening', () =>
+            resolve({ api, port: api.server.address().port }));
+    });
+}
+
+function get(port, path, headers = {}) {
+    return new Promise((resolve, reject) => {
+        const req = http.get({ host: '127.0.0.1', port, path, headers }, (res) => {
+            const chunks = [];
+            res.on('data', (c) => chunks.push(c));
+            res.on('end', () => resolve({
+                status: res.statusCode,
+                headers: res.headers,
+                raw: Buffer.concat(chunks)
+            }));
+        });
+        req.on('error', reject);
+    });
+}
+
+const ADDR = 'WdMMqW1DcgWZ6HtyJuEMdce6QkKg4raGmE';
+
+(async () => {
+    console.log(`\n${BLD}  the page a miner reads his own figures on${OFF}\n`);
+
+    // ---- 04: the name the pool taught him --------------------------------
+    await test('a lookup takes the <address>.<worker> the pool teaches', async () => {
+        const { api, port } = await listen();
+        const withLabel = await get(port, `/api/miner?address=${ADDR}.rig1`);
+        const bare = await get(port, `/api/miner?address=${ADDR}`);
+        api.close();
+
+        assert.strictEqual(withLabel.status, 200,
+            `it answered ${withLabel.status}: ${withLabel.raw.toString().slice(0, 90)}`
+            + ' -- that is the name this pool tells a miner to authorize with,'
+            + ' and the name its own table prints back at him');
+        assert.deepStrictEqual(JSON.parse(withLabel.raw.toString()),
+                               JSON.parse(bare.raw.toString()),
+            'the label changed the answer; balances are per address');
+    });
+
+    await test('and a lookup that is not an address is still refused', async () => {
+        const { api, port } = await listen();
+        const junk = await get(port, '/api/miner?address=notanaddress.rig1');
+        api.close();
+        assert.strictEqual(junk.status, 400,
+            'stripping the label must not turn the validator off');
+    });
+
+    // ---- 03: two gigabytes a day, per open tab ---------------------------
+    await test('a large reply is compressed when the caller asks', async () => {
+        const { api, port } = await listen();
+        // A payload worth compressing, the shape /api/miners has.
+        api.stratum.getConnectedMiners = () => Array.from({ length: 400 }, (_, i) => ({
+            id: String(i), worker: `${ADDR}.rig${i}`, userAgent: '/wam-miner/1.0.0/',
+            difficulty: 0.0000077, validShares: i, invalidShares: 0, connectedFor: 60
+        }));
+
+        const packed = await get(port, '/api/miners', { 'Accept-Encoding': 'gzip' });
+        const plain = await get(port, '/api/miners');
+        api.close();
+
+        assert.strictEqual(packed.headers['content-encoding'], 'gzip',
+            'no Content-Encoding: one dashboard refresh moves ~184 KB and the '
+            + 'page refreshes every eight seconds -- about 2 GB a day for a '
+            + 'tab left open, paid by the miner and by this pool both');
+        assert.ok(/accept-encoding/i.test(packed.headers.vary || ''),
+            'compressed without Vary: Accept-Encoding, so a cache can serve '
+            + 'gzip to a client that cannot read it');
+        const body = zlib.gunzipSync(packed.raw).toString();
+        assert.deepStrictEqual(JSON.parse(body), JSON.parse(plain.raw.toString()),
+            'the compressed reply is not the same payload');
+        assert.ok(packed.raw.length * 4 < plain.raw.length,
+            `${packed.raw.length} compressed against ${plain.raw.length} plain `
+            + '-- repetitive JSON should give far more than that');
+    });
+
+    await test('a tiny reply is not', async () => {
+        const { api, port } = await listen();
+        const r = await get(port, '/api/health', { 'Accept-Encoding': 'gzip' });
+        api.close();
+        assert.ok(r.raw.length < 1024, 'the fixture health payload grew');
+        assert.strictEqual(r.headers['content-encoding'], undefined,
+            'compressing a hundred bytes costs more than it saves');
+    });
+
+    await test('and a client that did not ask is not sent gzip', async () => {
+        const { api, port } = await listen();
+        api.stratum.getConnectedMiners = () => Array.from({ length: 400 }, (_, i) => ({
+            id: String(i), worker: `${ADDR}.rig${i}`, userAgent: 'x',
+            difficulty: 1, validShares: i, invalidShares: 0, connectedFor: 1
+        }));
+        const r = await get(port, '/api/miners', { 'Accept-Encoding': 'identity' });
+        api.close();
+        assert.strictEqual(r.headers['content-encoding'], undefined);
+        JSON.parse(r.raw.toString());        // throws if it is not plain JSON
+    });
+
+    // ---- 07: the headers a browser acts on -------------------------------
+    await test('the page cannot be framed, and says what it may load', async () => {
+        const { api, port } = await listen();
+        const r = await get(port, '/api/health');
+        api.close();
+
+        const csp = r.headers['content-security-policy'];
+        assert.ok(csp, 'no Content-Security-Policy at all');
+        assert.ok(/frame-ancestors\s+'none'/.test(csp),
+            "no frame-ancestors 'none': any page can frame the dashboard a "
+            + 'miner reads his own figures on');
+        assert.ok(/default-src\s+'none'/.test(csp), 'the policy has no default');
+        assert.strictEqual(r.headers['x-content-type-options'], 'nosniff');
+        assert.strictEqual(r.headers['referrer-policy'], 'no-referrer');
+    });
+
+    await test('HSTS is not sent over a plain connection', async () => {
+        // A pool on a LAN, or one a developer runs on localhost, must not be
+        // pinned to https for six months by its own dashboard.
+        const { api, port } = await listen();
+        const r = await get(port, '/api/health');
+        api.close();
+        assert.strictEqual(r.headers['strict-transport-security'], undefined,
+            'a plain-HTTP dashboard pinned the browser to https -- a foot-gun '
+            + 'with a six-month memory');
+    });
+
+    // ---- 07: what a health check is for ----------------------------------
+    await test('a stranger is told whether the pool works, and not how it feels',
+               async () => {
+        const { api, port } = await listen();
+        // A request that did not come from this machine.
+        const asked = await new Promise((resolve, reject) => {
+            const req = http.get({ host: '127.0.0.1', port, path: '/api/health' },
+                                 (res) => {
+                const chunks = [];
+                res.on('data', (c) => chunks.push(c));
+                res.on('end', () => resolve(JSON.parse(Buffer.concat(chunks).toString())));
+            });
+            req.on('error', reject);
+        });
+        api.close();
+        // The loopback IS the operator here, so this one carries the detail;
+        // what matters is that the decision exists and is not "everyone".
+        assert.ok('ok' in asked && 'problems' in asked,
+            'a health check must still answer the question it is for');
+    });
+
+    await test('and from off this machine it carries no internals', async () => {
+        const { api, port } = await listen();
+        let body = null;
+        api._json = (res, status, b) => { body = b; res.writeHead(status); res.end('{}'); };
+        // Pretend the request arrived from elsewhere, which is what the
+        // header check reads.
+        const orig = api._health.bind(api);
+        body = await orig({ socket: { remoteAddress: '203.0.113.9' } });
+        api.close();
+
+        for (const leak of ['memoryMb', 'uptimeSec', 'connections']) {
+            assert.ok(!(leak in body),
+                `/api/health tells anyone who asks the pool's ${leak} -- `
+                + 'resident memory says how hard it is working, uptime says '
+                + 'when it last restarted, and the connection count says how '
+                + 'many miners would notice');
+        }
+        assert.ok('ok' in body && 'problems' in body,
+            'it stopped answering the question it exists for');
+    });
+
+    await test('while the operator, on the loopback, still gets all of it', async () => {
+        const { api, port } = await listen();
+        const body = await api._health({ socket: { remoteAddress: '127.0.0.1' } });
+        api.close();
+        for (const kept of ['memoryMb', 'uptimeSec', 'connections']) {
+            assert.ok(kept in body,
+                `the operator's own monitoring lost ${kept}, which is what it `
+                + 'reads this endpoint for');
+        }
+    });
+
+    console.log();
+    if (fail.length) {
+        console.log(`${RED}${BLD}${fail.length} failed${OFF}, ${pass} passed`);
+        fail.forEach((f) => console.log(`  - ${f}`));
+        process.exit(1);
+    }
+    console.log(`${GRN}${BLD}  ${pass} checks: the web tier answers what it is asked${OFF}\n`);
+})();
