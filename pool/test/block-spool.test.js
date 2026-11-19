@@ -90,9 +90,29 @@ const READ_AND_REFUSED = outcomeOf(false, ['bad-txnmrklroot'],
 const DUPLICATE = outcomeOf(false, ['duplicate'],
     [{ ok: true, error: null, result: 'duplicate' }]);
 
-function jm(store, outcome) {
-    const m = new JobManager({ submitBlock: async () => outcome.shift ? outcome.shift() : outcome },
-                             {}, quiet);
+/**
+ * A node that answers about the chain as well as about the submission.
+ *
+ * THE DRAIN ASKS A SECOND QUESTION NOW, AND THE FAKE HAS TO ANSWER IT.
+ *
+ * Before 18 November 2026 the drain offered a spooled block for payout on
+ * the strength of the submit verdict alone. Neither "accepted" nor
+ * ALREADY_HAVE establishes that the block is on the chain the network is
+ * building -- plain Core accepts a valid block on a stale branch with
+ * result null -- so a block that lost its race was recorded, which wrote a
+ * payout table for it and deleted the live round. It then orphaned, and
+ * nobody was paid for it OR for the work the round had accumulated.
+ *
+ * `confirmations` is what a node reports for a block it holds: >= 0 on the
+ * best chain, -1 for a valid block on a side branch. These cases are about
+ * blocks that really were accepted, so the default is the best chain. The
+ * side-branch cases live in pool/test/stale-and-parked.test.js.
+ */
+function jm(store, outcome, confirmations = 12) {
+    const m = new JobManager({
+        submitBlock: async () => (outcome.shift ? outcome.shift() : outcome),
+        getBlock: async (hash) => ({ hash, confirmations, height: 10 })
+    }, {}, quiet);
     m._spoolStore = store;
     return m;
 }

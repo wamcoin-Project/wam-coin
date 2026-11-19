@@ -30,6 +30,7 @@ const DaemonInterface = require('./lib/daemon');
 const JobManager = require('./lib/jobManager');
 const StratumServer = require('./lib/stratumServer');
 const ShareProcessor = require('./lib/shareProcessor');
+const { attachBlockAccounting } = require('./lib/blockAccounting');
 const ApiServer = require('./lib/api');
 const { ADDRESS_VERSIONS, RANDOMX_EPOCH_BLOCKS, RANDOMX_EPOCH_LAG } = require('./lib/constants');
 const { validateAddress } = require('./lib/util');
@@ -383,19 +384,14 @@ async function main() {
     }, drainEvery);
     spoolTimer.unref?.();
 
-    // The spool entry is released HERE and nowhere else, because this is the
-    // only place that has seen the payout record exist. recordBlock either
-    // wrote blocks:pending or found the hash already accounted for; either
-    // way the block is no longer "on the chain and owed to nobody", which is
-    // the single condition the spool exists to survive. If recordBlock
-    // throws, the unspool is skipped, the entry stays, and the 60-second
-    // drain offers it again.
-    jobManager.on('block', (share) => {
-        inOrder(`block ${share.height}`, async () => {
-            await shareProcessor.recordBlock(share);
-            await jobManager.unspoolRecorded(share.blockHash);
-        });
-    });
+    // The 'block' listener lives in pool/lib/blockAccounting.js, not here.
+    //
+    // It was six lines inline, and the suite that tests what they decide
+    // could not run them -- it cannot start a server, so it wrote the
+    // listener out again next to its fixtures and tested the copy. Both
+    // copies then had to be right, and the one that mattered was the one
+    // nothing ran.
+    attachBlockAccounting({ jobManager, shareProcessor, log, inOrder });
 
     // ---- 7. stratum -------------------------------------------------------
     const stratum = new StratumServer(jobManager, config, logger.scope('stratum'));

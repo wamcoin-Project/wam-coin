@@ -574,6 +574,90 @@ class JobManager extends EventEmitter {
         }
     }
 
+    /**
+     * Is the node holding this block ON THE BEST CHAIN?
+     *
+     * true  -- getblock answered with confirmations >= 0. It is on the chain
+     *          the network is building, so it will mature and its payout is
+     *          real.
+     * false -- confirmations is -1: the node has the block, it is VALID, and
+     *          it is on a side branch. We lost the race for that height.
+     * null  -- it could not be established. The node has not got it, or
+     *          could not be asked, or answered about something else. Not an
+     *          answer, and must not be read as either of the other two.
+     *
+     * WHY THIS IS A DIFFERENT QUESTION FROM _whoseBlock.
+     *
+     * _whoseBlock asks "did WE mine this", which the hash answers by itself
+     * because it commits to our own extranonce. A block that lost its race
+     * is still ours -- we mined it, the node has it, nobody else could have
+     * produced it -- and it will never pay anybody. Whose it is and whether
+     * it counts are not the same question, and the drain needs the second.
+     *
+     * Reported by Fahrizal, 18 November 2026.
+     */
+    async _onBestChain(hash) {
+        try {
+            const block = await this.daemon.getBlock(hash, 1);
+            if (!block || block.hash !== hash) return null;
+            if (typeof block.confirmations !== 'number') return null;
+            return block.confirmations >= 0;
+        } catch (err) {
+            // Everything here is "could not establish". Even "not found",
+            // which IS a real answer about the node's index, is not an
+            // answer about the best chain: a block we were told seconds ago
+            // was accepted, and that the node now does not have, is a
+            // situation to look at rather than one to act on. The entry
+            // stays and the next drain asks again.
+            this.log.warn(`could not establish whether block ${hash.slice(0, 16)}`
+                          + `... is on the best chain: ${err.message}`);
+            return null;
+        }
+    }
+
+    /**
+     * How far the chain has moved past a block we are holding.
+     *
+     * currentJob.height is the height being WORKED ON, so the tip is one
+     * below it. Returns null when there is no job yet, which is a real
+     * state at start-up and must not read as depth zero.
+     */
+    _depthPast(height) {
+        const working = this.currentJob && this.currentJob.height;
+        if (!working || !height) return null;
+        return (working - 1) - height;
+    }
+
+    /**
+     * A spooled block the chain has left behind, put beyond reach of the
+     * payout path and kept where an operator can see it.
+     *
+     * Only once it is buried deeper than a coinbase takes to mature. Until
+     * then it stays spooled and is asked about again: a side branch can
+     * still win, and a block retired early is a payout thrown away over a
+     * reorganisation that resolved the other way a minute later.
+     *
+     * Returns true if the entry was retired, false if it was kept -- which
+     * is what the drain counts as settled.
+     */
+    async _retireStale(e, depth) {
+        const maturity = (this.config && this.config.coinbaseMaturity) || 100;
+        if (depth === null || depth < maturity) {
+            this.log.warn(`spooled block ${e.height} is on a side branch ` +
+                          `(${depth === null ? 'depth unknown' : depth + ' deep'}); ` +
+                          'it is NOT being offered for payout. It stays spooled ' +
+                          'in case the branch it lost to is reorganised away.');
+            return false;
+        }
+        this.log.error(`spooled block ${e.height} lost its race and is now ` +
+                       `${depth} blocks behind the tip, deeper than a coinbase ` +
+                       'matures. It will never pay anybody, so it is being ' +
+                       'retired rather than offered every minute forever.');
+        await this._unspool(e.hash, `lost the race at height ${e.height}; ` +
+                                    `${depth} blocks behind the tip`);
+        return true;
+    }
+
     async _unspool(hash, refusedReason) {
         if (!this._spoolStore) return;
         await this._spoolStore.remove(hash, refusedReason);
@@ -634,6 +718,52 @@ class JobManager extends EventEmitter {
                               `${err.message}`);
                 continue;
             }
+            // BEFORE EITHER BRANCH PAYS: IS IT ON THE CHAIN THE NETWORK IS
+            // BUILDING?
+            //
+            // Neither answer below establishes that. "accepted" means the
+            // node took the block into its INDEX, and plain Core accepts a
+            // valid block on a stale branch exactly that way, result null.
+            // ALREADY_HAVE covers "inconclusive-not-best-prevblk", which in   // wam:quote-line
+            // the node's own words is a block that builds on a side branch.
+            //
+            // Both of them then reached recordBlock, whose idempotency
+            // guard is per-hash -- and a block that LOST ITS RACE was never
+            // recorded under any hash, so the guard passes, the payout
+            // table for today's round is written for it, and `del(round)`
+            // and `del(round:pow)` run. The block orphans at the next
+            // maturation pass, nobody is paid for it, and the round's
+            // accumulated shares are gone with it: every miner's work since
+            // the last block, destroyed by one event, with the PPLNS
+            // cross-round replay guard deleted at the same time.
+            //
+            // The comment in the ALREADY_HAVE branch below used to end "it
+            // would re-run del(round) and wipe a live round's
+            // contributions, which is worse than the fault", and then
+            // relied on hash-idempotency to prevent it. That reasoning is
+            // sound for the case it was written for -- a crash between
+            // acceptance and accounting, where the block IS best -- and it
+            // does not reach this one. The hazard was named correctly and
+            // guarded against the wrong half of it.
+            //
+            // Reported by Fahrizal, 18 November 2026, driving this class
+            // and the real ShareProcessor: a live round of 4,000 difficulty
+            // dropped to 0 in both verdict variants.
+            // Only the two branches that PAY are gated. A refusal is still
+            // a refusal and keeps its own reason, and an unanswered offer
+            // still stays for the next drain -- running this check on those
+            // would relabel a refused block as "on a side branch", which is
+            // a different and untrue thing to tell an operator.
+            if (result.accepted || result.verdict === SUBMIT.ALREADY_HAVE) {
+                const best = await this._onBestChain(e.hash);
+                if (best !== true) {
+                    if (await this._retireStale(e, this._depthPast(e.height))) {
+                        settled++;
+                    }
+                    continue;
+                }
+            }
+
             if (result.accepted) {
                 this.log.info(`*** SPOOLED BLOCK ${e.height} ACCEPTED *** ` +
                               `found ${Math.round((Date.now() - e.foundAt) / 1000)}s ` +

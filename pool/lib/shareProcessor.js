@@ -331,8 +331,35 @@ class ShareProcessor extends EventEmitter {
         this.log.error('');
         this.log.error(`    redis-cli DEL ${this.k('payment:inflight')}`);
         this.log.error('');
-        this.log.error('  If no such transaction exists, nothing was sent. Clear the');
-        this.log.error('  marker and the next run will pay normally.');
+        // CLEARING THE MARKER IS HALF A RECOVERY, AND IT USED TO BE ALL OF
+        // THE ADVICE.
+        //
+        // This said "If no such transaction exists, nothing was sent. Clear
+        // the marker and the next run will pay normally." The marker is not
+        // the only record: the journal line was written BEFORE the
+        // broadcast, and reconcile() reads "broadcast, never committed, no
+        // marker" as FATAL on every payment run, for ever. So an operator
+        // who did exactly this halted every payout permanently, and the way
+        // out was to hand-write a line into a file format nothing
+        // documents. The promise in the last sentence was the opposite of
+        // what happened.
+        //
+        // The FATAL is right and is not being softened -- that state really
+        // can mean the coins left with nothing in redis knowing it. What
+        // was missing was a way to tell the pool the truth, so it is
+        // shipped and named here instead of a half-step that dead-ends.
+        //
+        // Reported by Fahrizal, 18 November 2026.
+        this.log.error('  If no such transaction exists, nothing was sent -- but do');
+        this.log.error('  NOT just clear the marker. The journal line was written');
+        this.log.error('  before the broadcast and outlives it, and every run from');
+        this.log.error('  then on would stop on it. Run this instead: it asks the');
+        this.log.error('  node, records the answer, and clears the marker itself.');
+        this.log.error('');
+        this.log.error('    node pool/scripts/resolve_lost_payment.js');
+        this.log.error('');
+        this.log.error('  It changes nothing if the node says the transaction exists,');
+        this.log.error('  or cannot answer.');
         this.log.error('=========================================================');
         if (intent.txid) {
             this.log.error(`  The transaction is named: ${intent.txid}`);
@@ -594,6 +621,46 @@ class ShareProcessor extends EventEmitter {
      * Called the instant a block is accepted by the daemon.
      * Freezes the payout table and resets the round.
      */
+    /**
+     * Where, if anywhere, this block's payout obligation is written down.
+     *
+     * The three places are the two ends of a block's life and the step
+     * between them: blocks:pending holds the payout table, maturing holds
+     * the evidence mid-credit, and confirmed:hashes is the far end.
+     *
+     * Extracted from recordBlock's own guard so that the question has ONE
+     * implementation. The 'block' listener in server.js has to ask it too,
+     * and a second copy of a three-way check is a second copy to forget to
+     * update -- which is how this project came to have a difficulty
+     * formatter fixed in one place out of three.
+     */
+    async whereAccountedFor(blockHash) {
+        const [pending, confirmed, maturing] = await Promise.all([
+            this.redis.hexists(this.k('blocks:pending'), blockHash),
+            this.redis.sismember(this.k('blocks:confirmed:hashes'), blockHash),
+            this._isMaturing(blockHash)
+        ]);
+        return { pending: !!pending, confirmed: !!confirmed, maturing: !!maturing };
+    }
+
+    /**
+     * Is this block's payout obligation written down anywhere the pool's
+     * own automation reads?
+     *
+     * blocks:failed is DELIBERATELY NOT one of those places. A parked block
+     * is a block whose payout could not be computed; nothing in this
+     * repository ever reads that hash again, by design, because it is for a
+     * person. So "parked" is not "accounted for", and the spool entry --
+     * the only copy the drain can re-offer -- must survive it.
+     *
+     * Reported by Fahrizal, 18 November 2026.
+     */
+    async isAccountedFor(blockHash) {
+        if (!blockHash) return false;
+        const where = await this.whereAccountedFor(blockHash);
+        return where.pending || where.confirmed || where.maturing;
+    }
+
     async recordBlock(share) {
         // ONE BLOCK, ONE PAYOUT, HOWEVER MANY TIMES THIS IS CALLED.
         //
@@ -638,11 +705,8 @@ class ShareProcessor extends EventEmitter {
         //
         // Reported by bobbyning, 2026-11-07.
         if (share.blockHash) {
-            const [pending, confirmed, maturing] = await Promise.all([
-                this.redis.hexists(this.k('blocks:pending'), share.blockHash),
-                this.redis.sismember(this.k('blocks:confirmed:hashes'), share.blockHash),
-                this._isMaturing(share.blockHash)
-            ]);
+            const { pending, confirmed, maturing } =
+                await this.whereAccountedFor(share.blockHash);
             if (pending || confirmed || maturing) {
                 const where = pending ? 'pending' : (confirmed ? 'confirmed' : 'maturing');
                 this.log.info(`block ${share.height} is already accounted for ` +
