@@ -305,9 +305,18 @@ WAM Network Dashboard
             // night mainnet opened, one address found 97.5% of the first 79
             // blocks and the only people who knew were miners who had won
             // nothing. See lib/concentration.js.
+            // refresh(), not update(). update() is one fetch pass and this
+            // awaited it on every unauthenticated request, so each request
+            // was its own pass against the node and nothing was remembered
+            // between them. refresh() runs at most one pass at a time and
+            // at most one per ten seconds, however many callers there are,
+            // which is what the README already promised: ten open tabs cost
+            // the node what one does.
+            //
+            // Reported by Fahrizal, 18 November 2026.
             case pathname === '/api/concentration': {
                 const tip = (collector.get().chain || {}).blocks || 0;
-                if (tip > 0) await concentration.update(collector.rpc, tip);
+                if (tip > 0) await concentration.refresh(collector.rpc, tip);
                 return json(res, 200, { tip, ...concentration.snapshot() });
             }
 

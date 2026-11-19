@@ -63,11 +63,71 @@ const LONG_WINDOW = 5040;
 const MAX_FETCH_PER_CYCLE = 12;
 const MAX_BACKFILL_PER_CYCLE = 250;
 
+// How long a height that could not be read stays unread.
+//
+// On a PRUNED NODE -- a configuration this project supports and this very
+// panel displays -- every height below the prune horizon fails, for ever.
+// Without this, each one is retried on every single pass.
+//
+// An hour, because the one thing that changes the answer is an operator
+// re-indexing the node, and nobody does that twice in an hour.
+const UNREADABLE_FOR_MS = 60 * 60 * 1000;
+
+// The least time between two fetch passes, however often the endpoint is
+// asked.
+//
+// /api/concentration awaited update() inline on EVERY request, with no
+// cache and nothing in front of it, so each request was its own fetch pass
+// against the node. The dashboard refreshes every six seconds per open tab
+// and the explorer's README states the invariant this broke: "Ten open tabs
+// cost the node exactly what one does."
+//
+// Ten seconds matches the collector's own snapshot interval, so a reader
+// sees data no staler than the rest of the page already is.
+const MIN_REFRESH_MS = 10 * 1000;
+
 class Concentration {
     constructor(log) {
         this.log = log;
         this.finders = new Map();      // height -> payout address
+        this.unreadable = new Map();   // height -> when it last failed
         this.tip = 0;
+        this._lastPass = 0;
+        this._inFlight = null;
+    }
+
+    /**
+     * What the endpoint calls. At most one pass at a time, and at most one
+     * per MIN_REFRESH_MS however many callers there are.
+     *
+     * THE HANDLER USED TO BE THE RATE LIMIT, AND IT WAS NOT ONE.
+     *
+     * explorer/server.js awaited update() directly on every unauthenticated
+     * GET. Two things followed. Concurrent requests each started their own
+     * pass, and repeated requests each paid the full cost again, because a
+     * height that failed was never remembered as having failed.
+     *
+     * The guard is here rather than in the handler so that it cannot be
+     * forgotten by the next caller -- and there is a next caller, since the
+     * collector refreshes this too.
+     *
+     * Reported by Fahrizal, 18 November 2026: one GET against an explorer
+     * attached to a pruned node drove 9,986 sequential RPC calls, and the
+     * repeat drove 9,986 more.
+     */
+    async refresh(rpc, tipHeight) {
+        if (this._inFlight) return this._inFlight;
+        const now = Date.now();
+        if (now - this._lastPass < MIN_REFRESH_MS) return;
+        this._inFlight = this.update(rpc, tipHeight)
+            .catch((err) => {
+                this.log.debug(`concentration: refresh failed: ${err.message}`);
+            })
+            .finally(() => {
+                this._lastPass = Date.now();
+                this._inFlight = null;
+            });
+        return this._inFlight;
     }
 
     /**
@@ -85,9 +145,31 @@ class Concentration {
         const budget = recentComplete ? MAX_BACKFILL_PER_CYCLE : MAX_FETCH_PER_CYCLE;
         const depth = recentComplete ? LONG_WINDOW : WINDOW;
 
+        const now = Date.now();
         for (let h = tipHeight; h > tipHeight - depth && h >= 1; h--) {
             if (this.finders.has(h)) continue;
+
+            // A height that just failed is not asked about again yet.
+            const failedAt = this.unreadable.get(h);
+            if (failedAt !== undefined && now - failedAt < UNREADABLE_FOR_MS) continue;
+
+            // THE BUDGET COUNTS ATTEMPTS, BECAUSE IT IS A BUDGET.
+            //
+            // `fetched++` sat at the bottom of the try, so it only ever
+            // counted SUCCESSES, and the catch swallowed a failed height
+            // without counting it at all. On a healthy node that is a
+            // distinction without a difference. On a pruned node -- where
+            // getblock fails for every height below the prune horizon --
+            // `fetched` stays near zero, the break never fires, and one
+            // pass walks all 5040 heights of the long window at two RPC
+            // calls each.
+            //
+            // Measured by Fahrizal, 18 November 2026: 500 calls for a
+            // healthy cold request, where the budget binds, against 9,986
+            // on a pruned node.
             if (fetched >= budget) break;
+            fetched++;
+
             try {
                 const hash = await rpc.call('getblockhash', [h]);
                 const block = await rpc.call('getblock', [hash, 2]);
@@ -104,10 +186,15 @@ class Concentration {
                 // block already carries its own timestamp and it is already
                 // fetched here, so the honest number costs nothing.
                 if (addr) this.finders.set(h, { addr, time: block.time || null });
-                fetched++;
+                this.unreadable.delete(h);
             } catch (err) {
                 // A height we cannot read is left out of the denominator, not
                 // guessed at. The snapshot says how many it actually read.
+                //
+                // And it is remembered as unreadable, so the next pass does
+                // not pay for it again. Nothing was remembered before, which
+                // is why a repeat request cost exactly what the first one did.
+                this.unreadable.set(h, now);
                 this.log.debug(`concentration: block ${h}: ${err.message}`);
             }
         }
@@ -117,6 +204,11 @@ class Concentration {
         // re-read.
         for (const h of this.finders.keys()) {
             if (h < tipHeight - LONG_WINDOW || h > tipHeight - 3) this.finders.delete(h);
+        }
+        // The same bound for the failures, so this map cannot outgrow the
+        // window it describes.
+        for (const h of this.unreadable.keys()) {
+            if (h < tipHeight - LONG_WINDOW || h > tipHeight - 3) this.unreadable.delete(h);
         }
     }
 

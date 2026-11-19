@@ -173,6 +173,17 @@ run "mention is not use"         "$PY" scripts/check_mentions.py
 # file that has gone quiet -- which nothing notices. On 8 October 2026 one
 # docstring sentence naming the convention had been doing that for weeks.
 run "a mention is not a mark"    "$PY" scripts/test/test_quoted.py
+
+# AND THE SAME DISTINCTION FOR COMMENTS, WHICH THE MARKS DO NOT COVER.
+#
+# strip_quoted() blanks wam:quote-marked lines and nothing else, so the
+# consensus gate -- the regression check for a PAID bug class -- read
+# `// consensus.enforce_BIP94 = false;` as assigning the field, and
+# check_mentions.py was satisfied with it because it does honour the marks.
+# Three sibling gates stripped comments and that one did not.
+#
+# Reported by Fahrizal, 18 November 2026.
+run "the consensus gate reads code" "$PY" scripts/test/test_consensus_gate.py
 run "every link resolves"        "$PY" scripts/check_links.py
 
 # /proc/<pid>/cmdline is world-readable on Linux, so a password in argv is
@@ -184,6 +195,17 @@ run "every link resolves"        "$PY" scripts/check_links.py
 # function that put the password on the command line. Both written by people
 # who knew the rule. Reported 13 November 2026.
 run "no RPC password in argv"    "$PY" scripts/check_rpc_secrets.py
+
+# AND THE SAME RULE FOR THE KEY ITSELF, IN BOTH DIRECTIONS.
+#
+# importdescriptors builds its refusal by interpolating the descriptor it
+# was handed, which is pkh(<WIF>), so the response to a failed import IS the
+# founder key -- and psbt_rehearsal.sh printed it. The filter that was
+# protecting it in the sibling script was `grep -v "$WIF"`, which put the
+# key in argv: the rule above, broken by the line enforcing it.
+#
+# Reported by Fahrizal, 18 November 2026.
+run "the founder key stays off the screen" bash scripts/test/test_secret_redaction.sh
 
 # "A list of who runs a node is a list of who can be attacked" is written in
 # explorer/lib/network.js, which exists to avoid publishing one -- and three

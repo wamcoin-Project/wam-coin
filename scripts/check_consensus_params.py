@@ -62,6 +62,7 @@ import re
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent / "lib"))
+import cpp_text  # noqa: E402
 import quoted  # noqa: E402
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -149,14 +150,28 @@ def fields_of_params_h(text):
 
 
 def networks_of_chainparams(text):
-    """{class name: the text of its constructor body}."""
+    """{class name: the text of its own class body}.
+
+    EACH NETWORK OWNS ITS BRACES AND NOTHING BEYOND THEM.
+
+    This used to slice from one class header to the next, so the LAST class
+    in the file owned everything after it to end-of-file. A free function
+    written below it that named a consensus field was then credited to that
+    network as though its constructor had run the line -- and the last class
+    in chainparams.cpp is the regtest one.
+
+    Literals are blanked before the braces are counted: a seed host or a
+    message string containing a brace would otherwise end a class body in
+    the wrong place. Blanking keeps the offsets, so the slice indices are
+    still valid in the comment-stripped text.
+
+    Reported by Fahrizal, 18 November 2026.
+    """
+    structural = cpp_text.strip_literals(text)
     out = {}
     for m in re.finditer(r"class\s+(C\w+Params)\s*:\s*public\s+CChainParams",
-                         text):
-        name = m.group(1)
-        rest = text[m.end():]
-        nxt = re.search(r"class\s+C\w+Params\s*:\s*public\s+CChainParams", rest)
-        out[name] = rest[:nxt.start()] if nxt else rest
+                         structural):
+        out[m.group(1)] = cpp_text.class_body(structural, m.end())
     return out
 
 
@@ -165,8 +180,22 @@ def main() -> int:
 
     try:
         header = (ROOT / PARAMS_H).read_text(encoding="utf-8", errors="replace")
-        cp = quoted.strip_quoted(
-            (ROOT / CHAINPARAMS).read_text(encoding="utf-8", errors="replace"))
+        # COMMENTS TOO, NOT JUST QUOTATION MARKS.
+        #
+        # strip_quoted() blanks wam:quote-marked lines and nothing else, so
+        # this gate read `// consensus.enforce_BIP94 = false;` as assigning
+        # the field. chainparams.cpp is full of prose quoting its own
+        # values, deliberately, and every one of those is a mention rather
+        # than a use -- the same distinction the quote marks draw, for a
+        # different kind of text.
+        #
+        # The three sibling gates all stripped comments and this one did
+        # not, which is why check_mentions.py was satisfied with it: it
+        # asks whether a scanner honours the quote marks, and this one did.
+        #
+        # Reported by Fahrizal, 18 November 2026.
+        cp = cpp_text.strip_comments(quoted.strip_quoted(
+            (ROOT / CHAINPARAMS).read_text(encoding="utf-8", errors="replace")))
     except OSError as e:
         print(f"  {YEL}could not read the consensus sources ({e}) -- nothing "
               f"was checked{OFF}\n")
@@ -194,7 +223,19 @@ def main() -> int:
         scalars += 1
         if has_default or name in NOT_A_PLAIN_FIELD:
             continue
-        assigner = re.compile(r"consensus\.%s\s*(=|\[)" % re.escape(name))
+        # `=` AND NOT `==`.
+        #
+        # This read `(=|\[)`, so `assert(consensus.enforce_BIP94 == false)`
+        # -- a READ of the field -- counted as assigning it. The one
+        # construct that proves nobody assigned a value was accepted as
+        # proof that somebody did.
+        #
+        # `=[^=]` cannot match `==`. It does not need to exclude `>=`, `<=`
+        # or `!=`: in those the character before the `=` is not whitespace,
+        # so `\s*=` never reaches it.
+        #
+        # Reported by Fahrizal, 18 November 2026.
+        assigner = re.compile(r"consensus\.%s\s*(=[^=]|\[)" % re.escape(name))
         missing = [n for n, body in nets.items() if not assigner.search(body)]
         if missing:
             bad.append((name, missing))
