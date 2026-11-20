@@ -109,9 +109,17 @@ python3 scripts/patch_upstream.py --tree build/wam-core --repo . --check</code><
 <p>You will see something like:</p>
 <pre><code>src/validation.cpp: anchor for 'delegate the subsidy to wam::GetBlockSubsidy' not found.</code></pre>
 <p>This means upstream moved the code. <strong>Do not loosen the anchor to make it apply.</strong> Open the current source, confirm the change still belongs where you think it does, and update the anchor in <code>scripts/patch_upstream.py</code>. A consensus edit landing in the wrong function is exactly the failure mode this design exists to prevent.</p>
-<p>The patcher is idempotent and aborts before writing anything on the first problem, so a failed run leaves the tree usable.</p>
+<p>The patcher aborts before writing anything on the first problem, so a failed run leaves the tree usable.</p>
+<p><strong>It is idempotent for every edit except the version</strong>, and that one exception will stop you. <code>configure.ac</code> is rewritten from upstream's version to this project's, so once a tree is patched the anchor it looks for is gone — and after the version is bumped for a new release, an already-patched tree matches neither the old anchor nor the new target. The patcher refuses rather than guessing:</p>
+<pre><code>configure.ac: anchor for 'version 28.1.0 -&gt; 0.1.15' not found.</code></pre>
+<p><strong>Delete <code>build/wam-core</code> and run <code>fetch-upstream.sh</code> again.</strong> This is not optional tidiness: a tree patched before the bump builds a binary that reports the OLD version, cleanly, with every test passing. Found on 20 November 2026 while verifying v0.1.15 before tagging — <code>wamd -version</code> said v0.1.14 on a tree that had just compiled and passed all 619 test cases. CI never meets this because it fetches into an empty workspace every time; only a developer's own tree carries the old patch forward.</p>
 <hr>
 <h2 id="4-compile">4. Compile</h2>
+<p><strong>Build the node where Boost is.</strong> This project's own machine carries two WSL distributions and they are not interchangeable:</p>
+<table><tr><th></th><th>node</th><th>miner, Android</th></tr><tr><td>Ubuntu 22.04</td><td>cmake, Boost, glibc 2.35</td><td></td></tr><tr><td>Ubuntu 24.04</td><td>cmake, <strong>no Boost</strong></td><td>glibc 2.39</td></tr></table>
+<p>Configure in the wrong one and it stops at <code>configure: error: Boost is not available!</code>, which at least says so. Worse is building in one and then the other over the same tree: the second link fails with</p>
+<pre><code>undefined reference to `__isoc23_strtol'</code></pre>
+<p>which names a glibc 2.38 symbol and explains nothing. <code>make distclean</code> first, or do not cross the two at all.</p>
 <pre><code>cd build/wam-core
 ./autogen.sh
 ./configure --without-gui \

@@ -99,12 +99,48 @@ current source, confirm the change still belongs where you think it does, and up
 anchor in `scripts/patch_upstream.py`. A consensus edit landing in the wrong function is
 exactly the failure mode this design exists to prevent.
 
-The patcher is idempotent and aborts before writing anything on the first problem, so a
-failed run leaves the tree usable.
+The patcher aborts before writing anything on the first problem, so a failed run leaves
+the tree usable.
+
+**It is idempotent for every edit except the version**, and that one exception will stop
+you. `configure.ac` is rewritten from upstream's version to this project's, so once a tree
+is patched the anchor it looks for is gone — and after the version is bumped for a new
+release, an already-patched tree matches neither the old anchor nor the new target. The
+patcher refuses rather than guessing:
+
+```
+configure.ac: anchor for 'version 28.1.0 -> 0.1.15' not found.
+```
+
+**Delete `build/wam-core` and run `fetch-upstream.sh` again.** This is not optional
+tidiness: a tree patched before the bump builds a binary that reports the OLD version,
+cleanly, with every test passing. Found on 20 November 2026 while verifying v0.1.15
+before tagging — `wamd -version` said v0.1.14 on a tree that had just compiled and passed
+all 619 test cases. CI never meets this because it fetches into an empty workspace every
+time; only a developer's own tree carries the old patch forward.
 
 ---
 
 ## 4. Compile
+
+**Build the node where Boost is.** This project's own machine carries two WSL
+distributions and they are not interchangeable:
+
+| | node | miner, Android |
+|---|---|---|
+| Ubuntu 22.04 | cmake, Boost, glibc 2.35 | |
+| Ubuntu 24.04 | cmake, **no Boost** | glibc 2.39 |
+
+Configure in the wrong one and it stops at `configure: error: Boost is not available!`,
+which at least says so. Worse is building in one and then the other over the same tree:
+the second link fails with
+
+```
+undefined reference to `__isoc23_strtol'
+```
+
+which names a glibc 2.38 symbol and explains nothing. `make distclean` first, or do not
+cross the two at all.
 
 ```bash
 cd build/wam-core
