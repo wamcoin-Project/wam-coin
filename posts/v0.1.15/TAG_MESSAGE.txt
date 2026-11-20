@@ -1,0 +1,182 @@
+WAM Coin v0.1.15 — nobody on the wire can stop your miner, and it no longer has to talk in the clear
+
+THIS IS THE FILE THE ANNOUNCEMENT BOT READS. Read the warning before editing.
+
+    git tag -a v0.1.15 -F posts/v0.1.15/TAG_MESSAGE.txt
+
+The annotated tag message becomes the release notes, and bots/announce.js
+posts the FIRST WHOLE PARAGRAPHS THAT FIT IN TWELVE LINES to Telegram and
+Discord, automatically, the moment the release is published. Nobody reviews
+it in between.
+
+So the first two paragraphs below have to make sense on their own, to somebody
+who sees nothing else. Everything after them is for the release page.
+
+THERE IS NO MANDATORY: LINE IN THIS RELEASE, AND ONE MUST NOT BE ADDED.
+
+Nothing here changes a rule two nodes have to agree on. nMinimumChainWork is
+raised, and that decides which history a NEW node will follow while it is
+syncing, not which blocks a running one accepts: a node on v0.1.14 and a node
+on this release agree on every block of this chain. The only other consensus
+file to move gained a function that test fixtures call to mine real proof of
+work, and nothing in production calls it.
+
+Every miner should take this one, and that is a different sentence.
+
+------------------------------------------------------------------------------
+
+Update your miner. Anybody on the wire could stop it: a fresh RandomX key in
+a job rebuilds a 2 GiB dataset, and a miner measured at 339.6 H/s sat at zero
+for seven minutes against a pool alternating two keys. SIGTERM did not end it
+either. It now takes one rebuild per cooldown, refuses a key announced for a
+height it has already passed, and stops when it is told to.
+
+The miner also speaks TLS at last, and refuses stratum+ssl:// rather than
+quietly downgrading it. For pool operators this closes three ways a payout
+could vanish, including a block that lost its race deleting a live round.
+Node, wam-miner and the wam-qt wallet, for Linux, Windows and macOS.
+
+------------------------------------------------------------------------------
+
+THE MINER
+
+A pool — or anyone able to put a line on the wire, which until this release
+was anyone at all, because the stratum client spoke no TLS — could hold a
+miner at 0 H/s for 908 bytes a second. Reported by Martam on 13 November, and
+independently by Fahrizal on 18 November against a build of this project's own
+sources. Fixed in three places: a cooldown where the rebuild happens, a
+refusal in the stratum client of any key announced for a height at or below
+one already seen, and the shutdown check moved inside the line-drain loop.
+
+TLS is in the reference miner. stratum+ssl://, certificate verification
+against the system store, TLS 1.2 or better, SNI, and the hostname or IP
+checked against the certificate. A binary built without libssl now REFUSES a
+stratum+ssl:// URL and prints the stunnel recipe, where it used to drop the
+scheme and open a cleartext socket to the pool's TLS port.
+
+An RPC password is refused to a public address unless --insecure-rpc says it
+was meant. A private address warns and continues, because people are mining
+that way today and this release is not the place to stop them.
+
+A block template is read with every number bounded, a reply has a ceiling,
+and the issued-job table is trimmed by bytes as well as by count.
+
+THE POOL
+
+Three ways a payout could vanish, all reported by Fahrizal on 18 November and
+all reproduced against this repository's own classes:
+
+A block that LOST ITS RACE was re-offered by the spool drain and recorded.
+Neither answer the node can give establishes that a block is on the chain the
+network is building — plain Core accepts a valid block on a stale branch —
+and recording it wrote a payout table for it and deleted the live round. The
+block then orphaned: nobody was paid for it, and every miner's work since the
+last block was destroyed with it, 4,000 difficulty in the reported run. The
+drain now asks whether the block is on the best chain, keeps a stale entry
+while a reorganisation could still save it, and retires it with its reason
+once it is buried deeper than a coinbase matures.
+
+A block whose accounting FAILED had its spool entry released anyway — the
+only copy the drain could ever re-offer, deleted at the exact moment the
+accounting path was broken. The entry is now released only when a payout
+record really exists.
+
+The printed recovery for an interrupted payment halted all payouts PERMANENTLY
+when followed. It said to clear the redis marker and the next run would pay
+normally; the journal line is written before the broadcast and outlives it, so
+every run from then on stopped on it. pool/scripts/resolve_lost_payment.js now
+asks the node whether the transaction exists and records the answer, and the
+banner names it instead of the half-step.
+
+Earlier the same month, reported on 13 November: the maturation credit took
+its exactly-once marker before the checks that can refuse it, so a block could
+be marked credited with nobody paid; payment:inflight was written with a plain
+SET, so two processes could both broadcast the same batch; and a refused
+credit stranded the block with no replay. The dashboard and its API were
+reported on 14 November by Radenlingga: every miner's difficulty printed "0",
+the maturity badge counted to the wrong height, two unguarded reads could take
+the whole page down, replies were never compressed, and /api/miner refused the
+very name this pool teaches people to authorize with.
+
+THE BUILD, AND THE KEY
+
+scripts/fetch-upstream.sh said "the upstream tag is PINNED" and pinned
+nothing: it cloned by tag name, re-fetched tags into an existing clone, and
+compared the tag's NAME to itself. Whoever can move bitcoin/bitcoin's v28.1 —
+or point an environment variable at a copy of it — chose the consensus code of
+every WAM binary, and our own signature went on the result. Both upstream
+commits are now named in the script and compared against HEAD after checkout.
+Reported by Fahrizal, 18 November. RandomX's v1.2.1 is a lightweight tag with
+no signature to check, so there the commit pin is the only defence there is.
+
+scripts/psbt_rehearsal.sh printed the founder key when an import failed. Core
+builds that error by interpolating the descriptor it was handed, and the
+descriptor is the key. Reported by Fahrizal; the same defect was then found in
+import_founder_key.sh, in the more dangerous of its two print paths.
+
+scripts/solo_gate.sh downloaded a signing key from the website, imported it,
+and executed what it verified — as root, on a timer, on a host carrying a
+mainnet node. Reported by Martam on 13 November. It now verifies against the
+fingerprint this repository holds, and runs as nobody.
+
+WHAT WAS WRONG IN WHAT WE PUBLISHED
+
+This chain runs at 125.2 seconds a block, not 120. DarkGravityWave averages
+24 targets across 23 intervals, so its fixed point is 24/23 of the target, and
+every duration this project had published followed the wrong number. Measured
+over 40,876 blocks at 126.01 s. Reported 13 November.
+
+The genesis block was mined against the RandomX key this chain actually uses,
+and the comment beside it described a different derivation. The value is right
+and has always been right; the sentence was wrong, and it is the sentence a
+reader checks the chain against.
+
+Six other published figures were wrong and are corrected, including the
+terminal supply, which is 19,999,999.978 WAM mined rather than the rounded
+limit of the series.
+
+ANDROID
+
+contrib/wam-miner-android carried its own copy of the miner's C++ sources,
+5,351 lines, and twice in November a sync overwrote the two Android-specific
+edits. The copy is gone: prepare-miner-code.sh regenerates it from miner/src
+and replays the recorded edits, reading them from the guard that watches the
+difference, and stops the build if a recorded edit no longer matches. The APK
+also links a static librandomx where the script had been building a shared
+one. Contributed by GVS Abhishek of Ventura Secure Labs.
+
+WITH THANKS
+
+bobbyning, Radenlingga, Martam, Fahrizal, 0xpack, 0xkerochan, dang150296 and
+the reporter of 12 November, who found these by reading and by running things
+against their own machines rather than against this network. Every accepted
+finding is listed with its reporter and its classification in SECURITY.md.
+
+WHAT IS IN THIS RELEASE
+-----------------------
+
+Node, miner and wallet, for Linux, Windows and macOS:
+
+    wam-coin-v0.1.15-x86_64-linux-gnu.tar.gz
+    wam-coin-v0.1.15-x86_64-w64-mingw32.zip
+    wam-coin-v0.1.15-arm64-apple-darwin.tar.gz
+
+    wam-miner-v0.1.15-x86_64-linux-gnu.tar.gz
+    wam-miner-v0.1.15-x86_64-w64-mingw32.zip
+    wam-miner-v0.1.15-arm64-apple-darwin.tar.gz
+
+    wam-qt-v0.1.15-x86_64-linux-gnu.tar.gz
+    wam-qt-v0.1.15-x86_64-w64-mingw32.zip
+    wam-qt-v0.1.15-arm64-apple-darwin.tar.gz
+
+The wallet is a separate download so that a node is not several times larger
+for the people who never open a window.
+
+VERIFY IT
+---------
+
+    bash scripts/verify_release.sh v0.1.15
+
+SHA256SUMS.asc is a signature over SHA256SUMS and nothing else. If a file you
+downloaded is not named in that list, it is covered by nothing — check the
+list before you run anything.
