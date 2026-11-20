@@ -52,7 +52,7 @@ application:
 
 ## 📦 Setup and Building
 
-### Pre-Requisite - build librandomx.a for arm (Use WSL)
+### Pre-Requisite - Prepare miner code and libraries for arm (Use WSL)
 
 1. clone the repo and navigate to the contrib folder
 
@@ -61,24 +61,29 @@ git clone -b wam-miner-android https://github.com/gvsa/wam-coin.git
 cd wam-coin/contrib/wam-miner-android
 ```
 
-2. Install dependencies
+2. Install dependencies required for the build
 
 ```
 ./setup-dependencies.sh
 ```
 
-3. Run build-upstream-for-arm.sh
+3. Run build-upstream-for-arm.sh (prepares the librandomx.a library)
 
 ```
 ./build-upstream-for-arm.sh
 ```
 
+4. Run prepare-miner-code.sh (prepares the miner C++ code)
+
+```
+./prepare-miner-code.sh
+```
+
 ### Open in Android Studio
 
 1. Launch **Android Studio**.
-2. Select **Open an Existing Project**.
-3. Navigate to your project directory and select the root folder or the sub-directory containing the
-   `build.gradle` configuration.
+2. Select **Open Folder**.
+3. Navigate to wam-coin/contrib/wam-miner-android and open.
 4. Allow Gradle to sync dependencies and download the necessary Android NDK tools for compiling
    native components.
 
