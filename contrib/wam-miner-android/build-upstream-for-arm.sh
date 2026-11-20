@@ -38,8 +38,14 @@ export CXX="$ANDROID_TOOLCHAIN/bin/aarch64-linux-android28-clang++"
 export RANLIB="$ANDROID_TOOLCHAIN/bin/llvm-ranlib"
 export PATH="$ANDROID_NDK_ROOT:$ANDROID_HOME/emulator:$ANDROID_HOME/tools:$ANDROID_HOME/tools/bin:$ANDROID_HOME/platform-tools:$PATH"
 
-# remove any existing build
-rm -rf ../../build
+# Remove the RandomX build output so it is rebuilt for ARM.
+#
+# This was `rm -rf ../../build`, which also destroys build/wam-core -- the
+# patched Bitcoin Core tree the NODE build uses. Anyone who ran this script
+# lost it silently and paid a full fetch and re-patch to get it back, for a
+# tree that is architecture-independent source and did not need removing.
+# Only the compiled RandomX artifacts are architecture-specific.
+rm -rf ../../build/randomx/build
 
 # go to the scripts folder as the original- fetch-upstream.sh
 cd ../../scripts

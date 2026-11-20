@@ -27,7 +27,14 @@ log "Target directory: ${TARGET_DIR}"
 # Pre-flight validation
 [[ -f "${CHECKER}" ]]        || die "Checker script (source of ANDROID_EDITS) not found: ${CHECKER}"
 [[ -d "${HERE}/miner/src" ]] || die "Source directory not found: ${HERE}/miner/src"
-command -v python3 >/dev/null 2>&1 || die "python3 is not installed or not in PATH"
+# AN INTERPRETER THAT IS ACTUALLY PYTHON.
+#
+# `python3` on Windows is a Microsoft Store stub that runs nothing and exits
+# 49, so this script failed there and took scripts/check_android_miner.py
+# down with it -- which sweep.sh runs on every pass. The repository already
+# solved this; lib/python.sh finds a real one and sets $PY.
+. "${HERE}/scripts/lib/python.sh"
+command -v "$PY" >/dev/null 2>&1 || die "no usable python3 was found"
 
 # Step 1: Delete any existing generated directory
 if [[ -d "${TARGET_DIR}" ]]; then
@@ -46,7 +53,7 @@ ok "Copied miner sources"
 
 # Step 3: Apply ANDROID_EDITS from check_android_miner.py
 log "Fetching Android edits from check_android_miner.py..."
-if ! edits_output="$(python3 "${CHECKER}" --emit-edits 2>&1)"; then
+if ! edits_output="$("$PY" "${CHECKER}" --emit-edits 2>&1)"; then
     printf '%s\n' "${edits_output}" >&2
     die "Failed to run ${CHECKER} --emit-edits"
 fi
