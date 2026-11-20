@@ -74,10 +74,23 @@ adjectives.
 These are commitments about what the founder does. They bind nobody else:
 anyone may list WAM, trade it, mine it, or ignore it.
 
-**Above 50% held by one finder** — no application to any exchange, no request
-to any exchange, no payment to any exchange. At that share the chain can be
-reorganised by one decision and a deposit is not safe. That is about an
-exchange's users, not about our image.
+**Above 50% held by one finder — withdrawn on 20 November 2026.** This read:
+"no application to any exchange, no request to any exchange, no payment to
+any exchange", and it is being retired by the founder's decision rather than
+quietly dropped, because a commitment that disappears from a file is worse
+than one that is openly withdrawn.
+
+It was written for the opening weeks, when the chain was days old and a
+single operator held 93.8% of it. The project is past that: the seven-day
+window has twenty-six distinct finders.
+
+What the sentence said about the risk has not changed and is not being
+withdrawn. Above half the blocks, one party can reorganise the chain by one
+decision, and a deposit sitting on an exchange across that reorganisation is
+not safe. That was true when the promise was made and it is true now; the
+promise governed what the founder would DO about it, and the arithmetic
+governs what is true. This file goes on printing the number either way,
+which is the whole point of it, and the figure below is current.
 
 **The bar actually aimed at** — no single finder above **35% of blocks over
 seven days**, with **at least three pools producing**. It is the line good

@@ -40,8 +40,12 @@ const WINDOW = 50;
 // And the long one, because the short one is not the number the project's own
 // public condition is written against.
 //
-// The founder published: no application to any exchange while one finder is
-// above 50%, and a target of no finder above 35% OF BLOCKS OVER SEVEN DAYS.
+// The founder published a target of no finder above 35% OF BLOCKS OVER SEVEN
+// DAYS. A second condition -- no application to any exchange above 50% --
+// stood beside it and was withdrawn on 20 November 2026 as having been
+// written for the opening weeks; see docs/CONCENTRATION.md, which says so
+// rather than dropping the sentence. The seven-day window is what either
+// one is measured over, which is why this module publishes it.
 // This module published 48 blocks -- an hour and a half. Within one day that
 // short window read 100% and then 54%, while the share over the whole chain
 // moved from 97% to 72%. A reader shown only the short figure gets a picture
