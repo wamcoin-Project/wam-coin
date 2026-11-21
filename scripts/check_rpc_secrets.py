@@ -80,8 +80,21 @@ WHERE = ["scripts/*.sh", "scripts/*.py", "scripts/test/*.sh", "scripts/lib/*.sh"
          "ops/*.py", "ops/*.sh", "deploy/**/*.sh", "miner/*.sh", "pool/*.js",
          "pool/lib/*.js", "contrib/**/*.sh", "install.sh"]
 
+# BOTH SPELLINGS, BECAUSE ARGV DOES NOT CARE WHICH ONE YOU WROTE.
+#
+# This matched `-rpcpassword=VALUE` only. `-rpcpassword "$PASS"` -- the
+# separated form, which bitcoin-cli accepts identically and which
+# scripts/test_miner.sh already uses -- was invisible to it, and so was the
+# Python list form `[..., "-rpcpassword", pw]`. The guard exists because two
+# key-handling scripts put the password in argv, where /proc/<pid>/cmdline
+# makes it readable by every account on the machine; it would not have
+# caught the same mistake written the other way round.
+#
+# Found in the pre-release review of v0.1.15. Nothing in the tree violates
+# it today -- the only separated uses are literals in a test -- which is
+# exactly when a hole is worth closing.
 # wam:quote-begin
-OPT = re.compile(r"-rpcpassword=(\S*)")
+OPT = re.compile(r"-{1,2}rpcpassword(?:=(\S*)|\s+(?!-)[\"']?([^\s\"',)]+))")
 # wam:quote-end
 
 # A value that is a variable, a format slot, or a concatenation. Anything in
@@ -126,8 +139,19 @@ def main() -> int:
         is_fixture_file = bool(FIXTURE.search(raw))
         text = quoted.strip_quoted(raw)
         for i, line in enumerate(text.splitlines(), 1):
+            # A COMMENT DESCRIBING THE FLAG IS NOT A COMMAND LINE.
+            #
+            # Widening the pattern to the separated spelling made it read
+            # prose: check_mentions.py carries the sentence "-rpcpassword
+            # matched the comment describing the flag", and this reported
+            # "matched" as a password. That is this repository's own
+            # mention-is-not-use rule, in the file that enforces it.
+            if line.lstrip().startswith(("#", "//")):
+                continue
             for m in OPT.finditer(line):
-                value = m.group(1)
+                # Group 1 is the =joined spelling, group 2 the separated
+                # one; exactly one of them matched.
+                value = m.group(1) if m.group(1) is not None else m.group(2)
                 if INTERPOLATED.search(value):
                     fails.append((rel, i, value, line.strip()[:110]))
                 else:

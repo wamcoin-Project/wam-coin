@@ -338,8 +338,16 @@ run both against one data directory at the same time.
 Nothing else is needed. If you already run wamd, stop it first.
 
 Verify what you downloaded before running it:
-  sha256sum --ignore-missing -c SHA256SUMS
-  gpg --verify SHA256SUMS.asc SHA256SUMS
+  curl -LO https://raw.githubusercontent.com/wamcoin-Project/wam-coin/main/scripts/verify_release.sh
+  curl -LO https://raw.githubusercontent.com/wamcoin-Project/wam-coin/main/SIGNING-KEY.asc
+  bash verify_release.sh .
+
+That one command does three things these two did not. It compares the
+signing key against the fingerprint this project publishes, instead of
+trusting whatever key is already in your keyring -- `gpg --verify` exits 0
+for ANY key that signed the file. It refuses a directory holding a file
+SHA256SUMS does not name, which `sha256sum -c` never opens. And it says
+which files it actually checked.
 The fingerprint to check it against is at https://wamcoin.org/security/
 WALLETEOF
 fi
@@ -351,16 +359,23 @@ WAM Coin $VERSION -- $PLATFORM
 RUN A NODE IN FOUR COMMANDS
 ---------------------------
 
-  1.  Check what you downloaded is what we built:
+  1.  Check what you downloaded is what we built, and that we signed it:
 
-          sha256sum --ignore-missing -c SHA256SUMS
+          curl -LO https://raw.githubusercontent.com/wamcoin-Project/wam-coin/main/scripts/verify_release.sh
+          curl -LO https://raw.githubusercontent.com/wamcoin-Project/wam-coin/main/SIGNING-KEY.asc
+          bash verify_release.sh .
 
-      --ignore-missing matters: SHA256SUMS lists both packages, and
-      without it a person who took only the node is told the miner
-      FAILED and, following this instruction, deletes a good file.
+      This file used to print `sha256sum --ignore-missing -c SHA256SUMS`
+      and nothing else. That compares the files SHA256SUMS NAMES. It never
+      opens a file the list does not name, so an archive added beside the
+      genuine ones passed without being looked at -- and it says nothing
+      at all about who signed the list.
 
-      Every line must say OK. If one does not, delete that file and
-      download it again -- do not run it.
+      verify_release.sh compares the signing key against the fingerprint
+      published at https://wamcoin.org/security/ before it believes the
+      signature, refuses a directory carrying a file the list does not
+      name, and prints what it checked. If it refuses, do not run
+      anything in that directory.
 
   2.  Make sure the two libraries are present. On Ubuntu or Debian:
 

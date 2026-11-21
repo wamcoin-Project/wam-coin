@@ -153,7 +153,7 @@ server=1
 daemon=1
 [regtest]
 rpcuser=rig
-rpcpassword=rig$$
+rpcpassword=rigthrowaway
 rpcport=$RPC
 port=$P2P
 bind=127.0.0.1
@@ -183,8 +183,13 @@ ADDR="$("${C[@]}" getnewaddress 2>/dev/null | head -1)"
 # --light, so the 2 GiB dataset is not built twice. It makes each miner slower
 # and the race no less real: on regtest the target is met in a handful of
 # hashes either way.
+# A literal, not "rig$$". The datadir is a mktemp and the port is
+# chosen free, so the pid suffix bought nothing -- and a value
+# carrying $ reads to check_rpc_secrets.py as a variable that could
+# hold the real password, which is the one thing it must not have to
+# guess about.
 ARGS=(--solo -u "$ADDR" --rpc "127.0.0.1:$RPC" --network regtest
-      --rpcuser rig --rpcpassword "rig$$" -t 1 --light --no-colour)
+      --rpcuser rig --rpcpassword rigthrowaway -t 1 --light --no-colour)
 
 "$MINER" "${ARGS[@]}" > "$D/A.log" 2>&1 & PIDS+=($!)
 "$MINER" "${ARGS[@]}" > "$D/B.log" 2>&1 & PIDS+=($!)
