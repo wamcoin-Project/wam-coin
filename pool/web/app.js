@@ -127,16 +127,37 @@ function renderStats(s) {
     `${(s.config && s.config.rewardMode || '').toUpperCase()} · ` +
     `pool fee ${s.config ? s.config.poolFeePercent : '?'}% + 5% treasury`);
 
+  // THE SCALE BELONGS BESIDE THE NUMBER.
+  //
+  // On 2026-11-21 this tile read 273.6 kH/s with Network hashrate beside it
+  // at 258.9, and a reader -- the founder first -- saw a part larger than the
+  // whole it belongs to. Both numbers were true. This one is ten minutes of
+  // submitted shares; that one is the arrival rate of the last 120 blocks,
+  // about four hours, and the chain was accelerating hard enough that the
+  // four-hour average had not caught up.
+  //
+  // Raising the network figure to match was tried, twice, and reverted both
+  // times: it produces a number only this project quotes, while every other
+  // pool on the chain publishes getmininginfo. See pool/lib/api.js and
+  // explorer/lib/collector.js, which carry what that looked like from
+  // outside.
+  //
+  // What is left is to stop handing a reader two numbers with no scale on
+  // either and inviting the comparison. Each now says what it measures.
+  const poolWin = net.poolHashrateWindowSec || 600;
   text($('poolHashrate'), hashrate(pool.hashrate));
+  const poolWinText = poolWin % 60 === 0
+    ? `${poolWin / 60} min`
+    : `${poolWin} s`;
   // The share is F of the last N blocks, counted off the ledger, so it says
   // which N. It used to be this pool's measured hashrate divided by an
   // estimate of the network's, which read "102.057% of network" on 29 October
   // -- a part larger than the whole it is part of.
   text($('poolShare'), pool.poolSharePercent
     ? (pool.shareBasis === 'counted'
-        ? `${pool.poolSharePercent.toFixed(1)}% of the last ` +
+        ? `measured over ${poolWinText} · ${pool.poolSharePercent.toFixed(1)}% of the last ` +
           `${pool.shareWindowBlocks} blocks (${pool.blocksFoundInWindow} found here)`
-        : `about ${pool.poolSharePercent.toFixed(1)}% of network, estimated`)
+        : `measured over ${poolWinText} · about ${pool.poolSharePercent.toFixed(1)}% of network, estimated`)
     : 'no shares in window');
 
   text($('minerCount'), String(pool.miners ?? 0));
@@ -171,7 +192,13 @@ function renderStats(s) {
   // decimal places, so a small number stays a number and a large one does not
   // grow a tail.
   const d = net.difficulty || 0;
-  const diffText = `difficulty ${difficulty(d)}`;
+  // The window is named here for the same reason it is named on the pool
+  // tile: this is an average over the last 120 blocks, roughly four hours,
+  // and it is the figure every pool on this chain publishes. Without the
+  // scale a reader compares it with a ten-minute measurement and concludes
+  // the page is broken.
+  const netWin = net.networkHashWindowBlocks || 120;
+  const diffText = `over the last ${netWin} blocks · difficulty ${difficulty(d)}`;
   text($('netDifficulty'), net.secondsSinceBlock == null
     ? diffText
     : stale

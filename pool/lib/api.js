@@ -618,12 +618,25 @@ class ApiServer {
                                      : 0);
         const expectedBlockSeconds = poolShare > 0 ? 120 / poolShare : null;
 
-        // The one total, computed once. Written twice it is two numbers that
-        // agree until somebody edits one of them, which is the fault this
-        // file has a whole comment about further up.
-        const networkTotal = counted && poolShare > 0
-            ? hashrate.poolHashrate / poolShare
-            : Math.max(estimate, hashrate.poolHashrate);
+        // THE TOTAL IS THE NODE'S, AND IT IS NOT OURS TO IMPROVE.
+        //
+        // For about an hour on 2026-11-21 this was `poolHashrate / poolShare`
+        // -- our ten-minute measurement over our counted share, which is a
+        // better estimator of the hashrate right now and cannot fall below
+        // the pool it contains. It read 556.7 kH/s while getnetworkhashps
+        // read 248.0, and it was reverted on sight.
+        //
+        // explorer/lib/collector.js already carries the reason, from the last
+        // time this exact improvement was made: every other pool on this
+        // chain publishes getmininginfo over 120 blocks. When our pages alone
+        // quoted a bigger network, a stranger comparing three pool pages did
+        // not see a better estimator. He saw the people who made the coin
+        // claiming it is stronger than everyone else says it is.
+        //
+        // So the convention stands, and what was actually wrong with the
+        // panel is addressed where it belongs: by saying what each number
+        // measures, not by raising one of them.
+        const networkTotal = estimate;
 
         return {
             pool: {
@@ -669,28 +682,35 @@ class ApiServer {
                 //
                 // So the ten-minute measurement of a PART exceeded the
                 // four-hour average of the WHOLE, truthfully, and the page
-                // showed something that cannot be true. The founder said it
-                // plainly: the total is this pool plus every other pool plus
-                // everyone mining alone, so it cannot come out below us
-                // whatever window either number uses.
+                // showed something that cannot be true.
                 //
-                // The total is now built from the same ten minutes as its own
-                // part: our measured hashrate over our counted share of the
-                // last hundred blocks. 273.6 / 0.51 = 536 kH/s, against the
-                // 563 the twelve-block window implied -- it agrees with the
-                // chain's recent behaviour, and it is arithmetically incapable
-                // of falling below the pool it contains.
+                // RAISING THE TOTAL IS NOT THE ANSWER, AND WAS TRIED TWICE.
                 //
-                // This is not a second headline. getnetworkhashps keeps its
-                // own name and its own window and is still published, for a
-                // reader who wants to see the lag rather than be protected
-                // from it.
-                networkHashEstimate: network.networkHashPerSecond || 0,
-                networkHashEstimateWindowBlocks: network.networkHashWindowBlocks || null,
-                networkHashBasis: counted ? 'counted-share' : 'node-estimate',
-                networkHashPerSecond: networkTotal,
-                othersHashPerSecond: Math.max(
-                    0, networkTotal - hashrate.poolHashrate)
+                // Both times it produced a number only this project quotes.
+                // explorer/lib/collector.js carries what that looked like
+                // from outside: three pool pages within three blocks of each
+                // other, two of them run by other people agreeing exactly,
+                // and ours alone claiming a bigger network. The window is the
+                // node's default here for the same reason it is there.
+                //
+                // What was actually wrong is that a reader was handed two
+                // numbers with no scale on either and invited to compare
+                // them. So the scale is published with each, and the page
+                // says what each one measures.
+                //
+                // othersHashPerSecond is the remainder, and only when there
+                // IS one. When our ten-minute measurement exceeds the
+                // four-hour average, the hashrate of everyone else is not
+                // zero -- it is unknown from these two numbers, and zero is
+                // the one answer that is certainly false. It says null and
+                // the page prints an em dash.
+                networkHashWindowBlocks: network.networkHashWindowBlocks || 120,
+                networkHashBasis: 'node-estimate',
+                poolHashrateWindowSec: hashrate.windowSec
+                    || this.config.hashrateWindowSec || 600,
+                othersHashPerSecond: networkTotal >= hashrate.poolHashrate
+                    ? networkTotal - hashrate.poolHashrate
+                    : null
             },
             job: job.currentJob,
             randomx: {

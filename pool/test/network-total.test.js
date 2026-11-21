@@ -2,7 +2,7 @@
 // Distributed under the MIT software license, see COPYING.
 //
 // ===========================================================================
-//  network-total.test.js -- the whole is never smaller than its part
+//  network-total.test.js -- one network number, and it is the one everybody quotes
 // ===========================================================================
 //
 //      node pool/test/network-total.test.js
@@ -79,7 +79,7 @@ function makeApi({ poolHashrate, estimate, blocksFound, tip = 1000, maturity = 1
 }
 
 (async () => {
-    console.log('\n\x1b[1m  the whole is never smaller than its part\x1b[0m\n');
+    console.log('\n\x1b[1m  one network number, and it is the one everybody quotes\x1b[0m\n');
 
     // The measured case, from the live reading that produced this file.
     // 273.6 kH/s of pool, 51 of the last 100 blocks, and a node estimate
@@ -90,56 +90,56 @@ function makeApi({ poolHashrate, estimate, blocksFound, tip = 1000, maturity = 1
     const heights = [];
     for (let i = 0; i < 51; i++) heights.push(1000 - i);
 
-    await test('the reported case: the total is not below the pool', async () => {
+    await test('the total is the node estimate, the figure every pool quotes', async () => {
         const api = makeApi({ poolHashrate: 273600, estimate: 258900, blocksFound: heights });
         const s = await api._stats();
-        assert.ok(s.network.networkHashPerSecond >= s.pool.hashrate,
-            `network ${Math.round(s.network.networkHashPerSecond)} < pool ${Math.round(s.pool.hashrate)}`);
-    });
-
-    await test('and it is built from the counted share, not the lagging estimate', async () => {
-        const api = makeApi({ poolHashrate: 273600, estimate: 258900, blocksFound: heights });
-        const s = await api._stats();
-        assert.strictEqual(s.network.networkHashBasis, 'counted-share');
-        // 273600 / 0.51 = 536,470
-        assert.ok(Math.abs(s.network.networkHashPerSecond - 536470) < 100,
-            `expected ~536470, got ${Math.round(s.network.networkHashPerSecond)}`);
-    });
-
-    await test('the node estimate is still published, under its own name', async () => {
-        const api = makeApi({ poolHashrate: 273600, estimate: 258900, blocksFound: heights });
-        const s = await api._stats();
-        assert.strictEqual(s.network.networkHashEstimate, 258900);
-        assert.strictEqual(s.network.networkHashEstimateWindowBlocks, 120);
-    });
-
-    await test('others is never negative, and is the remainder', async () => {
-        const api = makeApi({ poolHashrate: 273600, estimate: 258900, blocksFound: heights });
-        const s = await api._stats();
-        assert.ok(s.network.othersHashPerSecond >= 0);
-        assert.ok(Math.abs(
-            s.network.othersHashPerSecond
-            - (s.network.networkHashPerSecond - s.pool.hashrate)) < 1e-6);
-    });
-
-    // Below the floor the count is too thin to divide by, so the estimate is
-    // used -- and must still not come out below the pool.
-    await test('too few blocks to count: the estimate is used, floored at the pool', async () => {
-        const api = makeApi({ poolHashrate: 273600, estimate: 258900, blocksFound: [1000, 998, 996] });
-        const s = await api._stats();
+        assert.strictEqual(s.network.networkHashPerSecond, 258900);
         assert.strictEqual(s.network.networkHashBasis, 'node-estimate');
-        assert.ok(s.network.networkHashPerSecond >= s.pool.hashrate,
-            `network ${Math.round(s.network.networkHashPerSecond)} < pool ${Math.round(s.pool.hashrate)}`);
     });
 
-    await test('a pool finding every block is the whole network, not more', async () => {
+    await test('and it is never raised above what the node said', async () => {
+        // The failure this guards is the fix applied and reverted on
+        // 2026-11-21: poolHashrate / countedShare = 536 kH/s against the
+        // node's 258.9, a number only this project would have quoted.
+        for (const pool of [100, 273600, 999000]) {
+            const api = makeApi({ poolHashrate: pool, estimate: 258900, blocksFound: heights });
+            const s = await api._stats();
+            assert.strictEqual(s.network.networkHashPerSecond, 258900,
+                `pool ${pool} moved the network total`);
+        }
+    });
+
+    await test('both numbers carry the scale they were measured over', async () => {
+        const api = makeApi({ poolHashrate: 273600, estimate: 258900, blocksFound: heights });
+        const s = await api._stats();
+        assert.strictEqual(s.network.networkHashWindowBlocks, 120);
+        assert.ok(s.network.poolHashrateWindowSec > 0,
+            'the pool window must be published beside the pool number');
+    });
+
+    await test('others is the remainder when there is one', async () => {
+        const api = makeApi({ poolHashrate: 100000, estimate: 258900, blocksFound: heights });
+        const s = await api._stats();
+        assert.ok(Math.abs(s.network.othersHashPerSecond - 158900) < 1e-6,
+            `expected 158900, got ${s.network.othersHashPerSecond}`);
+    });
+
+    await test('and is null, not zero, when the two windows disagree', async () => {
+        // Zero would say nobody else is mining, which is the one answer that
+        // is certainly false: 51 of the last 100 blocks were ours, so 49 were
+        // not. The honest answer is that these two numbers cannot say.
+        const api = makeApi({ poolHashrate: 273600, estimate: 258900, blocksFound: heights });
+        const s = await api._stats();
+        assert.strictEqual(s.network.othersHashPerSecond, null);
+    });
+
+    await test('the counted share still cannot exceed 100%', async () => {
         const all = [];
         for (let i = 0; i < 100; i++) all.push(1000 - i);
         const api = makeApi({ poolHashrate: 400000, estimate: 10, blocksFound: all });
         const s = await api._stats();
-        assert.ok(Math.abs(s.network.networkHashPerSecond - 400000) < 1,
-            `expected 400000, got ${s.network.networkHashPerSecond}`);
-        assert.ok(Math.abs(s.network.othersHashPerSecond) < 1e-6);
+        assert.strictEqual(s.pool.poolSharePercent, 100);
+        assert.strictEqual(s.pool.shareBasis, 'counted');
     });
 
     await test('an idle pool does not invent a network', async () => {
@@ -155,5 +155,5 @@ function makeApi({ poolHashrate, estimate, blocksFound, tip = 1000, maturity = 1
         for (const f of fail) console.log(`        ${f}`);
         process.exit(1);
     }
-    console.log(`\x1b[32m\x1b[1m  ${pass} passed: the part can no longer exceed the whole\x1b[0m\n`);
+    console.log(`\x1b[32m\x1b[1m  ${pass} passed: the total is the node's, and each number carries its scale\x1b[0m\n`);
 })();
