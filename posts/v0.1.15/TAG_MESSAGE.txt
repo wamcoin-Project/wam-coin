@@ -33,11 +33,9 @@ height it has already passed, and stops when it is told to.
 
 The miner can now speak TLS, and the published binaries do not: they refuse
 stratum+ssl:// and print the stunnel line rather than downgrading it, which
-is what they did before and what they still do. The reason is in the full
-notes and it is not a small one. For pool operators this release closes
-three ways a
-payout could vanish. Node, wam-miner and the wam-qt wallet, for Linux,
-Windows and macOS.
+is what they did before. The full notes say why. For pool operators this
+release closes three ways a payout could vanish. Node, wam-miner and the
+wam-qt wallet, for Linux, Windows and macOS.
 
 ------------------------------------------------------------------------------
 

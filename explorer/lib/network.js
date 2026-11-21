@@ -31,10 +31,28 @@
 
 // Our own seeds. Published in DNS already, so naming them costs nobody
 // anything and lets a reader see the network is not all in one place.
-const OWN_SEEDS = {
-    '169.58.159.165': { label: 'seed', where: 'Germany' },
-    '5.223.52.200':   { label: 'seed', where: 'Singapore' }
-};
+// ONE LIST, NOT TWO. THIS WAS TWO, AND THE SECOND ONE WAS SHORT.
+//
+// It read:
+//
+//     '169.58.159.165': { label: 'seed', where: 'Germany' },
+//     '5.223.52.200':   { label: 'seed', where: 'Singapore' }
+//
+// while seeds.js carried all three. So when the US seed arrived, this file
+// was not updated and nothing noticed: a peer at 13.140.33.187 was counted
+// as an ordinary stranger. On 2026-11-22 the page said "73 connected now --
+// 2 out, 71 in, 1 of them a WAM seed", and getpeerinfo on that same node at
+// that same moment listed BOTH 5.223.52.200 and 13.140.33.187 as connected.
+// The founder saw the 1 and asked why it had been 2.
+//
+// The same fact in two files is the fault, not the missing line. seeds.js
+// owns the list; this reads it. A fourth seed now reaches both pages by
+// being added once, and check_seed_lists.py refuses a tree where they ever
+// drift apart again.
+const { PLACES } = require('./seeds');
+
+const OWN_SEEDS = Object.fromEntries(
+    Object.entries(PLACES).map(([addr, where]) => [addr, { label: 'seed', where }]));
 
 /**
  * Split "host:port" into the host, for the three shapes a peer address takes.
