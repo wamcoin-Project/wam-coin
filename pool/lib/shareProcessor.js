@@ -37,7 +37,7 @@ const EventEmitter = require('events');
 const path = require('path');
 
 const { computeBlockRewards, estimateHashrate, pplnsWindowDifficulty } = require('./rewards');
-const { PaymentJournal, reconcile } = require('./journal');
+const { PaymentJournal, reconcile, DEFAULT_JOURNAL } = require('./journal');
 const { COIN, COINBASE_MATURITY } = require('./constants');
 const { defineAtomicCommands, CLAIM_AND_RECORD_NAME,
         RECORD_BLOCK_NAME, CREDIT_MATURED_NAME,
@@ -78,8 +78,7 @@ class ShareProcessor extends EventEmitter {
         // redis on its defaults comes back from a crash a few minutes
         // younger than it was. See pool/lib/journal.js.
         this.journal = new PaymentJournal(
-            config.paymentJournal
-                || path.join(__dirname, '..', 'state', 'payments.journal'),
+            config.paymentJournal || DEFAULT_JOURNAL,
             logger);
         this.mode = (config.rewardMode || 'pplns').toLowerCase();
         // ?? and not ||. A zero fee is a real configuration -- this pool
@@ -942,10 +941,48 @@ class ShareProcessor extends EventEmitter {
             try {
                 block = await this.daemon.getBlock(hash, 1);
             } catch (err) {
-                // getblock throws "Block not found" for an orphan the node has
-                // already discarded -- that is a definitive orphan signal.
+                // "NOT FOUND" IS NOT AN ORPHAN. IT IS A NODE THAT HAS NOT
+                // GOT THE BLOCK.
+                //
+                // This read "getblock throws 'Block not found' for an orphan
+                // the node has already discarded -- that is a definitive
+                // orphan signal", and acted on it. Core does not discard
+                // them: a valid block on a side branch stays in the index
+                // for ever and is reported with confirmations: -1, which is
+                // the branch immediately below. So "not found" almost never
+                // means orphaned and almost always means this node does not
+                // know that hash yet.
+                //
+                // The ways an operator reaches it are ordinary. Restart wamd
+                // with -reindex; point the pool at a second node, a fresh
+                // one, or a restored backup; restart the pool while the node
+                // is still reindexing -- RPC warmup ends after genesis, so
+                // getblock answers, and it answers "not found" for every
+                // recent hash.
+                //
+                // Then one 60-second tick walked all of blocks:pending and
+                // orphaned EVERY entry: each payout table moved to
+                // blocks:orphaned, which nothing in this repository ever
+                // reads back, the pool fee reversed, and the round that
+                // produced those tables deleted when the block was recorded.
+                // The coins sit in the operator's wallet and nothing can say
+                // whose they were. server.js runs a full sweep during
+                // shutdown, which is exactly when an operator is restarting
+                // both processes.
+                //
+                // jobManager._onBestChain states the rule this file was
+                // breaking: not knowing is not a lost race, and the
+                // difference is a payout. Orphaning needs a positive
+                // statement from the chain, and confirmations === -1 is one.
+                //
+                // Found in the pre-release review of v0.1.15.
                 if (/not found/i.test(err.message)) {
-                    await this._orphan(hash, record, 'block not found on the node');
+                    this.log.warn(
+                        `block ${record.height} is not on this node. That is ` +
+                        'NOT an orphan -- a side branch keeps confirmations ' +
+                        '-1 -- so it is being left pending. If the node is ' +
+                        'reindexing, restored, or a different one, this is ' +
+                        'expected and will clear itself.');
                 } else {
                     this.log.warn(`could not check block ${record.height}: ${err.message}`);
                 }
@@ -1509,7 +1546,36 @@ class ShareProcessor extends EventEmitter {
             // succeeded.
             intent.txid = txid;
             intent.hex = signedHex;
-            await this.redis.set(this.k('payment:inflight'), JSON.stringify(intent));
+            // NOTHING HAS BEEN BROADCAST YET, AND THE CATCH HAS TO KNOW IT.
+            //
+            // The journal write below carries { ambiguous: false } with a
+            // comment saying exactly why: nothing is on the wire at this
+            // point, so a failure here must clear the marker and leave the
+            // balances alone, and must NOT take the branch that asks the
+            // node whether the transaction exists and re-sends it if not.
+            //
+            // This write has the identical property and did not say so. A
+            // redis connection dropped on this one line produced an error
+            // with no `ambiguous` field, `err.ambiguous !== false` was true,
+            // and _settleUnknownPayment then asked the node about a txid
+            // that had never been sent, got a definite "no such
+            // transaction", and BROADCAST IT. The journal line below never
+            // ran, so the money left the wallet with nothing recorded
+            // outside redis -- which is the single invariant journal.js
+            // exists to hold. If redis then rolled back, reconcile had no
+            // line to complain about and the next run paid the same
+            // balances again.
+            //
+            // Found in the pre-release review of v0.1.15.
+            try {
+                await this.redis.set(this.k('payment:inflight'),
+                                     JSON.stringify(intent));
+            } catch (err) {
+                throw Object.assign(
+                    new Error('the in-flight marker could not be written, so '
+                              + 'nothing was broadcast: ' + err.message),
+                    { ambiguous: false });
+            }
 
             // And written down where redis cannot take it back, for the same
             // reason and one step further: the line above is the record that

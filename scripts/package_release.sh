@@ -60,7 +60,7 @@ trap 'rc=$?; printf "\n  \033[31mFAIL\033[0m  package_release.sh stopped at line
 # An interpreter that is actually Python: `python3` on Windows is a
 # Microsoft Store stub that runs nothing and exits 49.
 SCRIPTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
-. "$SCRIPTS_DIR/lib/python.sh"
+. "$SCRIPTS_DIR/lib/python.sh" || exit 2
 . "$SCRIPTS_DIR/lib/shared_deps.sh"
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

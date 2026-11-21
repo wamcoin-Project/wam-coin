@@ -46,14 +46,14 @@ set -uo pipefail
 # and succeeds, and an empty capture in a signing flow is a silent wrong
 # value rather than an error. Refuse instead.
 SCRIPTS_DIR="${SCRIPTS_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)}"
-. "$SCRIPTS_DIR/lib/pcre.sh"
+. "$SCRIPTS_DIR/lib/pcre.sh" || exit 2
 . "$SCRIPTS_DIR/lib/secret.sh"
 
 
 # An interpreter that is actually Python: `python3` on Windows is a
 # Microsoft Store stub that runs nothing and exits 49.
 SCRIPTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
-. "$SCRIPTS_DIR/lib/python.sh"
+. "$SCRIPTS_DIR/lib/python.sh" || exit 2
 
 CORE="${CORE:-$HOME/wam/build/wam-core}"
 ONLINE_DIR="${ONLINE_DIR:-$HOME/wam-regtest}"

@@ -1038,6 +1038,59 @@ class JobManager extends EventEmitter {
             // real JobManager and the real classifier.
             const whose = await this._whoseBlock(blockHash);
 
+            // WHOSE IT IS AND WHETHER IT COUNTS ARE TWO QUESTIONS, AND THIS
+            // PATH WAS ONLY ASKING THE FIRST.
+            //
+            // _whoseBlock answers 'ours' for any block the node holds under
+            // this hash -- and it holds a VALID block on a side branch for
+            // ever. So the ordinary lost race reached this branch as 'ours':
+            // another miner's block at our height connected first, Core
+            // stored ours without connecting it, BlockChecked never fired,
+            // and submitblock answered inconclusive.                       // wam:quote-line
+            //
+            // blockAccepted = true below then makes processShare emit
+            // 'block', which runs recordBlock, which writes a payout table
+            // for a block that can never mature AND runs del(round) and
+            // del(round:pow). Every miner's accumulated work since the last
+            // block, destroyed on a lost race -- which is exactly the defect
+            // this release fixed in drainSpool, sitting in the path that runs
+            // on every block this pool finds. The log line below asserts the
+            // reply was lost rather than the block, and that would have been
+            // false every time.
+            //
+            // _onBestChain is the second question. Only true pays.
+            // null -- the node could not be asked -- is not a lost race
+            // either, and takes the 'unknown' path below, which keeps the
+            // spool entry rather than guessing.
+            //
+            // Found in the pre-release review of v0.1.15.
+            const counts = whose === 'ours' ? await this._onBestChain(blockHash)
+                                            : false;
+
+            if (whose === 'ours' && counts === false) {
+                this.log.warn(`block ${job.height} is ours and the node has it, `
+                              + 'but not on the best chain: we lost the race. '
+                              + 'It is NOT being offered for payout, and the '
+                              + 'round stands.');
+                share.blockAccepted = false;
+                share.blockStale = true;
+                this.stats.blocksStale = (this.stats.blocksStale || 0) + 1;
+                this.refreshTemplate(true).catch(() => {});
+                return;
+            }
+
+            if (whose === 'ours' && counts === null) {
+                this.log.warn(`block ${job.height} is ours, and the node could `
+                              + 'not say whether it is on the best chain. Not '
+                              + 'knowing is not acceptance: the entry stays '
+                              + 'spooled and the drain will ask again.');
+                share.blockAccepted = false;
+                share.blockStale = true;
+                this.stats.blocksStale = (this.stats.blocksStale || 0) + 1;
+                this.refreshTemplate(true).catch(() => {});
+                return;
+            }
+
             if (whose === 'ours') {
                 this.stats.blocksFound++;
                 share.blockAccepted = true;

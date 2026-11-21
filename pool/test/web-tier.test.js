@@ -265,6 +265,38 @@ const ADDR = 'WdMMqW1DcgWZ6HtyJuEMdce6QkKg4raGmE';
         }
     });
 
+    await test('and the operator\'s own reply is not then handed to a stranger',
+               async () => {
+        // THE CACHE DOES NOT KNOW WHO ASKED.
+        //
+        // The TTL cache is keyed on the path and the query. _health decides
+        // what to include from the CALLER. So the operator's monitoring, on
+        // a timer, writes the detailed body into the cache and every request
+        // from the internet for the next cacheMs is served it -- marked
+        // X-Cache: HIT, which is how it would be found.
+        //
+        // This is the third time these fields have leaked. The first fix
+        // read the socket address, which behind nginx is the proxy. The
+        // second read the forwarded caller, correctly, and the cache in
+        // front of it handed the answer out anyway.
+        const { api, port } = await listen({ apiCacheMs: 3000 });
+        const operator = JSON.parse(
+            (await get(port, '/api/health')).raw.toString());
+        const stranger = JSON.parse(
+            (await get(port, '/api/health',
+                       { 'X-Forwarded-For': '203.0.113.9' })).raw.toString());
+        api.close();
+
+        assert.ok('memoryMb' in operator,
+            'the operator stopped getting the detail, so the fixture proves '
+            + 'nothing about what follows');
+        for (const leak of ['memoryMb', 'connections']) {
+            assert.ok(!(leak in stranger),
+                `a stranger got the pool's ${leak} out of the cache, written `
+                + 'there by the operator\'s own monitoring a moment earlier');
+        }
+    });
+
     await test('and an operator behind a proxy can still ask for it', async () => {
         // apiHealthDetail is the way back for monitoring that does sit
         // behind something. Without it, such an operator has no route at

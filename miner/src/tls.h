@@ -183,9 +183,27 @@ public:
         // link returns WANT_READ rather than hanging. Retry it: the timeout
         // is one second and a handshake across the world is allowed to take
         // longer than that.
+        // A LOOP THAT RUNS OUT IS NOT A HANDSHAKE THAT SUCCEEDED.
+        //
+        // This broke on rc == 1 and otherwise fell out of the loop after
+        // thirty attempts -- straight into the verify check below. For a
+        // session where no handshake ever completed, SSL_get_verify_result
+        // returns X509_V_OK: the field is initialised to it and means
+        // nothing without a peer certificate. So thirty seconds of silence
+        // from whoever answered the TCP connect produced m_tls = true, a
+        // "connected" log line, a reset reconnect delay, and the message
+        // main.cpp prints about the certificate being verified against this
+        // machine's trust store -- for a connection that had verified
+        // nothing and could carry nothing.
+        //
+        // This file's own promise, three paragraphs up, is that the result
+        // is read rather than assumed. It was assumed on this path.
+        //
+        // Found in the pre-release review of v0.1.15.
+        bool shook = false;
         for (int attempt = 0; attempt < 30; ++attempt) {
             const int rc = SSL_connect(m_ssl);
-            if (rc == 1) break;
+            if (rc == 1) { shook = true; break; }
             const int reason = SSL_get_error(m_ssl, rc);
             if (reason == SSL_ERROR_WANT_READ || reason == SSL_ERROR_WANT_WRITE) {
                 continue;
@@ -194,6 +212,23 @@ public:
             Close();
             return false;
         }
+        if (!shook) {
+            err = "the TLS handshake did not finish in 30 seconds. Nothing "
+                  "was verified, so this connection is not being used.";
+            Close();
+            return false;
+        }
+
+        // And a verify result is only an answer if there was a certificate
+        // to verify. X509_V_OK with no peer certificate is the initial
+        // value, not a verdict.
+        X509* peer = SSL_get1_peer_certificate(m_ssl);
+        if (peer == nullptr) {
+            err = "the pool sent no certificate, so nothing could be checked";
+            Close();
+            return false;
+        }
+        X509_free(peer);
 
         const long verified = SSL_get_verify_result(m_ssl);
         if (verified != X509_V_OK) {

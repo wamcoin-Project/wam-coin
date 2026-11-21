@@ -203,6 +203,47 @@ if [ "${checked:-0}" -eq 0 ]; then
 fi
 ok "$checked file(s) match the signed list, byte for byte"
 
+# AND THE OTHER DIRECTION, WHICH NOTHING CHECKED.
+#
+# `sha256sum -c` walks the LIST. A file sitting in this directory that
+# SHA256SUMS does not name is never looked at -- and the banner below said
+# "this is the WAM release, unmodified since it was signed" anyway.
+#
+# That is the whole verification for everyone who runs the command this
+# project prints in every announcement. Anyone who can serve HTTP to a
+# downloader -- a hostile mirror, a machine on the path, a compromised
+# downloads page -- serves the genuine SHA256SUMS, the genuine signature and
+# the genuine node tarball, all untouched, PLUS one extra release-shaped
+# archive. The reader runs this, is told the release is unmodified, and
+# extracts a binary nobody signed.
+#
+# It is reachable with no attacker at all: sign_release.sh records that the
+# Windows and macOS archives have to be added to SHA256SUMS by hand, and
+# package_release.sh deliberately leaves the wallet out of the list when Qt
+# did not build. A missed step produces exactly this directory.
+#
+# Found in the pre-release review of v0.1.15.
+unlisted=""
+for f in wam-coin-* wam-miner-* wam-qt-*; do
+    [ -e "$f" ] || continue
+    case "$f" in *.asc|SHA256SUMS*) continue ;; esac
+    # `sed`, not `awk '{print $2}'`. sha256sum writes the name in BINARY
+    # mode on some platforms -- `<hash> *<name>` -- and the star made every
+    # genuine file read as unlisted, which would have refused every honest
+    # download. Caught by scripts/test/test_verify_release_unlisted.sh
+    # before it shipped.
+    if ! sed 's/^[^ ]*  *[*]\?//' SHA256SUMS | grep -qxF -- "$f"; then
+        unlisted="$unlisted $f"
+    fi
+done
+if [ -n "$unlisted" ]; then
+    bad "these file(s) are here and are NOT in the signed list:"
+    for f in $unlisted; do printf '       %s\n' "$f"; done
+    say "SHA256SUMS.asc signs SHA256SUMS and nothing else. A file the list"
+    say "does not name is covered by nothing, whoever gave it to you."
+    echo; exit 1
+fi
+
 echo
 echo "  ${GRN}${BLD}this is the WAM release, unmodified since it was signed${OFF}"
 echo

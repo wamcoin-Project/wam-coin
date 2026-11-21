@@ -39,7 +39,7 @@
 set -uo pipefail
 
 SCRIPTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/.." && pwd)"
-. "$SCRIPTS_DIR/lib/python.sh"
+. "$SCRIPTS_DIR/lib/python.sh" || exit 2
 
 HERE="$(cd "$SCRIPTS_DIR/.." && pwd)"
 cd "$HERE"

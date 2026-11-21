@@ -395,6 +395,66 @@ const work = (round) => Object.values(round).reduce((a, b) => a + Number(b), 0);
             + 'makes every drain re-offer a block that is already paid');
     });
 
+    // ---- a node that has not got the block --------------------------------
+
+    await test('a node that does not have the block does not orphan it', async () => {
+        // "NOT FOUND" IS NOT AN ORPHAN.
+        //
+        // _checkPendingBlocks read getblock's "Block not found" as "a
+        // definitive orphan signal". Core does not discard a valid block on
+        // a side branch -- it keeps it for ever and reports confirmations
+        // -1, which is the branch immediately below. So "not found" means
+        // this node does not know the hash: it is reindexing, it is a
+        // different node, it was restored from backup.
+        //
+        // One 60-second tick then walked all of blocks:pending and orphaned
+        // EVERY entry. Each payout table moved to blocks:orphaned, which
+        // nothing in this repository reads back, and the round that produced
+        // it was deleted when the block was recorded. server.js runs a full
+        // sweep during shutdown, which is when an operator restarts both.
+        const t = setup({ confirmations: 7 });
+        const hash = FRESH;
+
+        // One block waiting to mature, exactly as recordBlock leaves it.
+        await t.redis.hset('wam:blocks:pending', hash, JSON.stringify({
+            height: 100, blockHash: hash, finder: 'Walice.rig1',
+            time: Date.now(), rewards: { Walice: 4750000000 },
+            poolFee: 47500000, minerPot: 4750000000
+        }));
+
+        // The node answers as a reindexing or freshly restored one does.
+        t.daemon.getBlock = async () => { throw new Error('Block not found'); };
+        await t.shareProcessor._checkPendingBlocks();
+
+        assert.ok((await t.redis.hgetall('wam:blocks:pending'))[hash],
+            'the payout table was moved to blocks:orphaned because the node '
+            + 'had not got the block yet. Nothing in this repository ever '
+            + 'reads that list back, and the round that produced the table is '
+            + 'already gone -- so the coins sit in the wallet and nothing can '
+            + 'say whose they were. A reindex does this to every pending '
+            + 'block at once.');
+        assert.strictEqual((await t.redis.lrange('wam:blocks:orphaned', 0, -1)).length, 0,
+            'it was filed as orphaned on no statement from the chain');
+    });
+
+    await test('and a block the chain really dropped is still orphaned', async () => {
+        // The control: confirmations -1 IS a statement from the chain.
+        const t = setup({ confirmations: -1 });
+        const hash = FRESH;
+        await t.redis.hset('wam:blocks:pending', hash, JSON.stringify({
+            height: 100, blockHash: hash, finder: 'Walice.rig1',
+            time: Date.now(), rewards: { Walice: 4750000000 },
+            poolFee: 47500000, minerPot: 4750000000
+        }));
+        await t.shareProcessor._checkPendingBlocks();
+
+        assert.ok(!(await t.redis.hgetall('wam:blocks:pending'))[hash],
+            'a block the node holds on a side branch was left pending for '
+            + 'ever, which is the fault arriving from the other side');
+        assert.strictEqual((await t.redis.lrange('wam:blocks:orphaned', 0, -1)).length, 1,
+            'it was dropped without the evidence being kept');
+    });
+
     // ---- the runbook -----------------------------------------------------
 
     await test('the printed recovery no longer tells an operator to dead-end it',

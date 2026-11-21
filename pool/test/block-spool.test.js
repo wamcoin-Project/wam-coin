@@ -226,6 +226,70 @@ function jm(store, outcome, confirmations = 12) {
         assert.strictEqual(seen[0].distributableValue, 4750000000);
     });
 
+    await test('a lost race on the live path does not close the round', async () => {
+        // THE SAME DEFECT THE DRAIN WAS FIXED FOR, IN THE PATH THAT RUNS ON
+        // EVERY BLOCK THIS POOL FINDS.
+        //
+        // _submitBlock's ALREADY_HAVE branch asked _whoseBlock, which
+        // answers 'ours' for any block the node holds under our hash -- and
+        // Core holds a VALID block on a side branch for ever. So an ordinary
+        // lost race arrived here as 'ours': another miner connected first,
+        // Core stored ours without connecting it, and submitblock answered
+        // with the inconclusive family.                              // wam:quote-line
+        //
+        // blockAccepted = true then makes processShare emit 'block', which
+        // runs recordBlock, which writes a payout table for a block that can
+        // never mature and runs del(round) and del(round:pow). Every miner's
+        // work since the last block, gone, on a race we merely lost.
+        //
+        // Whose it is and whether it counts are two questions.
+        const s = memStore();
+        const m = jm(s, DUPLICATE, -1);        // the node has it, side branch
+
+        const header = Buffer.alloc(80, 0x22);
+        const job = {
+            height: 77,
+            coinbaseValue: 5000000000,
+            distributableValue: 4750000000,
+            devFeeAmount: 250000000,
+            serializeBlock: () => Buffer.from('deadbeef', 'hex')
+        };
+        const share = { worker: 'w.rig1', height: 77 };
+        await m._submitBlock(job, header, Buffer.alloc(0), share);
+
+        assert.strictEqual(share.blockAccepted, false,
+            'a block the node holds on a SIDE BRANCH was reported as accepted. '
+            + 'processShare emits on that, recordBlock writes a payout table '
+            + 'for a block that can never mature, and del(round) takes every '
+            + "miner's accumulated work with it");
+        assert.strictEqual(share.blockStale, true,
+            'it is a lost race and is not counted as one');
+    });
+
+    await test('and a block that really is ours and best is still accepted', async () => {
+        // The control. The case the ALREADY_HAVE branch exists for -- the
+        // reply to an earlier attempt was lost, not the block -- must still
+        // pay.
+        const s = memStore();
+        const m = jm(s, DUPLICATE, 12);        // the node has it, best chain
+
+        const header = Buffer.alloc(80, 0x33);
+        const job = {
+            height: 78,
+            coinbaseValue: 5000000000,
+            distributableValue: 4750000000,
+            devFeeAmount: 250000000,
+            serializeBlock: () => Buffer.from('deadbeef', 'hex')
+        };
+        const share = { worker: 'w.rig1', height: 78 };
+        await m._submitBlock(job, header, Buffer.alloc(0), share);
+
+        assert.strictEqual(share.blockAccepted, true,
+            'a block this pool mined, that the node holds on the best chain, '
+            + 'was refused -- which is the fault the branch was written to '
+            + 'prevent, arriving from the other side');
+    });
+
     await test('a block the node read and refused is settled, not retried forever', async () => {
         const s = memStore();
         s.live.set('h1', { height: 10, hash: 'h1', hex: 'deadbeef', worker: 'w', foundAt: Date.now() });

@@ -37,7 +37,7 @@ set -uo pipefail
 # and succeeds, and an empty capture in a signing flow is a silent wrong
 # value rather than an error. Refuse instead.
 SCRIPTS_DIR="${SCRIPTS_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)}"
-. "$SCRIPTS_DIR/lib/pcre.sh"
+. "$SCRIPTS_DIR/lib/pcre.sh" || exit 2
 . "$SCRIPTS_DIR/lib/secret.sh"
 
 

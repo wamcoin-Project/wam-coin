@@ -257,10 +257,34 @@ void WorkerLoop(int workerId, RandomXEngine& engine, SharedState& state)
 
             if (!job.valid) { haveWork = false; continue; }
 
-            // extranonce2: worker id in the top bytes so no two threads collide.
+            // extranonce2: the worker id, so no two threads collide.
+            //
+            // THE SHIFT COUNT CAME OFF THE WIRE AND COULD EXCEED 31.
+            //
+            // This read `uint32_t(workerId) >> (8 * (size - 1 - i))`, and
+            // the pool chooses `size` in its mining.subscribe reply --
+            // stratum.h accepts 1 to 8. At size 8 the counts are 56, 48, 40
+            // and 32 on a 32-bit value, which is undefined behaviour, from
+            // a number the pool picked.
+            //
+            // x86-64 and AArch64 mask the count by 31 and the ids stay
+            // distinct, so it worked by accident everywhere we had looked.
+            // A 32-bit ARM build -- which is the Android target -- yields 0
+            // for every one of those shifts, so EVERY worker thread gets the
+            // same all-zero extranonce2, hashes the identical header, and
+            // the pool rejects the lot as duplicates.
+            //
+            // Writing from the low end makes the count 0, 8, 16, 24 whatever
+            // the pool asks for. For size 4 and below this produces byte for
+            // byte what the old line produced; above it the id sits in the
+            // last four bytes rather than the first, which no pool can tell
+            // apart because the field is opaque to it.
+            //
+            // Found in the pre-release review of v0.1.15.
             en2.assign(size_t(job.extranonce2Size), 0);
             for (int i = 0; i < job.extranonce2Size && i < 4; i++) {
-                en2[size_t(i)] = uint8_t(uint32_t(workerId) >> (8 * (job.extranonce2Size - 1 - i)));
+                en2[size_t(job.extranonce2Size - 1 - i)] =
+                    uint8_t(uint32_t(workerId) >> (8 * i));
             }
             job.extranonce2Hex = ToHex(en2);
 
@@ -1417,7 +1441,29 @@ int Run(int argc, char** argv)
     // scrolls past, and a password does not come back.
     if (opt.solo) {
         const wam::HostKind where = wam::ClassifyHost(opt.rpcHost);
-        const bool sendsPassword = !opt.rpcPass.empty() || !opt.rpcUser.empty();
+        // THE COOKIE IS A CREDENTIAL TOO, AND IT WAS THE ONE NOT GUARDED.
+        //
+        // This read `!rpcPass.empty() || !rpcUser.empty()`, and a cookie is
+        // neither. But RunSolo loads the node's cookie file PRECISELY when
+        // rpcUser is empty, and RpcClient::Credentials then puts
+        // `__cookie__:<secret>` into the same Authorization: Basic header,
+        // for whatever host --rpc names. So the guard refused the explicit
+        // password to a public address and waved the cookie through -- and
+        // the cookie opens the same RPC surface, wallet calls included, on
+        // the node running on THIS machine.
+        //
+        // `wam-miner --solo --rpc 203.0.113.9:9554 -u <addr>` was enough. No
+        // attacker setup, no warning, base64 over plain HTTP.
+        //
+        // A remote node's cookie cannot be on this disk in any case, so a
+        // cookie read here and sent there is always wrong.
+        //
+        // Found in the pre-release review of v0.1.15.
+        const bool sendsCookie =
+            opt.rpcUser.empty() &&
+            (!opt.rpcCookie.empty() || !wam::DefaultCookiePath(opt.network).empty());
+        const bool sendsPassword =
+            !opt.rpcPass.empty() || !opt.rpcUser.empty() || sendsCookie;
         if (sendsPassword && where == wam::HostKind::Public && !opt.insecureRpc) {
             std::fprintf(stderr,
                 "error: --rpcuser/--rpcpassword would be sent to %s in the "

@@ -27,7 +27,7 @@ set -euo pipefail
 # An interpreter that is actually Python: `python3` on Windows is a
 # Microsoft Store stub that runs nothing and exits 49.
 SCRIPTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
-. "$SCRIPTS_DIR/lib/python.sh"
+. "$SCRIPTS_DIR/lib/python.sh" || exit 2
 
 # --- pinned upstream -------------------------------------------------------
 #
@@ -354,11 +354,36 @@ fi
 
 # Verify the library against the reference vector before anything depends on it.
 log "     verifying librandomx against the reference test vector"
-if [ -f "$RANDOMX_DIR/build/randomx-tests" ]; then
-    "$RANDOMX_DIR/build/randomx-tests" >/dev/null && log "     reference tests pass"
-else
-    warn "randomx-tests binary not found; skipping the reference check"
+# `if ! cmd`, NOT `cmd && log`.
+#
+# This read `"$RANDOMX_DIR/build/randomx-tests" >/dev/null && log "..."`.
+# Under `set -e` a command on the left of `&&` is exempt from it, so a
+# FAILING reference test printed nothing at all -- no ok, no FAIL -- and the
+# script went on to patch Core and hand the tree to the packager. The line
+# above says the library is verified before anything depends on it; it was
+# not verified at all.
+#
+# librandomx.a is linked statically into wamd, so a library that disagrees
+# with the reference vectors ships in every published node and every miner
+# built against it: proof of work that silently diverges from the network.
+# The commit pin covers the SOURCE. This was the only thing covering the
+# built artefact.
+#
+# A missing binary is `die` for the same reason the signature check says so:
+# a check that could not run has not passed.
+#
+# Found in the pre-release review of v0.1.15.
+if [ ! -f "$RANDOMX_DIR/build/randomx-tests" ]; then
+    die "randomx-tests was not built, so librandomx.a has been checked
+     against nothing. It is linked into wamd and decides this chain's
+     proof of work. Delete $RANDOMX_DIR and run this again."
 fi
+if ! "$RANDOMX_DIR/build/randomx-tests" >/dev/null; then
+    die "librandomx.a FAILS the RandomX reference test vectors.
+     Do not build anything from this tree: a node linked against it
+     computes a different proof of work from the rest of the network."
+fi
+log "     reference tests pass"
 
 # ===========================================================================
 log "2/4  Bitcoin Core $UPSTREAM_TAG"

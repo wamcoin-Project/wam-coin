@@ -331,7 +331,30 @@ async function reconcile(journal, redis, doneKey, inflightRaw) {
     return complaints;
 }
 
+/**
+ * Where the journal lives when the config does not say.
+ *
+ * ONE DEFAULT, BECAUSE TWO OF THEM MEANT THE RECOVERY TOOL LOOKED ELSEWHERE.
+ *
+ * ShareProcessor defaulted to pool/state/payments.journal and
+ * pool/scripts/resolve_lost_payment.js defaulted to pool/payment.journal --
+ * a different directory AND a different file name. Neither config sets
+ * paymentJournal, so on the live pool the two never pointed at the same
+ * file.
+ *
+ * The consequence was worse than a missing file. The paused-payment banner
+ * tells the operator to run that script instead of clearing the redis
+ * marker by hand, because clearing it halts payouts for ever. The script
+ * would have found nothing where it looked, printed "nothing to resolve"
+ * and exited 0 -- its own code for success -- without ever calling
+ * reconcile. An operator told the recovery had worked would then reach for
+ * the one command the banner exists to forbid.
+ *
+ * Found in the pre-release review of v0.1.15, in a fix shipped the same day.
+ */
+const DEFAULT_JOURNAL = path.join(__dirname, '..', 'state', 'payments.journal');
+
 module.exports = {
     PaymentJournal, reconcile, TAIL_BYTES, CHECK_RECENT,
-    BROADCAST, COMMITTED, ABANDONED
+    BROADCAST, COMMITTED, ABANDONED, DEFAULT_JOURNAL
 };

@@ -383,8 +383,31 @@ class ApiServer {
     async _api(pathname, query, res, req = null) {
         // Small TTL cache: a dashboard open in fifty tabs must not turn into
         // fifty Redis round trips per second.
+        // /api/health IS NOT CACHED, AND THE REASON IS WHO ASKED.
+        //
+        // The key is the path and the query, and nothing else. _health
+        // decides what to include from the CALLER -- the operator on the
+        // loopback gets memoryMb and connections, a stranger does not. With
+        // one cache entry per path, the operator's own monitoring on a timer
+        // writes the detailed body into the cache and every request from the
+        // internet in the next cacheMs is served it, marked X-Cache: HIT.
+        //
+        // That is the third time this endpoint has leaked those fields. The
+        // first fix read the socket address, which is the proxy. The second
+        // read the forwarded caller, correctly, and the cache in front of it
+        // handed out the answer anyway.
+        //
+        // The redaction below got this right and says so in its own comment;
+        // the health gate did not. Excluding the endpoint rather than keying
+        // the cache on the caller, because the body is about a hundred bytes
+        // and _health does no Redis work -- there is nothing here for a cache
+        // to save, and a key that encodes an authorisation decision is a key
+        // somebody gets wrong later.
+        //
+        // Found in the pre-release review of v0.1.15.
+        const cacheable = pathname !== '/api/health';
         const cacheKey = pathname + '?' + query.toString();
-        const hit = this.cache.get(cacheKey);
+        const hit = cacheable ? this.cache.get(cacheKey) : null;
         if (hit && Date.now() - hit.at < this.cacheMs) {
             return this._json(res, 200, hit.body, true, req);
         }
@@ -483,7 +506,7 @@ class ApiServer {
         if (pathname !== '/api/miner') {
             body = redactIdentities(body);
         }
-        this._cacheSet(cacheKey, body);
+        if (cacheable) this._cacheSet(cacheKey, body);
         return this._json(res, 200, body, false, req);
     }
 

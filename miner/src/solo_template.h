@@ -383,6 +383,43 @@ inline SoloTemplate BuildSoloTemplate(const json::Value& t,
     // share as coinbasevalue, subtracting the treasury here would subtract it
     // twice and quietly destroy 5% of every block -- with nothing erroring
     // and nothing looking wrong.
+    // AND A CEILING THAT HOLDS WHETHER OR NOT THE FEES ARE KNOWN.
+    //
+    // The exact check below runs only when every transaction reported a fee,
+    // and ONE transaction object without a `fee` key switches it off -- which
+    // is a guard an untrusted peer can disable by omitting a field. The node
+    // answering getblocktemplate is untrusted here by construction: the RPC
+    // link is plain HTTP, and the whole reason ClassifyHost exists is that it
+    // may not even be the node the operator thinks it is.
+    //
+    // With the exact check skipped, the only surviving bound was
+    // `devFeeAmount < coinbaseValue`. A node that answers with the REAL
+    // treasury script -- it is public, it is in our own documents -- and an
+    // amount one satoshi below coinbasevalue makes this miner build a
+    // coinbase paying the whole block to the treasury and one satoshi to
+    // itself. Consensus ACCEPTS that block: GetPaidDevFee only requires the
+    // treasury to be paid AT LEAST its 5% (src/wam/consensus/devfee.cpp), so
+    // paying it more is valid. The miner mines, the block is accepted, the
+    // log says ACCEPTED, and the reward is gone.
+    //
+    // This ceiling needs no fee knowledge at all. The treasury is 5% of the
+    // SUBSIDY; the subsidy is coinbasevalue minus the fees; fees are never
+    // negative; so 5% of the subsidy can never exceed 5% of coinbasevalue.
+    // coinbaseValue is already bounded by kMaxMoney, so the multiplication
+    // cannot overflow.
+    //
+    // Found in the pre-release review of v0.1.15, not reported from outside.
+    const int64_t ceiling = (out.coinbaseValue * 5) / 100;
+    if (out.devFeeAmount > ceiling) {
+        throw std::runtime_error(
+            "the treasury output is " + std::to_string(out.devFeeAmount) +
+            ", and 5% of a coinbasevalue of " + std::to_string(out.coinbaseValue) +
+            " is at most " + std::to_string(ceiling) +
+            ". A node cannot pay the treasury more than the rule asks and "
+            "leave the miner the difference. Refusing to build a coinbase on "
+            "that.");
+    }
+
     if (feesKnown) {
         const int64_t subsidy  = out.coinbaseValue - totalFees;
         const int64_t expected = (subsidy * 5) / 100;

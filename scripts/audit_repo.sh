@@ -30,7 +30,7 @@ set -uo pipefail
 # An interpreter that is actually Python: `python3` on Windows is a
 # Microsoft Store stub that runs nothing and exits 49.
 SCRIPTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
-. "$SCRIPTS_DIR/lib/python.sh"
+. "$SCRIPTS_DIR/lib/python.sh" || exit 2
 . "$SCRIPTS_DIR/lib/quoted.sh"
 
 # Files carrying $1, ignoring lines the author marked as quotation.

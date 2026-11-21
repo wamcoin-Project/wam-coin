@@ -24,7 +24,7 @@ set -euo pipefail
 # An interpreter that is actually Python: `python3` on Windows is a
 # Microsoft Store stub that runs nothing and exits 49.
 SCRIPTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
-. "$SCRIPTS_DIR/lib/python.sh"
+. "$SCRIPTS_DIR/lib/python.sh" || exit 2
 
 REPO="${REPO:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 

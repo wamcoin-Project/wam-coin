@@ -74,7 +74,8 @@ const fs = require('fs');
 const path = require('path');
 
 const ROOT = path.join(__dirname, '..');
-const { PaymentJournal, reconcile } = require(path.join(ROOT, 'lib', 'journal'));
+const { PaymentJournal, reconcile, DEFAULT_JOURNAL } =
+    require(path.join(ROOT, 'lib', 'journal'));
 
 const RED = '\x1b[31m', GRN = '\x1b[32m', YLW = '\x1b[33m',
       BLD = '\x1b[1m', DIM = '\x1b[2m', OFF = '\x1b[0m';
@@ -148,8 +149,12 @@ async function nodeHasTx(daemon, txid) {
         process.exit(2);
     }
 
-    const journalPath = config.paymentJournal
-        || path.join(ROOT, 'payment.journal');
+    // DEFAULT_JOURNAL, not a second guess at it. This script looked in
+    // pool/payment.journal while the pool writes pool/state/payments.journal,
+    // so on a live pool it found nothing, said "nothing to resolve" and
+    // exited 0 -- telling an operator the recovery had worked when it had
+    // not looked at the journal at all.
+    const journalPath = config.paymentJournal || DEFAULT_JOURNAL;
     if (!fs.existsSync(journalPath)) {
         console.log(`\n  no journal at ${journalPath}: nothing to resolve\n`);
         process.exit(0);
