@@ -317,6 +317,37 @@ not the URL a stranger follows. `release_watch` held the announcement and
 alarmed, which is why nothing incomplete reached the channels. The guard is
 the net; this step is so the net is never needed.
 
+## 4c. Our own machines run it, immediately after publishing
+
+```
+bash scripts/upgrade_seeds.sh v0.1.15
+```
+
+**Publishing moves files. It does not upgrade a node, not even ours.** On
+2026-11-22, minutes after v0.1.15 reached the website, the releases page, the
+three mirrors and both channels, the explorer's version panel read:
+
+```
+/WAM:0.1.14/ x39  /WAM:0.1.13/ x21  /WAM:0.1.12/ x15
+/WAM:0.1.11/ x17  /WAM:0.1.8/ x3    /WAM:0.1.10/ x1
+```
+
+No 0.1.15 anywhere, because nothing on the network was running it — all three
+of our own seeds reported `/WAM:0.1.14/`. The panel counts nodes, not
+releases, and it was right. The first machines to run a WAM release had been
+other people's every time, and the panel a stranger reads to decide whether a
+release is real showed the authors had not installed it.
+
+**It does not copy binaries from here.** Each host downloads the published
+archive from `wamcoin.org` and `install_release.sh` verifies the signature
+against this repository's key before moving anything. So our own upgrade
+exercises the exact path a stranger uses, on every release, and a download
+that cannot be verified stops ours the way it stops theirs.
+
+One host at a time, each asked what version it is running and whether it is
+answering before the next is touched. A host that does not come back stops
+the run with the others untouched. `--dry-run` says what it would do.
+
 ## 5. Afterwards
 
 ```
