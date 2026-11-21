@@ -139,7 +139,7 @@ ANDROID
 
 contrib/wam-miner-android carried its own copy of the miner's C++ sources,
 5,351 lines, and twice in November a sync overwrote the two Android-specific
-edits. The copy is gone: prepare-miner-code.sh regenerates it from miner/src
+edits. The copy is gone: a prepare step now regenerates it from miner/src
 and replays the recorded edits, reading them from the guard that watches the
 difference, and stops the build if a recorded edit no longer matches. The APK
 also links a static librandomx where the script had been building a shared
@@ -150,7 +150,8 @@ WITH THANKS
 bobbyning, Radenlingga, Martam, Fahrizal, 0xpack, 0xkerochan, dang150296 and
 the reporter of 12 November, who found these by reading and by running things
 against their own machines rather than against this network. Every accepted
-finding is listed with its reporter and its classification in SECURITY.md.
+finding is listed with its reporter and its classification at
+https://gitlab.com/WAMCoin/wam-coin/-/blob/main/SECURITY.md
 
 WHAT IS IN THIS RELEASE
 -----------------------

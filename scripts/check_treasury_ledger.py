@@ -308,6 +308,7 @@ def main() -> int:
 
     # --- 1. every row is the transaction it says it is --------------------
     bad = []
+    unchecked = []
     spent = 0
     heights = {}
     newest_row_height = 0
@@ -315,7 +316,31 @@ def main() -> int:
     for r in rows:
         rc, out, err = rsh(a.node, f"{cli} getrawtransaction {r['txid']} 2")
         if rc != 0:
-            bad.append((r, "the chain does not have this transaction"))
+            # "COULD NOT ASK" IS NOT "THE MONEY IS GONE".
+            #
+            # Any non-zero status landed here as "the chain does not have
+            # this transaction" -- a timeout, a dropped ssh, a node busy
+            # answering somebody else. On 21 November 2026 a sweep run
+            # beside a scantxoutset reported a paid 400 WAM bounty as
+            # missing from the chain, and the same check a minute later
+            # found it exactly where it should be.
+            #
+            # This file already says what that costs, about the height and
+            # the balance: an intermittent accusation about missing money
+            # teaches the reader to ignore it. The same sentence applies to
+            # a row.
+            #
+            # Core answers a transaction it does not have with a specific
+            # message. Anything else is the question failing to arrive, and
+            # a question that did not arrive has not been answered.
+            said = (err or out or "").strip()
+            if re.search(r"No such mempool or blockchain transaction", said,
+                         re.I):
+                bad.append((r, "the chain does not have this transaction"))
+            else:
+                unchecked.append(
+                    (r, "could not be asked about: "
+                        + (said.splitlines()[0][:90] if said else "no answer")))
             continue
         tx = json.loads(out)
         paid = sum(atoms(o["value"]) for o in tx["vout"]
@@ -354,7 +379,14 @@ def main() -> int:
         print(f"  {RED}FAIL{OFF}  {r['date']}  {r['amount']} WAM  "
               f"{r['txid'][:16]}...")
         print(f"          {why}")
-    if not bad:
+    for r, why in unchecked:
+        print(f"  {YEL}!!{OFF}    {r['date']}  {r['amount']} WAM  "
+              f"{r['txid'][:16]}...")
+        print(f"          {why}")
+    if unchecked and not bad:
+        print(f"  {YEL}{len(unchecked)} row(s) could not be checked, which is "
+              f"not the same as wrong{OFF}")
+    if not bad and not unchecked:
         print(f"  {GRN}ok{OFF}    every row pays what it says, to whom it "
               f"says, for the fee it says")
 
