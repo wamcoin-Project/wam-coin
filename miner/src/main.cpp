@@ -852,11 +852,10 @@ void PrintHelp()
 "\n"
 "OPTIONS\n"
 "    -o, --url <host:port>   pool address; a stratum+tcp:// prefix is accepted.\n"
-"                            stratum+ssl:// is refused rather than quietly\n"
-"                            downgraded: this miner has no TLS. Terminate it\n"
-"                            beside the miner --\n"
-"                              stunnel3 -c -d 127.0.0.1:3333 -r <pool>:3336\n"
-"                            -- and point -o at 127.0.0.1:3333.\n"
+"                            stratum+ssl:// too, if this binary was built with\n"
+"                            TLS -- the line printed below says which. A build\n"
+"                            without it REFUSES stratum+ssl:// rather than\n"
+"                            quietly downgrading, and prints a stunnel recipe.\n"
 "    -u, --user <address>    the WAM address to be paid at, optionally\n"
 "                            followed by .<worker> to label this machine\n"
 "    -p, --pass <password>   pool password (most pools ignore it; default 'x')\n"
@@ -911,6 +910,22 @@ void PrintHelp()
 "    Your address must belong to the network the pool is on: 'W...' or\n"
 "    'wam1...' on mainnet. A wrong-network address means the pool refuses to\n"
 "    authorize you, which is far better than being paid into a void.\n");
+
+    // A BUILD FACT, FROM THE BUILD.
+    //
+    // The options text used to assert "this miner has no TLS" in every
+    // copy, and the TLS build says the opposite on its second line of
+    // output. A reader comparing the two has no way to know which is true
+    // of the binary in their hand -- and it is the one question that
+    // decides whether their shares cross the wire readable.
+    //
+    // Found while verifying v0.1.15: the test that was supposed to watch
+    // this could not tell either, because there was nothing to read.
+    std::printf("\nTHIS BUILD\n    %s\n",
+                wam::Transport::Available()
+                    ? ("stratum+ssl:// is available ("
+                       + wam::Transport::Describe() + ")").c_str()
+                    : "no TLS: stratum+ssl:// will be refused, not downgraded");
 }
 
 bool ParseOptions(int argc, char** argv, Options& opt, std::string& err)

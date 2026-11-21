@@ -179,18 +179,57 @@ fi
 if [ -z "$policy_unchecked" ]; then
     ADDR=WdMMqW1DcgWZ6HtyJuEMdce6QkKg4raGmE
 
-    out="$(./miner/wam-miner -o stratum+ssl://pool.wamcoin.org:3336 -u "$ADDR" 2>&1)"
-    rc=$?
-    if [ "$rc" -eq 2 ] && printf '%s' "$out" | grep -q "speaks no TLS"; then
-        printf '  %sok%s    stratum+ssl:// is refused, not downgraded\n' "$GRN" "$OFF"
+    # A TIMEOUT, AND AN EXPECTATION THAT DEPENDS ON THE BUILD.
+    #
+    # This ran the miner against the live pool with NO TIMEOUT and expected
+    # exit 2. On a build without libssl that is right: the miner refuses the
+    # scheme and exits. On a build WITH libssl it connects, authorises, and
+    # MINES -- and this file hangs until something kills it.
+    #
+    # It had never been seen, because the whole section was skipped on every
+    # machine that ran it. The binary is built in one WSL distribution and
+    # this script re-executes in another, where it will not start, so the
+    # refusals were reported as "not checked at all" and nothing reached
+    # this line. The first run that got here hung for nine minutes.
+    #
+    # Found while verifying v0.1.15 -- a test nobody had run, guarding a
+    # refusal nobody had watched.
+    if ./miner/wam-miner --help 2>&1 | grep -q "stratum+ssl:// is available"; then
+        tls_built=1
     else
-        printf '  %sFAIL%s  stratum+ssl:// did not refuse (exit %s)\n' "$RED" "$OFF" "$rc"
-        printf '          a scheme asking for TLS was discarded, so the miner\n'
-        printf '          opened a cleartext socket to the pool TLS port\n'
-        failed=$((failed + 1))
+        tls_built=0
     fi
 
-    out="$(./miner/wam-miner --solo --rpc 203.0.113.9:9554 --rpcuser u \
+    out="$(timeout 20 ./miner/wam-miner -o stratum+ssl://pool.wamcoin.org:3336 \
+                      -u "$ADDR" 2>&1)"
+    rc=$?
+    if [ "$tls_built" -eq 1 ]; then
+        # Built with TLS: it must NOT refuse, and must not fall back to the
+        # clear. Reaching the pool is the proof; the timeout ends it.
+        if [ "$rc" -eq 2 ]; then
+            printf '  %sFAIL%s  stratum+ssl:// was refused by a TLS build\n' "$RED" "$OFF"
+            printf '          %s\n' "$(printf '%s' "$out" | head -1)"
+            failed=$((failed + 1))
+        elif printf '%s' "$out" | grep -qiE "in the clear|downgrad"; then
+            printf '  %sFAIL%s  stratum+ssl:// fell back to cleartext\n' "$RED" "$OFF"
+            failed=$((failed + 1))
+        else
+            printf '  %sok%s    stratum+ssl:// is honoured by a TLS build\n' "$GRN" "$OFF"
+        fi
+    else
+        if [ "$rc" -eq 2 ] && printf '%s' "$out" | grep -q "speaks no TLS"; then
+            printf '  %sok%s    stratum+ssl:// is refused, not downgraded\n' "$GRN" "$OFF"
+        else
+            printf '  %sFAIL%s  stratum+ssl:// did not refuse (exit %s)\n' "$RED" "$OFF" "$rc"
+            printf '          a scheme asking for TLS was discarded, so the miner\n'
+            printf '          opened a cleartext socket to the pool TLS port\n'
+            failed=$((failed + 1))
+        fi
+    fi
+
+    # Timeout for the same reason: if this ever stops refusing, it tries to
+    # reach 203.0.113.9 and waits, and the file hangs instead of failing.
+    out="$(timeout 20 ./miner/wam-miner --solo --rpc 203.0.113.9:9554 --rpcuser u \
                              --rpcpassword p -u "$ADDR" 2>&1)"
     rc=$?
     if [ "$rc" -eq 2 ] && printf '%s' "$out" | grep -q "in the clear"; then
