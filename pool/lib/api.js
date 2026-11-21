@@ -618,6 +618,13 @@ class ApiServer {
                                      : 0);
         const expectedBlockSeconds = poolShare > 0 ? 120 / poolShare : null;
 
+        // The one total, computed once. Written twice it is two numbers that
+        // agree until somebody edits one of them, which is the fault this
+        // file has a whole comment about further up.
+        const networkTotal = counted && poolShare > 0
+            ? hashrate.poolHashrate / poolShare
+            : Math.max(estimate, hashrate.poolHashrate);
+
         return {
             pool: {
                 ...pool,
@@ -637,14 +644,53 @@ class ApiServer {
             },
             network: {
                 ...network,
-                // Everyone on the chain who is not us, from the one network
-                // figure both pages publish. Briefly this tile carried a
-                // total of its own -- measured hashrate over counted share --
-                // which was a defensible number and a second headline for a
-                // quantity that may only have one. The share is what had to
-                // stop being a division; the total never did.
+
+                // A PART LARGER THAN ITS WHOLE, A SECOND TIME, THROUGH THE
+                // DOOR THIS COMMENT LEFT OPEN.
+                //
+                // On 2026-10-29 the SHARE stopped being a division and became
+                // a count. The total was left as getnetworkhashps, and the
+                // note here said "the share is what had to stop being a
+                // division; the total never did". On 2026-11-21 the panel
+                // read:
+                //
+                //     POOL HASHRATE     273.6 kH/s
+                //     NETWORK HASHRATE  258.9 kH/s
+                //
+                // Neither number is wrong. They measure different lengths of
+                // time. The pool's is ten minutes of submitted shares. The
+                // node's is the arrival rate of the last 120 blocks, which is
+                // about four hours, and the chain was accelerating:
+                //
+                //     last  12 blocks    66.0 s each   -> ~563 kH/s
+                //     last  30 blocks    93.3 s each   -> ~398 kH/s
+                //     last  60 blocks   107.5 s each   -> ~346 kH/s
+                //     last 120 blocks   126.8 s each   -> ~293 kH/s
+                //
+                // So the ten-minute measurement of a PART exceeded the
+                // four-hour average of the WHOLE, truthfully, and the page
+                // showed something that cannot be true. The founder said it
+                // plainly: the total is this pool plus every other pool plus
+                // everyone mining alone, so it cannot come out below us
+                // whatever window either number uses.
+                //
+                // The total is now built from the same ten minutes as its own
+                // part: our measured hashrate over our counted share of the
+                // last hundred blocks. 273.6 / 0.51 = 536 kH/s, against the
+                // 563 the twelve-block window implied -- it agrees with the
+                // chain's recent behaviour, and it is arithmetically incapable
+                // of falling below the pool it contains.
+                //
+                // This is not a second headline. getnetworkhashps keeps its
+                // own name and its own window and is still published, for a
+                // reader who wants to see the lag rather than be protected
+                // from it.
+                networkHashEstimate: network.networkHashPerSecond || 0,
+                networkHashEstimateWindowBlocks: network.networkHashWindowBlocks || null,
+                networkHashBasis: counted ? 'counted-share' : 'node-estimate',
+                networkHashPerSecond: networkTotal,
                 othersHashPerSecond: Math.max(
-                    0, (network.networkHashPerSecond || 0) - hashrate.poolHashrate)
+                    0, networkTotal - hashrate.poolHashrate)
             },
             job: job.currentJob,
             randomx: {
