@@ -174,39 +174,58 @@ ok "librandomx.a  ARCH=x86-64, not native"
 # ---------------------------------------------------------------------------
 step "3. the miner, rebuilt for the baseline"
 
-# WAM_MINER_TLS=1 AND WAM_MINER_TLS_STATIC=1, BOTH DELIBERATE.
+# WAM_MINER_TLS=0, AND THE REASON IS TWO GATES THAT BOTH TOLD THE TRUTH.
 #
-# =1 because a release miner without TLS is a release whose announcement is
-# false. miner/build.sh probes for OpenSSL and, finding none, builds a binary
-# that refuses stratum+ssl:// and says so -- correct for a stranger's laptop,
-# and a silent downgrade of the headline feature if it happens in here.
-#
-# _STATIC=1 because of what this very step refused on 2026-11-21:
+# TLS arrived in the miner in v0.1.15. Left to itself, miner/build.sh finds
+# the runner's OpenSSL headers and links -lssl -lcrypto -- right for a person
+# building on their own machine, wrong for a published binary. The gate below
+# said so on 2026-11-21, on the first release that could reach it:
 #
 #     FAIL  wam-miner    asks for: libcrypto.so.3 libssl.so.3
 #
-# TLS arrived in the miner in v0.1.15 and the portability gate below caught
-# the consequence on the first release that carried it. A downloader without
-# OpenSSL 3 would have got a loader error naming a file and nothing to act
-# on. Static linking is what the node already does with boost, libevent and
-# sqlite through depends; there is no depends for the miner, so it is asked
-# for here. build.sh refuses to fall back to the dynamic form under this
-# flag, which is the only reason setting it is worth anything.
+# Linking it statically answered that -- 5.54 MB instead of 507 KB, no libssl
+# in ldd, still PIE, self-test green -- and was refused by the OTHER gate:
+#
+#     wam-miner    922 above    WILL CRASH on a CPU without AVX-512
+#                  kmovb %k1,%r14d
+#
+# Ubuntu's libcrypto.a carries AVX-512 assembly behind OpenSSL's own CPUID
+# dispatch, so the binary does NOT crash: measured with every capability
+# masked off (OPENSSL_ia32cap=":0", which is what a 2012 laptop presents to
+# that dispatch), the miner completed TLS handshakes and connected. So the
+# verdict is a false positive -- but check_isa_baseline.sh reads instructions
+# in the file and cannot see a jump that asks the CPU first, and that is
+# precisely why it is trusted. It is not being taught an exception under
+# release pressure.
+#
+# The honest answer for a PUBLISHED binary is the one Windows already gives,
+# so Linux now gives it too, deliberately rather than by accident of what the
+# runner had installed: no TLS in the archive, stratum+ssl:// refused with the
+# stunnel recipe rather than downgraded. Nothing is lost that was ever
+# promised to work: TLS is in the source and one `bash miner/build.sh` away
+# for anyone with libssl-dev.
+#
+# What it would take to publish it, when it is done properly rather than
+# quickly: an OpenSSL built from pinned, signature-verified source with
+# no-asm, which has no AVX-512 to find. That is a new upstream to establish
+# trust in, and a release is the wrong place to do that.
 MINER_OUT="$WORK/wam-miner"
 RANDOMX_INCLUDE="$RX_SRC/src" \
 RANDOMX_LIB="$RX_BUILD/librandomx.a" \
 CXXFLAGS="$PORTABLE_FLAGS" \
-WAM_MINER_TLS=1 \
-WAM_MINER_TLS_STATIC=1 \
+WAM_MINER_TLS=0 \
 OUT="$MINER_OUT" \
     bash "$REPO/miner/build.sh" > /tmp/wam_miner_release.log 2>&1 \
     || { tail -25 /tmp/wam_miner_release.log; fail "the portable miner build failed"; }
 ok "wam-miner     built with $PORTABLE_FLAGS"
 
-grep -q "OpenSSL linked statically" /tmp/wam_miner_release.log \
+# Asserted, not assumed. If a future edit drops the flag the binary links the
+# builder's OpenSSL again and both gates below fire again, three steps later
+# and thirty minutes in.
+grep -q "disabled by WAM_MINER_TLS=0" /tmp/wam_miner_release.log \
     || { tail -25 /tmp/wam_miner_release.log
-         fail "the release miner did not link OpenSSL statically"; }
-ok "TLS           OpenSSL carried, not asked for"
+         fail "the release miner was built with TLS; it would carry or ask for OpenSSL"; }
+ok "TLS           out of the published binary, by decision"
 
 "$MINER_OUT" --self-test --no-colour > /tmp/wam_miner_selftest.log 2>&1 \
     || { tail -20 /tmp/wam_miner_selftest.log; fail "the release miner fails its own self-test"; }

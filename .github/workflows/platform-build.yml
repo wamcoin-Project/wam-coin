@@ -753,5 +753,14 @@ jobs:
             build/configure-macos.log
             build/make-macos.log
             build/tests-macos.log
+            build/make-miner-macos.log
           retention-days: 14
           if-no-files-found: ignore
+          # make-miner-macos.log was not on this list, and the one question
+          # that needed answering on 2026-11-21 was in it: whether the miner
+          # had linked TLS. build_macos.sh redirects the whole miner build
+          # there and prints one `ok` line on success, so a successful job
+          # says nothing about what went into the binary. The answer had to
+          # be inferred from the archive's SIZE -- 484 KB against the 5.54 MB
+          # a statically linked OpenSSL produces -- which is a measurement
+          # that happens to work and not a record.

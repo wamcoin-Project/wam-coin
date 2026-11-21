@@ -31,11 +31,13 @@ for seven minutes against a pool alternating two keys. SIGTERM did not end it
 either. It now takes one rebuild per cooldown, refuses a key announced for a
 height it has already passed, and stops when it is told to.
 
-The miner also speaks TLS at last on Linux and macOS, and refuses
-stratum+ssl:// rather than downgrading it; the Windows build has no OpenSSL
-for its toolchain, so it refuses the scheme and prints the stunnel line. For
-pool operators this closes three ways a payout could vanish. Node, wam-miner
-and the wam-qt wallet, for Linux, Windows and macOS.
+The miner can now speak TLS, and the published binaries do not: they refuse
+stratum+ssl:// and print the stunnel line rather than downgrading it, which
+is what they did before and what they still do. The reason is in the full
+notes and it is not a small one. For pool operators this release closes
+three ways a
+payout could vanish. Node, wam-miner and the wam-qt wallet, for Linux,
+Windows and macOS.
 
 ------------------------------------------------------------------------------
 
@@ -49,26 +51,49 @@ sources. Fixed in three places: a cooldown where the rebuild happens, a
 refusal in the stratum client of any key announced for a height at or below
 one already seen, and the shutdown check moved inside the line-drain loop.
 
-TLS is in the reference miner, on Linux and macOS. stratum+ssl://,
-certificate verification against the system store, TLS 1.2 or better, SNI,
-and the hostname or IP checked against the certificate.
+TLS is in the reference miner's source: stratum+ssl://, certificate
+verification against the system store, TLS 1.2 or better, SNI, and the
+hostname or IP checked against the certificate. Build with libssl-dev
+installed and `bash miner/build.sh` links it.
 
-Those two binaries CARRY OpenSSL rather than asking a downloader for it, and
-they look for the certificate store in the places Debian, Fedora, Alpine and
-openSUSE actually keep it. Both of those are corrections made while this
-release was being cut: the first build asked a stranger's machine for
-libcrypto.so.3, and a statically linked OpenSSL otherwise searches only where
-the machine that BUILT it kept its certificates -- which would have refused
-every TLS pool on a large part of Linux, while blaming the pool.
+IT IS NOT IN THE PUBLISHED BINARIES, AND THE REASON IS WORTH READING.
 
-Every macOS miner this project ever published was built without TLS, and not
-by decision: Homebrew's openssl@3 is keg-only, so the probe found no headers
-and said so in a log nobody read. This is the first macOS miner that has it.
+A binary that links OpenSSL dynamically asks a downloader for the OpenSSL 3
+shared libraries, and whoever does not have them gets a loader error naming
+a file with no way to know which package holds it. The release gate refused
+that, correctly, and it is why this is being said rather than shipped.
 
-There is no OpenSSL for the Windows cross-toolchain, so the Windows miner is
-built without TLS. It REFUSES a stratum+ssl:// URL and prints the stunnel
-recipe, where before this release every build dropped the scheme and opened a
-cleartext socket to the pool's TLS port.
+Linking it statically answered that -- and was refused by the gate next to
+it, which counts instructions a 2012 processor does not have:
+
+    wam-miner    922 above    WILL CRASH on a CPU without AVX-512
+
+Ubuntu's libcrypto.a carries AVX-512 assembly behind OpenSSL's own CPUID
+dispatch, so the binary does not in fact crash: measured with every
+capability masked off, which is what an old processor presents to that
+dispatch, the miner completed TLS handshakes and connected. The verdict is a
+false positive. But that gate reads the instructions in the file and cannot
+see a jump that asks the processor first, and being unable to be talked
+round is the whole of its value. It is not being taught an exception on a
+release day.
+
+Doing it properly means an OpenSSL built from pinned, signature-verified
+source with no assembly in it, which has no AVX-512 to find. That is a new
+upstream to establish trust in, and it will be done in its own release and
+not in the margins of this one.
+
+So the published miner for all three platforms refuses stratum+ssl:// and
+prints the stunnel recipe. That is what it did before this release too. What
+changed is that it no longer DROPS the scheme and opens a cleartext socket
+to the pool's TLS port, which is what every build did until now, and which
+is the defect that was actually reported.
+
+Two corrections made along the way are in the source for whoever builds it:
+a statically linked OpenSSL looks for certificates only where the machine
+that built it kept them, so the miner now also looks where Debian, Fedora,
+Alpine and openSUSE actually put them; and macOS had never built with TLS at
+all, because Homebrew's openssl@3 is keg-only and the probe found no headers
+and said so in a log nobody read.
 
 An RPC password is refused to a public address unless --insecure-rpc says it
 was meant. A private address warns and continues, because people are mining
