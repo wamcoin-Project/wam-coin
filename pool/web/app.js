@@ -199,11 +199,42 @@ function renderStats(s) {
   // the page is broken.
   const netWin = net.networkHashWindowBlocks || 120;
   const diffText = `over the last ${netWin} blocks · difficulty ${difficulty(d)}`;
+
+  // AND WHEN THE PART READS LARGER THAN THE WHOLE, SAY WHY HERE.
+  //
+  // It can, and it is not a fault in either number. Checked against three
+  // other pools on 2026-11-21, two of them on this chain and two on Monero:
+  //
+  //   veinpool.fr            pool from shares   network getnetworkhashps 120
+  //   wampool.vslabs.co.in   pool from shares   network getnetworkhashps 120
+  //   supportxmr.com         pool from shares   network difficulty / 120 s
+  //   moneroocean.stream     pool from shares   network from the chain
+  //
+  // veinpool published 245391.295114592 H/s while this node's
+  // getnetworkhashps(120) returned 245391.295114592. The same figure to the
+  // last digit, so the method is not ours to choose: it is what this chain's
+  // other pools publish, and a stranger compares two pages in a minute.
+  //
+  // Every one of the four measures the POOL from shares over seconds and the
+  // NETWORK from the chain. Nobody measures a pool by blocks. So the two
+  // instruments differ by construction -- ten minutes of proven work against
+  // a four-hour average -- and a pool holding half of an accelerating chain
+  // crosses over. veinpool never sees it with two miners connected.
+  //
+  // The honest move is not to raise one number or lower the other. It is to
+  // stop a reader concluding the page is broken.
+  const crossed = typeof net.networkHashPerSecond === 'number'
+    && typeof pool.hashrate === 'number'
+    && pool.hashrate > net.networkHashPerSecond;
+
   text($('netDifficulty'), net.secondsSinceBlock == null
     ? diffText
     : stale
       ? `${diffText} · no block for ${duration(net.secondsSinceBlock)} — rate above is stale`
-      : `${diffText} · last block ${duration(net.secondsSinceBlock)} ago`);
+      : crossed
+        ? `${diffText} · a ${netWin}-block average, so it trails the pool's ` +
+          `${poolWinText} measurement while the chain speeds up`
+        : `${diffText} · last block ${duration(net.secondsSinceBlock)} ago`);
   $('netDifficulty').classList.toggle('warn', stale);
 
   text($('blockHeight'), (net.blocks || 0).toLocaleString());
