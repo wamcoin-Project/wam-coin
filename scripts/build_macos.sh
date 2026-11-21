@@ -287,10 +287,29 @@ case "$MACH" in
     *)      MINER_CXXFLAGS="-O3" ;;
 esac
 
+# WAM_MINER_TLS_STATIC=1, AND NOT WAM_MINER_TLS=1.
+#
+# Homebrew's openssl@3 is keg-only: it is not on clang's default include or
+# library path, so the probe in miner/build.sh found nothing and every macOS
+# miner this project ever published was built WITHOUT TLS -- measured on the
+# v0.1.15 run of 2026-11-21, which said so in its own log:
+#
+#     !!    this binary was built without TLS, so the verification
+#           cases were not checked at all.
+#
+# pkg-config finds it once PKG_CONFIG_PATH names the keg, which
+# platform-build.yml now exports. _STATIC=1 then insists the archives go
+# INTO the binary, because a release linked against /opt/homebrew would not
+# start on a stranger's Mac, which has no Homebrew at all.
+#
+# Not WAM_MINER_TLS=1: that would make a Mac without openssl@3 fail the whole
+# build rather than produce the honest smaller binary. The static flag alone
+# refuses only the dangerous case -- OpenSSL present, linked dynamically.
 if CXX="${CXX:-clang++}" \
    CXXFLAGS="$MINER_CXXFLAGS" \
    RANDOMX_INCLUDE="$RANDOMX_DIR/src" \
    RANDOMX_LIB="$RX_BUILD/librandomx.a" \
+   WAM_MINER_TLS_STATIC=1 \
    OUT="$MINER_OUT" \
    bash "$HERE/miner/build.sh" > "$BUILD_DIR/make-miner-macos.log" 2>&1
 then

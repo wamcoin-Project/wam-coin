@@ -174,14 +174,39 @@ ok "librandomx.a  ARCH=x86-64, not native"
 # ---------------------------------------------------------------------------
 step "3. the miner, rebuilt for the baseline"
 
+# WAM_MINER_TLS=1 AND WAM_MINER_TLS_STATIC=1, BOTH DELIBERATE.
+#
+# =1 because a release miner without TLS is a release whose announcement is
+# false. miner/build.sh probes for OpenSSL and, finding none, builds a binary
+# that refuses stratum+ssl:// and says so -- correct for a stranger's laptop,
+# and a silent downgrade of the headline feature if it happens in here.
+#
+# _STATIC=1 because of what this very step refused on 2026-11-21:
+#
+#     FAIL  wam-miner    asks for: libcrypto.so.3 libssl.so.3
+#
+# TLS arrived in the miner in v0.1.15 and the portability gate below caught
+# the consequence on the first release that carried it. A downloader without
+# OpenSSL 3 would have got a loader error naming a file and nothing to act
+# on. Static linking is what the node already does with boost, libevent and
+# sqlite through depends; there is no depends for the miner, so it is asked
+# for here. build.sh refuses to fall back to the dynamic form under this
+# flag, which is the only reason setting it is worth anything.
 MINER_OUT="$WORK/wam-miner"
 RANDOMX_INCLUDE="$RX_SRC/src" \
 RANDOMX_LIB="$RX_BUILD/librandomx.a" \
 CXXFLAGS="$PORTABLE_FLAGS" \
+WAM_MINER_TLS=1 \
+WAM_MINER_TLS_STATIC=1 \
 OUT="$MINER_OUT" \
     bash "$REPO/miner/build.sh" > /tmp/wam_miner_release.log 2>&1 \
     || { tail -25 /tmp/wam_miner_release.log; fail "the portable miner build failed"; }
 ok "wam-miner     built with $PORTABLE_FLAGS"
+
+grep -q "OpenSSL linked statically" /tmp/wam_miner_release.log \
+    || { tail -25 /tmp/wam_miner_release.log
+         fail "the release miner did not link OpenSSL statically"; }
+ok "TLS           OpenSSL carried, not asked for"
 
 "$MINER_OUT" --self-test --no-colour > /tmp/wam_miner_selftest.log 2>&1 \
     || { tail -20 /tmp/wam_miner_selftest.log; fail "the release miner fails its own self-test"; }

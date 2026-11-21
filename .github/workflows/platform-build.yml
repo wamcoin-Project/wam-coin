@@ -523,7 +523,28 @@ jobs:
         run: |
           set -euo pipefail
           brew install automake libtool boost pkg-config libevent cmake sqlite || true
+
+          # openssl@3, FOR THE MINER'S TLS, AND WHY IT NEEDS A PATH.
+          #
+          # Every macOS miner this project published was built without TLS.
+          # Not by decision: Homebrew's openssl@3 is keg-only, so it is not on
+          # clang's default include or library path, miner/build.sh probed for
+          # the headers, found none, and said so in a log nobody read. The
+          # v0.1.15 run of 2026-11-21 printed it plainly:
+          #
+          #     !!  this binary was built without TLS, so the verification
+          #         cases were not checked at all.
+          #
+          # macOS is the platform this project owns no hardware for, so a
+          # runner is the only place its wallet and its miner are ever
+          # exercised. A feature that is silently absent here is silently
+          # absent in the release.
+          brew install openssl@3 || true
+          echo "PKG_CONFIG_PATH=$(brew --prefix openssl@3)/lib/pkgconfig:${PKG_CONFIG_PATH:-}" \
+              >> "$GITHUB_ENV"
           echo "arch: $(uname -m)"
+          pkg-config --modversion openssl 2>/dev/null \
+              || echo "::warning::pkg-config cannot see openssl yet; set in GITHUB_ENV for later steps"
 
       - name: Fetch and patch Bitcoin Core
         run: bash scripts/fetch-upstream.sh

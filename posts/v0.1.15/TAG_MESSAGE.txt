@@ -31,10 +31,11 @@ for seven minutes against a pool alternating two keys. SIGTERM did not end it
 either. It now takes one rebuild per cooldown, refuses a key announced for a
 height it has already passed, and stops when it is told to.
 
-The miner also speaks TLS at last, and refuses stratum+ssl:// rather than
-quietly downgrading it. For pool operators this closes three ways a payout
-could vanish, including a block that lost its race deleting a live round.
-Node, wam-miner and the wam-qt wallet, for Linux, Windows and macOS.
+The miner also speaks TLS at last on Linux and macOS, and refuses
+stratum+ssl:// rather than downgrading it; the Windows build has no OpenSSL
+for its toolchain, so it refuses the scheme and prints the stunnel line. For
+pool operators this closes three ways a payout could vanish. Node, wam-miner
+and the wam-qt wallet, for Linux, Windows and macOS.
 
 ------------------------------------------------------------------------------
 
@@ -48,11 +49,26 @@ sources. Fixed in three places: a cooldown where the rebuild happens, a
 refusal in the stratum client of any key announced for a height at or below
 one already seen, and the shutdown check moved inside the line-drain loop.
 
-TLS is in the reference miner. stratum+ssl://, certificate verification
-against the system store, TLS 1.2 or better, SNI, and the hostname or IP
-checked against the certificate. A binary built without libssl now REFUSES a
-stratum+ssl:// URL and prints the stunnel recipe, where it used to drop the
-scheme and open a cleartext socket to the pool's TLS port.
+TLS is in the reference miner, on Linux and macOS. stratum+ssl://,
+certificate verification against the system store, TLS 1.2 or better, SNI,
+and the hostname or IP checked against the certificate.
+
+Those two binaries CARRY OpenSSL rather than asking a downloader for it, and
+they look for the certificate store in the places Debian, Fedora, Alpine and
+openSUSE actually keep it. Both of those are corrections made while this
+release was being cut: the first build asked a stranger's machine for
+libcrypto.so.3, and a statically linked OpenSSL otherwise searches only where
+the machine that BUILT it kept its certificates -- which would have refused
+every TLS pool on a large part of Linux, while blaming the pool.
+
+Every macOS miner this project ever published was built without TLS, and not
+by decision: Homebrew's openssl@3 is keg-only, so the probe found no headers
+and said so in a log nobody read. This is the first macOS miner that has it.
+
+There is no OpenSSL for the Windows cross-toolchain, so the Windows miner is
+built without TLS. It REFUSES a stratum+ssl:// URL and prints the stunnel
+recipe, where before this release every build dropped the scheme and opened a
+cleartext socket to the pool's TLS port.
 
 An RPC password is refused to a public address unless --insecure-rpc says it
 was meant. A private address warns and continues, because people are mining

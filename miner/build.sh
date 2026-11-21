@@ -166,9 +166,37 @@ echo "  compiling..."
 #
 #  Set WAM_MINER_TLS=0 to build without it deliberately, or =1 to insist and
 #  have this fail loudly rather than quietly produce the smaller binary.
+#
+#  AND A RELEASE BINARY HAS TO CARRY OPENSSL, NOT ASK FOR IT.
+#
+#  -lssl -lcrypto is right for a person building this on their own machine:
+#  the miner then gets their distribution's security updates without being
+#  rebuilt. It is wrong for a published binary. On 2026-11-21 the v0.1.15
+#  packaging gate refused the Linux miner, correctly:
+#
+#      FAIL  wam-miner    asks for: libcrypto.so.3 libssl.so.3
+#
+#  A downloader without OpenSSL 3 gets a loader error naming a file and no
+#  way to know which package holds it. So package_release.sh sets
+#  WAM_MINER_TLS_STATIC=1, and in that mode this REFUSES to fall back to the
+#  dynamic form: a silent fallback is exactly how that defect returns, and it
+#  returns into an archive with our signature on it.
+#
+#  The archive forms are tried in order. `-l:libssl.a` is GNU ld and does not
+#  exist on ld64, so the full path from pkg-config is tried too -- which is
+#  also what finds a keg-only Homebrew openssl@3 on macOS. `-ldl` is part of
+#  libc on macOS and an error to ask for there, so each form is tried both
+#  with it and without.
 TLS_FLAGS=""
 TLS_LIBS=""
 want_tls="${WAM_MINER_TLS:-auto}"
+want_static="${WAM_MINER_TLS_STATIC:-0}"
+
+# Empty when there is no pkg-config and no openssl.pc, which is the common
+# case on Linux and costs nothing; on macOS it is the only way to find the
+# headers at all, because openssl@3 is keg-only and not on the default path.
+OSSL_CFLAGS="$(pkg-config --cflags openssl 2>/dev/null || true)"
+OSSL_LIBDIR="$(pkg-config --variable=libdir openssl 2>/dev/null || true)"
 
 if [ "$want_tls" != "0" ]; then
     tls_probe="$(mktemp -t wamtlsXXXXXX.cpp 2>/dev/null || echo /tmp/wamtls.cpp)"
@@ -178,10 +206,69 @@ if [ "$want_tls" != "0" ]; then
         echo 'int main(){ SSL_CTX_new(TLS_client_method()); return 0; }'
     } > "$tls_probe"
     tls_bin="${tls_probe%.cpp}.bin"
-    if "$CXX" -std=c++17 "$tls_probe" -lssl -lcrypto -o "$tls_bin" >/dev/null 2>&1; then
-        TLS_FLAGS="-DWAM_MINER_TLS"
-        TLS_LIBS="-lssl -lcrypto"
-        ok "TLS               yes, linking libssl"
+
+    if [ "$want_static" = "1" ]; then
+        CANDS="-l:libssl.a -l:libcrypto.a -lpthread -ldl
+-l:libssl.a -l:libcrypto.a -lpthread -ldl -lz
+-l:libssl.a -l:libcrypto.a -lpthread"
+        if [ -n "$OSSL_LIBDIR" ] && [ -f "$OSSL_LIBDIR/libssl.a" ]; then
+            CANDS="$CANDS
+$OSSL_LIBDIR/libssl.a $OSSL_LIBDIR/libcrypto.a -lpthread -ldl
+$OSSL_LIBDIR/libssl.a $OSSL_LIBDIR/libcrypto.a -lpthread
+$OSSL_LIBDIR/libssl.a $OSSL_LIBDIR/libcrypto.a -lpthread -lz"
+        fi
+    else
+        CANDS="-lssl -lcrypto"
+    fi
+
+    while IFS= read -r cand; do
+        [ -n "$cand" ] || continue
+        # shellcheck disable=SC2086
+        if "$CXX" -std=c++17 $OSSL_CFLAGS "$tls_probe" $cand -o "$tls_bin" \
+                >/dev/null 2>&1; then
+            TLS_FLAGS="-DWAM_MINER_TLS"
+            TLS_LIBS="$cand"
+            break
+        fi
+    done <<EOF
+$CANDS
+EOF
+
+    # IS OPENSSL ABSENT, OR MERELY NOT STATIC? THEY ARE DIFFERENT ANSWERS.
+    #
+    # The Windows cross-build has no OpenSSL for mingw at all, and must still
+    # produce a miner -- one that refuses stratum+ssl:// and says so. A Mac
+    # with Homebrew's openssl@3 has it, and a release binary linked against
+    # /opt/homebrew would not start on a stranger's Mac.
+    #
+    # So in static mode, when nothing linked, this asks the dynamic question
+    # too. Dynamic also fails: OpenSSL is not on this machine, and that is a
+    # warning. Dynamic succeeds: it is here and we were about to ship a
+    # binary that asks a downloader for it, which is a refusal.
+    ossl_present=0
+    if [ -z "$TLS_FLAGS" ] && [ "$want_static" = "1" ]; then
+        # shellcheck disable=SC2086
+        if "$CXX" -std=c++17 $OSSL_CFLAGS "$tls_probe" -lssl -lcrypto \
+                -o "$tls_bin" >/dev/null 2>&1; then
+            ossl_present=1
+        fi
+    fi
+
+    if [ -n "$TLS_FLAGS" ]; then
+        if [ "$want_static" = "1" ]; then
+            ok "TLS               yes, OpenSSL linked statically"
+        else
+            ok "TLS               yes, linking libssl"
+        fi
+    elif [ "$want_static" = "1" ] && [ "$ossl_present" = "1" ]; then
+        rm -f "$tls_probe" "$tls_bin"
+        fail "OpenSSL is on this machine but would not link STATICALLY, and
+     WAM_MINER_TLS_STATIC=1 was asked for. A published binary must carry it:
+     install the static archives -- libssl-dev on Debian and Ubuntu ships
+     libssl.a and libcrypto.a beside the shared objects, and Homebrew's
+     openssl@3 ships them too -- or do not publish this build. Falling back
+     to -lssl is not an option here; that is the defect the v0.1.15
+     packaging gate caught."
     elif [ "$want_tls" = "1" ]; then
         rm -f "$tls_probe" "$tls_bin"
         fail "WAM_MINER_TLS=1 was asked for and libssl could not be linked.
@@ -200,7 +287,7 @@ fi
 echo
 
 # shellcheck disable=SC2086
-"$CXX" -std=c++17 $CXXFLAGS $LDFLAGS $TLS_FLAGS \
+"$CXX" -std=c++17 $CXXFLAGS $LDFLAGS $TLS_FLAGS $OSSL_CFLAGS \
     -I"$RANDOMX_INCLUDE" \
     -I"$HERE/src" \
     "$HERE/src/main.cpp" \
@@ -258,7 +345,7 @@ if [ "$RUN_SELF_TEST" = "1" ]; then
         # checked nothing.
         t_cxx=""
         t_ld=""
-        if [ "$name" = "tls_test" ]; then t_cxx="$TLS_FLAGS"; t_ld="$TLS_LIBS"; fi
+        if [ "$name" = "tls_test" ]; then t_cxx="$TLS_FLAGS $OSSL_CFLAGS"; t_ld="$TLS_LIBS"; fi
         # shellcheck disable=SC2086
         "$CXX" -std=c++17 -O1 -I"$HERE/src" $t_cxx "$t" $t_ld -o "$bin"             || fail "$name did not compile"
         # AND 2 IS NOT A FAILURE. It is this project's code for "could not
@@ -266,7 +353,20 @@ if [ "$RUN_SELF_TEST" = "1" ]; then
         # Treating it as a failure would mean no machine without libssl-dev
         # could build the miner at all, which is the opposite of why TLS is
         # optional here.
-        "$bin"; rc=$?
+        #
+        # `if`, NOT `"$bin"; rc=$?`. That is what this said until 2026-11-21,
+        # and line 39 is `set -euo pipefail`: a simple command that exits
+        # non-zero ends the script THERE, before `rc=$?` is ever reached. So
+        # the tolerance written above could not happen, and every machine
+        # without libssl -- the Windows cross-build, every macOS runner,
+        # Android, and any stranger with no libssl-dev -- had the miner build
+        # die at tls_test with "the miner did not build" and a tail of
+        # passing tests to explain it.
+        #
+        # It cost both platform jobs of v0.1.15. Only the condition of an
+        # `if` is exempt from errexit; `cmd; rc=$?` is not, and neither is
+        # `cmd && ...`, which this repository has been bitten by before.
+        if "$bin"; then rc=0; else rc=$?; fi
         rm -f "$bin"
         if [ "$rc" -eq 2 ]; then
             warn "$name could not check everything on this machine (exit 2)"

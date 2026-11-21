@@ -141,7 +141,21 @@ printf '\n  %ssignature and checksums%s\n' "$BLD" "$OFF"
 # its output. `set -o pipefail` is on above and would carry it, but a check
 # whose correctness depends on a line forty lines away is a check waiting to
 # be broken by someone tidying up. Captured, then reported, then decided.
-vout="$(bash "$VERIFY" "$WORK" 2>&1)"; vrc=$?
+#
+# AND THE `if` IS THE WHOLE POINT, not a style choice.
+#
+# This said `vout="$(bash "$VERIFY" "$WORK" 2>&1)"; vrc=$?` until 2026-11-21,
+# and line 38 is `set -euo pipefail`. An assignment whose command
+# substitution exits non-zero IS a failed command, so the script ended on
+# that line -- before the output was printed and before the message below was
+# reached. A stranger whose download failed its signature check got silence
+# and an exit code, from a script that had the explanation already in a
+# variable.
+#
+# Nothing was installed either way, which is why this survived: the dangerous
+# outcome never happened, only the useless one. Only the condition of an `if`
+# is exempt from errexit.
+if vout="$(bash "$VERIFY" "$WORK" 2>&1)"; then vrc=0; else vrc=$?; fi
 printf '%s\n' "$vout" | sed 's/^/    /'
 if [ "$vrc" -ne 0 ]; then
     printf '\n  %sthe release did not verify -- nothing was installed%s\n\n' "$RED" "$OFF"

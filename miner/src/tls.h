@@ -133,8 +133,63 @@ public:
 
         SSL_CTX_set_min_proto_version(m_ctx, TLS1_2_VERSION);
         SSL_CTX_set_verify(m_ctx, SSL_VERIFY_PEER, nullptr);
-        if (SSL_CTX_set_default_verify_paths(m_ctx) != 1) {
-            err = Err("no system certificate store could be loaded");
+
+        // THE SYSTEM STORE IS NOT WHERE OPENSSL THINKS IT IS, ON A BINARY
+        // SOMEBODY ELSE BUILT.
+        //
+        // SSL_CTX_set_default_verify_paths looks in the OPENSSLDIR that was
+        // compiled into the library. A release binary carries OpenSSL
+        // statically -- it has to, or a downloader gets a loader error naming
+        // libssl.so.3 and no way to know which package holds it -- and the
+        // OPENSSLDIR baked in is the one from the machine that built it:
+        // /usr/lib/ssl, because that machine was Ubuntu.
+        //
+        // Fedora, RHEL, Arch, Alpine and openSUSE do not have /usr/lib/ssl.
+        // Measured on 2026-11-21 with the store emulated absent, which is
+        // exactly what those machines present:
+        //
+        //     verify error:num=20:unable to get local issuer certificate
+        //
+        // So the miner would have refused every TLS pool on a large minority
+        // of Linux, with a message about the POOL's certificate -- blaming
+        // the pool for a path on the downloader's own disk.
+        //
+        // The defaults are still loaded first, so SSL_CERT_FILE and
+        // SSL_CERT_DIR keep working and a correctly built binary is
+        // unchanged. What follows is additive: more trust anchors from the
+        // places distributions actually use. It is not a weakening -- every
+        // candidate is a root store shipped by the distribution itself, and
+        // the certificate still has to chain to one of them and still has to
+        // name this host.
+        const bool defaults_ok = SSL_CTX_set_default_verify_paths(m_ctx) == 1;
+
+        static const char* const kBundles[] = {
+            "/etc/ssl/certs/ca-certificates.crt",   // Debian, Ubuntu, Gentoo
+            "/etc/pki/tls/certs/ca-bundle.crt",     // Fedora, RHEL, CentOS
+            "/etc/ssl/ca-bundle.pem",               // openSUSE
+            "/etc/pki/tls/cacert.pem",              // older RHEL
+            "/etc/ssl/cert.pem",                    // Alpine, macOS, FreeBSD
+            "/usr/local/etc/ssl/cert.pem",          // FreeBSD ports
+        };
+        static const char* const kDirs[] = {
+            "/etc/ssl/certs",
+            "/etc/pki/tls/certs",
+        };
+
+        bool any = defaults_ok;
+        for (const char* f : kBundles) {
+            if (SSL_CTX_load_verify_locations(m_ctx, f, nullptr) == 1) any = true;
+        }
+        for (const char* d : kDirs) {
+            if (SSL_CTX_load_verify_locations(m_ctx, nullptr, d) == 1) any = true;
+        }
+        ERR_clear_error();   // the candidates that were not there left errors
+
+        if (!any) {
+            err = "no certificate store could be found on this machine. "
+                  "Install the system root certificates (ca-certificates on "
+                  "Debian and Alpine, ca-certificates on Fedora), or point "
+                  "SSL_CERT_FILE at a bundle.";
             Close();
             return false;
         }

@@ -383,12 +383,22 @@ MINER_EXE="$OUT_DIR/wam-miner.exe"
 #   -mtune=generic, never -march=native
 #     Same rule as everywhere else in this project: a published binary must
 #     run on a 2012 laptop. check_isa_baseline.sh enforces it afterwards.
+# WAM_MINER_TLS_STATIC=1 is a guard here, not a request.
+#
+# There is no OpenSSL for mingw on a Debian runner and no depends package
+# builds one, so the probe finds nothing and this Windows miner refuses
+# stratum+ssl:// with the stunnel recipe -- which is the designed answer, not
+# a defect. The flag costs nothing today and refuses exactly one future: an
+# OpenSSL appearing on the cross-toolchain and being linked dynamically into
+# a .exe that a stranger's Windows then cannot start. Everything else in this
+# link line is already -static for the same reason.
 if CXX="$HOST_TRIPLET-g++" \
    CXXFLAGS="-O3 -mtune=generic" \
    LDFLAGS="-static -static-libgcc -static-libstdc++" \
    LDLIBS="-lws2_32 -lpthread" \
    RANDOMX_INCLUDE="$RANDOMX_DIR/src" \
    RANDOMX_LIB="$WIN_RX_BUILD/librandomx.a" \
+   WAM_MINER_TLS_STATIC=1 \
    OUT="$MINER_EXE" \
    RUN_SELF_TEST=0 \
    bash "$HERE/miner/build.sh" > "$BUILD_DIR/make-miner-windows.log" 2>&1
