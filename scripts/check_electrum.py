@@ -86,6 +86,31 @@ PORTS = {
     "regtest": (52002, 52001),
 }
 
+# AND THE PORT A WALLET ACTUALLY USES, WHICH NOTHING WATCHED.
+#
+# integration/komodo/electrums-WAM.json publishes a ws_url on 50004 beside
+# every url on 50002. A wallet running in a browser, and the Komodo wallet
+# app, cannot open a raw TLS socket -- they speak WebSocket, so 50004 is the
+# only door they have. 50002 is the one a person tests by hand.
+#
+# On 2026-11-22 a miner wrote in the channel that his wallet said
+# "Connection to WAM Coin servers are failing", and every check this project
+# had said the servers were fine: four endpoints answering, certificates
+# valid, heights in step. All four were 50001 and 50002. The port his wallet
+# dials had never been checked by anything, on any sweep, since it was
+# published.
+#
+# It was open and it did answer -- the handshake returns 101 Switching
+# Protocols on both hosts, measured that day. The defect is not that it was
+# down. It is that it could have been down for a week and every sweep would
+# have reported the servers healthy, while the only people who could tell us
+# otherwise were the people who could no longer use their wallet.
+WS_PORTS = {
+    "mainnet": 50004,
+    "testnet": 51004,
+    "regtest": 52004,
+}
+
 
 def ok(msg):   print(f"  {GRN}ok{OFF}    {msg}")
 def bad(msg):  print(f"  {RED}FAIL{OFF}  {msg}")
@@ -112,6 +137,43 @@ def rpc(sock, method, params=None, timeout=15):
             raise ConnectionError("server closed the connection")
         buf += chunk
     return json.loads(buf.split(b"\n")[0].decode())
+
+
+def probe_ws(ip, port, sni, timeout=15):
+    """
+    Does the WebSocket door open? Returns an error string, or None.
+
+    A TLS connect proves a listener. It does not prove a WEBSOCKET listener,
+    and a wallet that gets a socket and then no upgrade is a wallet that says
+    the servers are failing. So the handshake is completed and the status
+    line read: 101 Switching Protocols, or the reason it was not.
+    """
+    import base64
+    try:
+        raw = socket.create_connection((ip, port), timeout=timeout)
+    except Exception as e:
+        return f"{type(e).__name__}: {e}"
+    try:
+        ctx = ssl.create_default_context()
+        sock = ctx.wrap_socket(raw, server_hostname=sni)
+        key = base64.b64encode(os.urandom(16)).decode()
+        req = (f"GET / HTTP/1.1\r\nHost: {sni}\r\nUpgrade: websocket\r\n"
+               f"Connection: Upgrade\r\nSec-WebSocket-Key: {key}\r\n"
+               f"Sec-WebSocket-Version: 13\r\n\r\n")
+        sock.sendall(req.encode())
+        line = sock.recv(256).decode(errors="replace").splitlines()
+        sock.close()
+        if not line:
+            return "the server closed the connection without answering"
+        if "101" not in line[0]:
+            return f"no WebSocket upgrade: {line[0].strip()}"
+        return None
+    except Exception as e:
+        try:
+            raw.close()
+        except Exception:
+            pass
+        return f"{type(e).__name__}: {e}"
 
 
 def probe(ip, port, use_tls, sni, timeout=15):
@@ -298,6 +360,21 @@ def main():
                     failed += 1
                 else:
                     ok(f"{label}  {', '.join(bits)}")
+
+            # The WebSocket door, once per address, and only when no single
+            # port was asked for on the command line.
+            ws_port = WS_PORTS.get(args.network)
+            if ws_port and not portspec:
+                checked += 1
+                ws_label = f"{ip}:{ws_port} WSS"
+                ws_err = probe_ws(ip, ws_port, name)
+                if ws_err:
+                    bad(f"{ws_label}  {ws_err}")
+                    bad("      this is the port a browser wallet and the Komodo app"
+                        " dial; 50002 being up does not help them")
+                    failed += 1
+                else:
+                    ok(f"{ws_label}  handshake completed")
 
     print()
     if checked == 0:
