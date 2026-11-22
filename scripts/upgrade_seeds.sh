@@ -62,7 +62,23 @@ ROOT="$(cd -- "$(dirname -- "$0")/.." && pwd)"
 # The machines this project runs. Kept here rather than discovered, because a
 # discovered list is a list that grows a machine nobody meant to upgrade.
 HOSTS="169.58.159.165 5.223.52.200 13.140.33.187"
-SERVICE="wamd-mainnet"
+
+# EVERY NODE SERVICE ON THE HOST, NOT ONLY MAINNET.
+#
+# The first run of this said `wamd-mainnet` alone. install_release.sh moves
+# the symlink, so /usr/local/bin/wamd became v0.1.15 on all three machines --
+# and check_running_version.py then failed on all three:
+#
+#     FAIL  testnet node is on the wire as v0.1.14, and the published
+#           release is v0.1.15 -- this is the version every peer and every
+#           miner is talking to
+#
+# A restarted unit and a replaced binary are not the same thing. The testnet
+# nodes kept the old inode open and kept announcing the old version, so the
+# half of our machines that a tester connects to was advertising a release we
+# had stopped publishing. Units that do not exist on a host are skipped
+# without complaint; that is why both are named here rather than discovered.
+SERVICE="wamd-mainnet,wamd"
 DRY=0
 V=""
 
