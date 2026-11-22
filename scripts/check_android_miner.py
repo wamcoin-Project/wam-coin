@@ -49,6 +49,9 @@ import pathlib
 import subprocess
 import sys
 import tempfile
+import sys as _sys, pathlib as _pathlib
+_sys.path.insert(0, str(_pathlib.Path(__file__).resolve().parent / "lib"))
+import quoted  # noqa: E402  -- this scans tracked files, so it honours the marks
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 DESKTOP = ROOT / "miner" / "src"
@@ -144,8 +147,49 @@ def main() -> int:
                 bad.append((name, f"differs from miner/src/{name} in a way that is "
                                   f"not in ANDROID_EDITS ({lines} line(s))"))
 
+        # AND THE COPY THAT IS ACTUALLY IN THE REPOSITORY.
+        #
+        # Everything above compares a FRESH regeneration in a temp directory
+        # against miner/src. It can prove prepare-miner-code.sh still produces
+        # the right thing. It cannot see what is committed under
+        # contrib/wam-miner-android/.../cpp/src, and that is a file anybody
+        # can compile.
+        #
+        # On 2026-11-22 the tracked tls.h there was byte-identical to the
+        # PRE-FIX version from commit 4a7678a: no `shook` handshake flag, no
+        # peer-certificate check -- the two defects v0.1.15's own pre-release
+        # review had fixed in miner/src/tls.h the day before. `grep -c shook`
+        # read 3 against 0. This check printed "ok 13 shared file(s)" that
+        # whole time, because it was looking at its own regeneration.
+        #
+        # The APK is not exposed (its CMakeLists defines no WAM_MINER_TLS and
+        # links no ssl), and a normal build regenerates. What was exposed was
+        # anyone who compiled the contrib tree directly, or any future build
+        # that stops regenerating: a TLS layer that reports "connected" with
+        # nothing verified. Reported by Warung Bunda Kanse Bunda.
+        tracked = ANDROID_SRC if 'ANDROID_SRC' in globals() else (
+            ROOT / "contrib" / "wam-miner-android" / "app" / "src" / "main"
+                 / "cpp" / "src")
+        if tracked.is_dir():
+            for name in shared:
+                p = tracked / name
+                if not p.is_file():
+                    continue
+                want = (DESKTOP / name).read_text(encoding="utf-8")
+                for f, src, dst, _why in ANDROID_EDITS:
+                    if f != name:
+                        continue
+                    if src in want:
+                        want = want.replace(src, dst, 1)
+                if p.read_text(encoding="utf-8") != want:
+                    bad.append((name, "the copy COMMITTED under contrib/ differs "
+                                      "from miner/src -- a regeneration would "
+                                      "fix it, and until somebody runs one this "
+                                      "is what a `git checkout` compiles"))
+
         print(f"  {GRN}ok{OFF}    {len(shared)} shared file(s), "
-              f"{len(ANDROID_EDITS)} recorded Android difference(s)")
+              f"{len(ANDROID_EDITS)} recorded Android difference(s), "
+              f"tracked copy included")
 
         if bad:
             print(f"  {RED}FAIL{OFF}  {len(bad)} file(s) have drifted")

@@ -41,6 +41,9 @@ import re
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
+import quoted  # noqa: E402
+
 ROOT = Path(__file__).resolve().parent.parent
 
 GRN, RED, YLW, BLD, OFF = '\033[32m', '\033[31m', '\033[33m', '\033[1m', '\033[0m'
@@ -123,7 +126,12 @@ for path in ROOT.rglob('*'):
     if path.suffix.lower() not in ('.js', '.py', '.sh', '.json', '.conf', '.yml', '.yaml'):
         continue
     try:
-        text = path.read_text(encoding='utf-8', errors='replace')
+        # A file that QUOTES a seed address -- a comment explaining the list,
+        # a report being recorded -- is not a file keeping a second list. The
+        # marks are honoured here the way every other text-scanning check in
+        # this repository honours them; see scripts/lib/quoted.py.
+        text = quoted.strip_quoted(path.read_text(encoding='utf-8',
+                                                  errors='replace'))
     except OSError:
         continue
     named = {a for a in addrs if a in text}

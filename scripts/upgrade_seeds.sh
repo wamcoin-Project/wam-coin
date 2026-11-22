@@ -7,7 +7,7 @@
 # ===========================================================================
 #
 #      bash scripts/upgrade_seeds.sh v0.1.15
-#      bash scripts/upgrade_seeds.sh v0.1.15 --hosts "1.2.3.4 5.6.7.8"
+#      bash scripts/upgrade_seeds.sh v0.1.15 --hosts "203.0.113.4 203.0.113.9"
 #      bash scripts/upgrade_seeds.sh v0.1.15 --dry-run
 #
 #  WHY THIS EXISTS

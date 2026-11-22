@@ -131,9 +131,72 @@ async function nodeHasTx(daemon, txid) {
         return tx ? true : null;
     } catch (err) {
         const msg = String((err && err.message) || err);
-        if (/No such mempool or blockchain transaction/i.test(msg)) return false;
-        if (/No such mempool transaction/i.test(msg)) return false;
+        if (/No such mempool or blockchain transaction/i.test(msg)
+            || /No such mempool transaction/i.test(msg)) {
+            // THE MEMPOOL IS NOT THE LAST WORD, AND THIS IS WHERE IT WAS
+            // TREATED AS ONE.
+            //
+            // getrawtransaction answers "No such mempool or blockchain
+            // transaction" for a transaction the NODE does not have. An
+            // unconfirmed payout disappears from it the moment the node
+            // restarts uncleanly -- which is the power-loss failure this
+            // whole script exists for -- while the WALLET still holds the
+            // sendmany result and Core rebroadcasts its own unconfirmed
+            // spends without being asked.
+            //
+            // Reading that answer as "it was never sent" wrote an abandoned
+            // line and cleared the marker, journal.js then skips an
+            // abandoned entry for ever, the next run pays the same balances
+            // again, and the wallet's rebroadcast and the new payment can
+            // both confirm. The pool pays twice and nothing ever compares
+            // the two.
+            //
+            // Reported by Warung Bunda Kanse Bunda on 2026-11-22, reproduced
+            // against this script with a node that answers not-found and a
+            // wallet that still holds the transaction: it exited 0, wrote
+            // "abandoned", deleted the marker, and printed "Nothing left
+            // this wallet for it" -- a sentence about a wallet it had not
+            // asked. gettransaction appeared nowhere in the file.
+            //
+            // So the wallet is asked, and only a transaction that BOTH deny
+            // may be called never-sent. A wallet that errors, or a node
+            // without the wallet loaded, returns null: unknown, not absent.
+            return await walletHasTx(daemon, txid);
+        }
         console.error(`  ${DIM}the node said: ${msg}${OFF}`);
+        return null;
+    }
+}
+
+/**
+ * Does the WALLET know this transaction, whatever the mempool says?
+ *
+ *  false -- the wallet says it has never seen it, so with the node's
+ *           not-found answer it really was never sent.
+ *  true  -- the wallet holds it. It is unconfirmed, not abandoned, and Core
+ *           will rebroadcast it.
+ *  null  -- the wallet could not be asked. Unknown is not absent.
+ */
+async function walletHasTx(daemon, txid) {
+    try {
+        const tx = await daemon.cmd('gettransaction', [txid]);
+        if (tx && tx.txid) {
+            console.log(`  ${YLW}!!${OFF}  the node's mempool does not have it, but the WALLET does.`);
+            console.log('      That is an unconfirmed payment, not an abandoned one --');
+            console.log('      Core rebroadcasts its own unconfirmed spends. Abandoning it');
+            console.log('      here would let the next run pay the same balances again.');
+            return true;
+        }
+        return false;
+    } catch (err) {
+        const msg = String((err && err.message) || err);
+        // -5 is Core's "Invalid or non-wallet transaction id": the wallet was
+        // asked and says it does not have it. Anything else -- no wallet
+        // loaded, a method the build does not have, a connection error -- is
+        // not an answer.
+        if (/Invalid or non-wallet transaction id/i.test(msg)) return false;
+        console.error(`  ${DIM}the wallet could not be asked: ${msg}${OFF}`);
+        console.error('  so this transaction stays UNRESOLVED rather than abandoned.');
         return null;
     }
 }
@@ -186,6 +249,68 @@ async function nodeHasTx(daemon, txid) {
         const fatal = complaints.filter((c) => c.fatal);
 
         console.log(`\n${BLD}  payments the journal cannot account for${OFF}\n`);
+
+        // A MARKER WITH NO FATAL COMPLAINT IS THE STATE THIS SCRIPT IS FOR.
+        //
+        // It used to print "nothing is unresolved" and exit 0 here, on
+        // exactly the two states whose banner sends the operator to this
+        // script:
+        //
+        //   - an interrupted run: the marker is present and a broadcast line
+        //     was written but never committed. journal.js skips the line
+        //     whose txid matches the marker, so it raises no complaint at
+        //     all, let alone a fatal one.
+        //   - a crash between the NX claim and the journal write: a marker
+        //     and nothing else.
+        //
+        // In both, this said everything was resolved, left payment:inflight
+        // untouched, and shareProcessor paused again on the next sweep and
+        // printed the same banner. The only exit that worked was the manual
+        // `redis-cli DEL payment:inflight` the banner forbids. Miner payouts
+        // stay halted indefinitely while the recovery tool reports success.
+        //
+        // Reported by Warung Bunda Kanse Bunda on 2026-11-22, reproduced
+        // against this script with a file-backed mock redis in both states:
+        // exit 0, "nothing is unresolved", marker intact.
+        //
+        // So the marker itself is now a case. It is asked about, answered
+        // and cleared here, or it is said plainly that it could not be --
+        // never called resolved.
+        if (!fatal.length && inflightTxid) {
+            console.log(`  ${YLW}!!${OFF}  a payment marker is present and the journal raises nothing:`);
+            console.log(`      ${inflightTxid}`);
+            console.log('      That is an interrupted run. Asking the node and the wallet.');
+            console.log();
+            const known = await nodeHasTx(daemon, inflightTxid);
+            if (args.dryRun) {
+                console.log(`  ${DIM}--dry-run: the node/wallet answer was ` +
+                            `${known === true ? 'it exists' : known === false ? 'never sent' : 'unknown'}` +
+                            `; nothing was written${OFF}\n`);
+                if (known === null) exitCode = 1;
+                return;
+            }
+            if (known === true) {
+                console.log(`  ${GRN}ok${OFF}    it exists. Committing it and clearing the marker.`);
+                journal.recordCommitted(inflightTxid);
+                await redis.del(k('payment:inflight'));
+            } else if (known === false) {
+                console.log(`  ${GRN}ok${OFF}    neither the node nor the wallet has it: it was never sent.`);
+                journal.recordAbandoned(inflightTxid,
+                    'operator ran resolve_lost_payment.js on an interrupted run; ' +
+                    'the node and its wallet both answered that no such ' +
+                    'transaction exists');
+                await redis.del(k('payment:inflight'));
+            } else {
+                console.log(`  ${RED}FAIL${OFF}  it could not be established either way.`);
+                console.log('      The marker is LEFT IN PLACE and payouts stay paused.');
+                console.log('      That is the safe end of this: run again when the node');
+                console.log('      and its wallet can both answer.');
+                exitCode = 1;
+            }
+            console.log();
+            return;
+        }
+
         if (!fatal.length) {
             console.log(`  ${GRN}nothing is unresolved${OFF}`);
             for (const c of complaints) console.log(`  ${DIM}${c.text}${OFF}`);

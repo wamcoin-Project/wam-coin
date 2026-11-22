@@ -59,6 +59,37 @@ inline HostKind ClassifyHost(const std::string& host)
         return HostKind::Loopback;
     }
 
+    // A LEADING ZERO MEANS OCTAL TO THE RESOLVER AND DECIMAL TO sscanf.
+    //
+    // This classifies a STRING; the miner then dials the RESOLUTION of that
+    // same string through getaddrinfo, whose IPv4 parser accepts octal and
+    // hex leading-zero forms. The two disagreed, measured on 2026-11-22
+    // against real glibc -- the leading zero makes each field octal, so the
+    // first one reads as 87 and the address is a public one on the internet,
+    // nowhere near the loopback the classifier called it:
+    //
+    //     0127.0.0.1    classified Loopback    resolves to 87.0.0.x
+    //     010.0.0.1     classified Private     resolves to 8.0.0.x
+    //     0172.20.0.1   classified Private     resolves to 122.20.0.x
+    //
+    // So an operator handed `--rpc 0127.0.0.1:9554 --rpcpassword X` in a
+    // shared config got no warning and no password refusal from the guards
+    // added in v0.1.15, and the Basic credential went in cleartext to a
+    // public address. Reported by Warung Bunda Kanse Bunda.
+    //
+    // Refusing the form outright is the fix that cannot drift: there is no
+    // honest reason to write an address with a leading zero, every tool
+    // disagrees about what it means, and a host this cannot classify is
+    // treated as Public -- the careful answer -- rather than as whatever
+    // decimal happens to say.
+    for (std::size_t i = 0; i < h.size(); ++i) {
+        if (h[i] != '0') continue;
+        const bool starts_field = (i == 0) || (h[i - 1] == '.');
+        const bool more_digits = (i + 1 < h.size())
+                                 && h[i + 1] >= '0' && h[i + 1] <= '9';
+        if (starts_field && more_digits) return HostKind::Public;
+    }
+
     // IPv4 literal?
     unsigned a = 0, b = 0, c = 0, d = 0;
     char extra = 0;

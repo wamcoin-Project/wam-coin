@@ -94,7 +94,30 @@ WHERE = ["scripts/*.sh", "scripts/*.py", "scripts/test/*.sh", "scripts/lib/*.sh"
 # it today -- the only separated uses are literals in a test -- which is
 # exactly when a hole is worth closing.
 # wam:quote-begin
-OPT = re.compile(r"-{1,2}rpcpassword(?:=(\S*)|\s+(?!-)[\"']?([^\s\"',)]+))")
+# THE ARGV-LIST FORM, WHICH THIS MISSED WHILE SAYING IT DID NOT.
+#
+# The pattern required `=` or whitespace immediately after the option. In
+# Python's subprocess form the option is followed by a QUOTE and a comma --
+# ["-rpcpassword", pw] -- so it never matched, and the comment above claimed
+# the opposite in so many words.
+#
+# Nothing in the tree violates it today, so the defect is in the guard: the
+# next script written the idiomatic way, which is also the way the original
+# argv-password bug was actually written, sails through the release gate and
+# puts the password back in /proc/<pid>/cmdline for every account on the box.
+#
+# Reported by Warung Bunda Kanse Bunda on 2026-11-22, who ran this module's
+# own OPT over five spellings of the list form and got NO MATCH on all five.
+#
+# Three alternatives now, in order: `=value`, whitespace `value`, and the
+# list form -- a closing quote, then a comma or whitespace, then the value.
+OPT = re.compile(
+    r"-{1,2}rpcpassword"
+    r"(?:"
+    r"=(\S*)"                                   # -rpcpassword=VALUE
+    r"|[\"']?\s*,\s*[\"']?([^\s\"',\])]+)"      # ["-rpcpassword", VALUE]
+    r"|\s+(?!-)[\"']?([^\s\"',)]+)"             # -rpcpassword VALUE
+    r")")
 # wam:quote-end
 
 # A value that is a variable, a format slot, or a concatenation. Anything in
@@ -148,10 +171,20 @@ def main() -> int:
             # mention-is-not-use rule, in the file that enforces it.
             if line.lstrip().startswith(("#", "//")):
                 continue
+            # An argparse DECLARATION is not a password on a command line.
+            # `p.add_argument("--rpcpassword", default="")` names the option
+            # so a caller can pass one; the value beside it is argparse's own
+            # keyword, not a secret. The list-form alternative added on
+            # 2026-11-22 matches that shape, so it is excluded here rather
+            # than by weakening the pattern it was added for.
+            if "add_argument" in line:
+                continue
             for m in OPT.finditer(line):
-                # Group 1 is the =joined spelling, group 2 the separated
-                # one; exactly one of them matched.
-                value = m.group(1) if m.group(1) is not None else m.group(2)
+                # Group 1 is the =joined spelling, group 2 the argv-list
+                # form, group 3 the separated one; exactly one matched.
+                value = next((g for g in m.groups() if g is not None), None)
+                if value is None:
+                    continue
                 if INTERPOLATED.search(value):
                     fails.append((rel, i, value, line.strip()[:110]))
                 else:

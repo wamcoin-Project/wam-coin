@@ -245,6 +245,40 @@ function fakeRes() {
             + 'it counted them as one and refused them for each other');
     });
 
+    await test('but the header does not buy an unlimited budget', async () => {
+        // THE OTHER HALF OF THE SAME DECISION, AND IT COST A MEASUREMENT TO
+        // LEARN.
+        //
+        // The case above is right: a crowd behind an undeclared proxy must
+        // not throttle itself. For a day the implementation of that was `if
+        // (caller !== null)` -- the limiter skipped entirely -- and on
+        // 2026-11-22 Warung Bunda Kanse Bunda measured what it costs on an
+        // API that is directly reachable, which is what config.example.json
+        // and config.testnet.json ship: 300 /api/miner lookups each carrying
+        // the header, 0 throttled, ~0.4 s. One line of attacker-supplied
+        // text removes every budget, including the lookup budget that is the
+        // only thing between a stranger and every payout address.
+        //
+        // So the unattributable crowd has a bucket of its own, sized for a
+        // crowd. Ten visitors never reach it (the case above still passes);
+        // a single machine walking addresses does.
+        const api = make({ apiLookupsPerMinute: 2, apiUntrustedProxyFactor: 3 });
+        api.shares = { async getMinerStats() { return {}; } };
+        const ADDR = 'twam1qtekdutqnwmqwtsh4rddncxru2s0y3vp5ea7ljs';
+        const codes = [];
+        for (let i = 0; i < 40; i++) {
+            const res = await get(api, `/api/miner?address=${ADDR}&n=${i}`,
+                                  '127.0.0.1',
+                                  { 'x-forwarded-for': `203.0.113.${i % 7}` });
+            codes.push(res.code);
+        }
+        const refused = codes.filter((c) => c === 429).length;
+        assert.ok(refused > 0,
+            `forty lookups behind the header got ${codes.join(',')} -- none `
+            + 'refused, so the header still switches the limiter off and the '
+            + 'payout addresses can be walked for the price of one line');
+    });
+
     await test('and with nothing in front of it, it still limits', async () => {
         // The other direction: a pool reached directly must still be
         // protected. A fix that turns the limiter off everywhere is not a

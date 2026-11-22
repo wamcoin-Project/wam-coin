@@ -183,6 +183,32 @@ class ApiServer {
         this.cache = new Map();          // endpoint -> {at, body}
         this.cacheMs = config.apiCacheMs ?? 3000;
 
+        // THE CROWD THAT CANNOT BE TOLD APART, WHICH IS NOT THE SAME AS NO
+        // CROWD AT ALL.
+        //
+        // When an X-Forwarded-For arrives and apiTrustProxy is not set, every
+        // visitor looks identical. Limiting them per socket address took the
+        // live dashboard down on 2026-11-21: everyone arrives from 127.0.0.1
+        // through nginx, one bucket served the whole internet, and the page
+        // flickered red with HTTP 429. Not limiting them at all was the
+        // answer, until 2026-11-22, when Warung Bunda Kanse Bunda measured
+        // what that answer costs on an API that is directly reachable: 300
+        // /api/miner lookups each carrying the header, 0 throttled -- one
+        // line of attacker-supplied text switches every budget off, including
+        // the one that stands between a stranger and every payout address.
+        //
+        // Neither extreme is right, so the crowd gets its own bucket with a
+        // budget sized for a crowd. A busy dashboard behind an undeclared
+        // proxy is nowhere near it; one machine walking addresses hits it in
+        // seconds. The warning that tells the operator to set apiTrustProxy
+        // still prints, because the real fix is still for them to declare it.
+        const crowd = config.apiUntrustedProxyFactor ?? 100;
+        this.crowdLimiter = new RateLimiter({
+            perMinute: (config.apiRequestsPerMinute ?? 240) * crowd,
+            lookupsPerMinute: (config.apiLookupsPerMinute ?? 30) * crowd,
+            maxCallers: 8,
+            log: logger
+        });
         this.limiter = new RateLimiter({
             perMinute: config.apiRequestsPerMinute ?? 240,
             lookupsPerMinute: config.apiLookupsPerMinute ?? 30,
@@ -364,9 +390,37 @@ class ApiServer {
         }
 
         if (pathname.startsWith('/api/')) {
+            // AN UNKNOWN CALLER IS STILL A CALLER.
+            //
+            // _caller() returns null when an X-Forwarded-For arrives and no
+            // proxy was declared: behind a real proxy those callers cannot be
+            // told apart, and limiting them as one would punish every miner
+            // through it. That reasoning is right about ATTRIBUTION and was
+            // wrong about LIMITING -- `if (caller !== null)` skipped the
+            // limiter entirely, so on an API that is directly reachable the
+            // header is attacker-supplied text that switches every budget off,
+            // including apiLookupsPerMinute, the only thing standing between a
+            // stranger and every payout address through /api/miner.
+            //
+            // config.example.json and config.testnet.json both ship
+            // apiBind 0.0.0.0 with no apiTrustProxy, so that is what an
+            // operator following this repository runs. Reported by Warung
+            // Bunda Kanse Bunda on 2026-11-22, measured against the real
+            // ApiServer: 300 lookups carrying the header, 0 throttled; the
+            // same 300 without it, 298 throttled.
+            //
+            // So an unattributable caller is limited as one shared bucket
+            // instead of not at all. Behind a declared proxy nothing changes,
+            // because _caller() returns the forwarded address there and never
+            // reaches this. Without one, everybody sending the header shares
+            // a budget -- which is the honest reading of "we cannot tell them
+            // apart" -- and a single machine can no longer have unlimited
+            // lookups for the price of one header.
             const caller = this._caller(req);
-            if (caller !== null) {
-                const wait = this.limiter.take(caller, pathname === '/api/miner');
+            const limiter = caller !== null ? this.limiter : this.crowdLimiter;
+            const bucket = caller !== null ? caller : 'undeclared-proxy';
+            {
+                const wait = limiter.take(bucket, pathname === '/api/miner');
                 if (wait !== null) {
                     res.setHeader('Retry-After', String(wait));
                     return this._json(res, 429, {

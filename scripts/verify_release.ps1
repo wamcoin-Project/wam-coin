@@ -238,6 +238,49 @@ if ($failed.Count -gt 0) {
     exit 1
 }
 
+# AND THE OTHER DIRECTION -- THE DOOR THIS VERIFIER DID NOT HAVE.
+#
+# The loop above walks the LIST. A file sitting in this directory that
+# SHA256SUMS does not name is never looked at, and the banner at the end
+# said "this is the WAM release, unmodified since it was signed" anyway.
+#
+# verify_release.sh grew this check in v0.1.15 and its comment states the
+# attack: anyone who can serve HTTP to a downloader serves the genuine
+# SHA256SUMS, the genuine signature and the genuine tarball, all untouched,
+# PLUS one extra release-shaped archive. The reader is told the release is
+# unmodified and extracts a binary nobody signed.
+#
+# The .ps1 never got it, and docs/MINE.md sends Windows readers here -- the
+# people least able to check by hand. Reported by Warung Bunda Kanse Bunda
+# on 2026-11-22, the day after the .sh fix shipped: "this is the second door
+# of a guard that exists in one of the two published verifiers".
+#
+# It is reachable with no attacker at all: the Windows and macOS archives are
+# added to SHA256SUMS by hand, and package_release.sh leaves the wallet out
+# of the list when Qt did not build. A missed step produces this directory.
+$listed = @{}
+foreach ($line in Get-Content -LiteralPath $sums) {
+    if ($line -match '^\s*([0-9a-fA-F]{64})\s+\*?(.+?)\s*$') {
+        $listed[$matches[2]] = $true
+    }
+}
+$unlisted = @()
+foreach ($item in Get-ChildItem -LiteralPath $Directory -File `
+                    -Include 'wam-coin-*','wam-miner-*','wam-qt-*' `
+                    -Name -ErrorAction SilentlyContinue) {
+    if ($item -like '*.asc' -or $item -like 'SHA256SUMS*') { continue }
+    if (-not $listed.ContainsKey($item)) { $unlisted += $item }
+}
+if ($unlisted.Count -gt 0) {
+    Write-Host ""
+    Write-Bad "these file(s) are here and are NOT in the signed list:"
+    foreach ($f in $unlisted) { Write-Say "    $f" }
+    Write-Say "SHA256SUMS.asc signs SHA256SUMS and nothing else. A file the list"
+    Write-Say "does not name is covered by nothing, whoever gave it to you."
+    Write-Host ""
+    exit 1
+}
+
 if ($checked -eq 0) {
     Write-Host ""
     Write-Bad "none of the files in SHA256SUMS are here"
