@@ -386,14 +386,31 @@ DATADIR="$WORK/data"
 mkdir -p "$DATADIR"
 RPCUSER="stranger"
 RPCPASS="$(head -c 24 /dev/urandom | od -An -tx1 | tr -d ' \n')"
-# In a file, not on the command line: /proc/<pid>/cmdline is world-readable
-# and /proc/<pid>/environ is not. The same reason install.sh stopped passing
-# these as arguments.
-( umask 077; cat > "$DATADIR/wam.conf" <<CONF
-rpcuser=$RPCUSER
-rpcpassword=$RPCPASS
-CONF
-)
+
+# rpcauth, NOT rpcpassword, and the difference is a password in argv.
+#
+# The explorer's RPC client has no cookie support and the pool's config
+# names a user and a password, so this node has to accept a named user. With
+# `rpcpassword` set, Core writes no .cookie at all -- which left the miner
+# with nowhere to read credentials from, so this harness passed
+# `--rpcpassword "$RPCPASS"` on its command line. scripts/check_rpc_secrets.py
+# called that out, correctly: /proc/<pid>/cmdline is world-readable, and a
+# test that does the thing the guard exists to stop is not a test anybody
+# should copy.
+#
+# `rpcauth` is the form that does both. Core keeps writing the cookie when
+# rpcpassword is empty, so the miner reads the cookie and passes nothing,
+# while the explorer and the pool authenticate as the named user. The salted
+# HMAC is Core's own share/rpcauth/rpcauth.py algorithm.
+RPCAUTH="$(RPCPASS="$RPCPASS" RPCUSER="$RPCUSER" python3 - <<'PY'
+import hashlib, hmac, os
+salt = os.urandom(16).hex()
+h = hmac.new(salt.encode(), os.environ["RPCPASS"].encode(), hashlib.sha256)
+print("%s:%s$%s" % (os.environ["RPCUSER"], salt, h.hexdigest()))
+PY
+)"
+
+( umask 077; printf 'rpcauth=%s\n' "$RPCAUTH" > "$DATADIR/wam.conf" )
 
 NODE_UP=0
 if [ -x "$BIN/wamd" ] && [ -x "$BIN/wam-cli" ]; then
@@ -436,8 +453,9 @@ if [ "$NODE_UP" = 1 ] && [ -x "$BIN/wam-miner" ]; then
     if [ -n "$MINE_ADDR" ]; then
         # --check implies --solo and hashes nothing: it builds one block from
         # the template and asks the node whether it is valid. See the header.
+        # The cookie, not credentials in argv. See the rpcauth note above.
         if "$BIN/wam-miner" --check -u "$MINE_ADDR" --network regtest \
-             --rpcuser "$RPCUSER" --rpcpassword "$RPCPASS" --no-colour \
+             --rpccookie "$DATADIR/regtest/.cookie" --no-colour \
              >"$WORK/check.log" 2>&1; then
             ok "the block this miner builds is one this node accepts"
         else
@@ -466,10 +484,9 @@ if [ "$NODE_UP" = 1 ] && [ -x "$BIN/wam-miner" ]; then
         if g++ -std=c++17 -I "$ROOT/miner/src" -O1 -pthread \
                -o "$WORK/solo_jobs_test" "$ROOT/miner/test/solo_jobs_test.cpp" \
                >"$WORK/solojobs.build.log" 2>&1; then
-            # No cookie exists: this node has an rpcpassword, so Core writes
-            # none. The user and password go in as arguments 3 and 4.
-            if ( cd "$WORK" && timeout 180 ./solo_jobs_test 29554 "" \
-                 "$RPCUSER" "$RPCPASS" ) >"$WORK/solojobs.log" 2>&1; then
+            # The cookie, for the same reason the miner uses it above.
+            if ( cd "$WORK" && timeout 180 ./solo_jobs_test 29554 \
+                 "$DATADIR/regtest/.cookie" ) >"$WORK/solojobs.log" 2>&1; then
                 ok "a job a worker still holds is still held (solo_jobs_test)"
             else
                 bad "solo_jobs_test failed against this node" \

@@ -252,6 +252,47 @@ def main() -> int:
               f"literal [{value}] in a file that never starts a throwaway "
               f"node. Harmless if that node is one, worth a look if not.")
 
+    # ---- AND THE OTHER DIRECTION: THIS SCRIPT'S OWN COMMAND LINE ----------
+    #
+    # Everything above is about what we pass to a CHILD. The 13 November 2026
+    # fix moved the password out of wam-cli's argv and onto its stdin, and
+    # that is what this file was written to hold down.
+    #
+    # It said nothing about the parent. scripts/import_founder_key.sh and
+    # scripts/treasury_spend.py both accept --rpcpassword as their own
+    # option, so whatever the operator types sits in THIS process's
+    # /proc/<pid>/cmdline -- world-readable -- for as long as a founder-key
+    # import or a treasury spend runs. Reported by mpit, 26 November 2026.
+    #
+    # The flag is not taken away, because a written-down command has to keep
+    # working. What is required is an alternative that does not need the
+    # command line: WAM_RPCPASSWORD from the environment, where
+    # /proc/<pid>/environ is readable by the process's own user and root and
+    # nobody else. A script that offers the flag and not the variable is one
+    # where the only documented way is the exposed way.
+    parent_opt = []
+    for path in sorted(ROOT.glob("scripts/*.sh")) + sorted(ROOT.glob("scripts/*.py")):
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        rel = path.relative_to(ROOT).as_posix()
+        if rel == "scripts/check_rpc_secrets.py":
+            continue
+        declares = ('--rpcpassword)' in text
+                    or 'add_argument("--rpcpassword"' in text
+                    or "add_argument('--rpcpassword'" in text)
+        if declares and "WAM_RPCPASSWORD" not in text:
+            parent_opt.append(rel)
+
+    for rel in parent_opt:
+        print(f"  {RED}FAIL{OFF}  {rel} takes the RPC password as its own "
+              f"command-line option and offers no WAM_RPCPASSWORD")
+        print(f"          so the only way to give it one is the way that "
+              f"puts it in /proc/<pid>/cmdline, where every account on the "
+              f"machine can read it.")
+        fails.append((rel, 0, "parent argv", ""))
+
     print()
     if fails:
         print(f"  {RED}{len(fails)} command line(s) carry a password that could "

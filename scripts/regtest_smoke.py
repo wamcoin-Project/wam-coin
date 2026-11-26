@@ -101,6 +101,20 @@ def main() -> int:
     ap.add_argument("--rpcpassword", default="t")
     args = ap.parse_args()
 
+    # The RPC password from the environment, as well as from the option.
+    #
+    # Whatever is typed after the option sits in this process's own
+    # /proc/<pid>/cmdline, which every account on the machine can read while
+    # it runs. /proc/<pid>/environ cannot be read by anyone but the process's
+    # own user and root. The option still works -- a written-down command has
+    # to keep working -- and this gives a way that does not need it.
+    #
+    # Found by scripts/check_rpc_secrets.py after mpit reported the same
+    # shape in import_founder_key.sh and treasury_spend.py on 26 November
+    # 2026. He named two scripts; the guard named these as well.
+    if os.environ.get("WAM_RPCPASSWORD"):
+        args.rpcpassword = os.environ["WAM_RPCPASSWORD"]
+
     cli = Cli(args.cli, args.datadir, args.rpcport, args.rpcuser, args.rpcpassword)
 
     print("=" * 74)

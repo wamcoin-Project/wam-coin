@@ -1083,6 +1083,35 @@ def main():
     p.set_defaults(func=cmd_broadcast)
 
     args = ap.parse_args()
+
+    # THE PASSWORD ON THIS SCRIPT'S OWN COMMAND LINE.
+    #
+    # The 13 November 2026 fix moved the RPC password out of the wam-cli
+    # CHILD's argv and onto its stdin, through -stdinrpcpass. That was the
+    # child. Whatever is typed after --rpcpassword here sits in this
+    # process's own /proc/<pid>/cmdline, which every user on the machine can
+    # read, for as long as a treasury spend runs. Reported by mpit,
+    # 26 November 2026.
+    #
+    # WAM_RPCPASSWORD does the same job through the environment:
+    # /proc/<pid>/environ is readable only by the process's own user and
+    # root. The flag still works, because a command somebody has written
+    # down must keep working, and it says what it costs.
+    if getattr(args, "rpcpassword", "") :
+        # Worded without writing the flag followed by anything that looks
+        # like a value: scripts/check_rpc_secrets.py reads argv-shaped text
+        # and cannot tell a warning about the hazard from the hazard.
+        sys.stderr.write(
+            "  warning: passing the RPC password as a command-line option\n"
+            "           puts it in this process's own /proc/<pid>/cmdline,\n"
+            "           which any user on this machine can read while it\n"
+            "           runs. Set WAM_RPCPASSWORD in the environment instead\n"
+            "           -- /proc/<pid>/environ is not world-readable -- or\n"
+            "           pass no credentials at all and let the node's cookie\n"
+            "           file answer.\n")
+    elif os.environ.get("WAM_RPCPASSWORD") and hasattr(args, "rpcpassword"):
+        args.rpcpassword = os.environ["WAM_RPCPASSWORD"]
+
     args.func(args)
 
 

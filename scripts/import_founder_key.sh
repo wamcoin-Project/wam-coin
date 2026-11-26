@@ -58,13 +58,43 @@ while [ $# -gt 0 ]; do
         --datadir) DATADIR="$2"; shift ;;
         --rpcport) RPCPORT="$2"; shift ;;
         --rpcuser) RPCUSER="$2"; shift ;;
-        --rpcpassword) RPCPASS="$2"; shift ;;
+        # THE PASSWORD ON THIS SCRIPT'S OWN COMMAND LINE IS READABLE BY
+        # EVERY PROCESS ON THE MACHINE.
+        #
+        # The 13 November 2026 fix moved the password out of the wam-cli
+        # child's argv and into its stdin, through -stdinrpcpass. The
+        # child was the half that was fixed. This line is the other half:
+        # whatever the operator types here sits in /proc/<pid>/cmdline,
+        # which is world-readable, for as long as the script runs -- and
+        # an import or a treasury spend is exactly when somebody might be
+        # watching. Reported by mpit, 26 November 2026.
+        #
+        # It is still accepted, because taking it away would break a
+        # command somebody has written down. It warns, and WAM_RPCPASSWORD
+        # below does the same job with nothing on the command line.
+        --rpcpassword)
+            RPCPASS="$2"; shift
+            echo "  warning: --rpcpassword puts the password in this" >&2
+            echo "           process's own /proc/<pid>/cmdline, which any" >&2
+            echo "           user on this machine can read while it runs." >&2
+            echo "           WAM_RPCPASSWORD=... $0 ... does the same with" >&2
+            echo "           nothing on the command line, and the default" >&2
+            echo "           (no credentials at all) uses the node's cookie." >&2
+            ;;
         --expect-address) EXPECT_ADDR="$2"; shift ;;
         -h|--help) sed -n '5,30p' "$0"; exit 0 ;;
         *) echo "unknown option $1" >&2; exit 2 ;;
     esac
     shift
 done
+
+# The same password, from the environment instead of the command line.
+# /proc/<pid>/environ is readable only by the process's own user and root;
+# /proc/<pid>/cmdline is readable by everybody. An explicit --rpcpassword
+# still wins, so a written-down command keeps working.
+if [ -z "$RPCPASS" ] && [ -n "${WAM_RPCPASSWORD:-}" ]; then
+    RPCPASS="$WAM_RPCPASSWORD"
+fi
 
 case "$NETWORK" in
     mainnet) NETFLAG="";          DEFPORT=9554  ;;
