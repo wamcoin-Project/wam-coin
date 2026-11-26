@@ -312,7 +312,7 @@ and in `wam.conf` it is ignored with one line in `debug.log`.
 cd pool
 cp config.example.json config.json
 $EDITOR config.json        # set poolAddress and the RPC password
-npm install
+npm ci                     # exact versions, from package-lock.json
 npm run build:native       # compiles the RandomX addon
 npm test
 node server.js

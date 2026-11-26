@@ -57,7 +57,7 @@ ok "node headers      $NODE_INCLUDE"
 
 [ -f "$NAPI_INCLUDE/napi.h" ] \
     || fail "node-addon-api not found at $NAPI_INCLUDE.
-     Run 'npm install' in $POOL first."
+     Run 'npm ci' in $POOL first."
 ok "node-addon-api    $NAPI_INCLUDE"
 
 [ -f "$RANDOMX_INCLUDE/randomx.h" ] \

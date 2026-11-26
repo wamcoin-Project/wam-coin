@@ -221,6 +221,20 @@ bash scripts/test/test_exec_bits.sh >/dev/null 2>&1 \
     && ok "every shebang file is executable in the index" \
     || bad "some scripts are not executable in the index"
 
+# The pool is the only part of this project with npm dependencies, and it is
+# the part that holds the balances. Its lockfile is what makes `npm ci`
+# install the same nine packages on every machine instead of whatever the
+# registry serves that afternoon -- and that is worth nothing if the lockfile
+# and package.json have drifted apart. npm would refuse too, on the
+# operator's machine, at the moment they are bringing a pool up. This refuses
+# here, where it can be fixed in one command.
+if LOCK_OUT="$("$PY" scripts/check_pool_lockfile.py 2>&1)"; then
+    ok "the pool's lockfile agrees with package.json, and install.sh uses it"
+else
+    bad "the pool's dependency lockfile does not hold:
+           $(printf '%s' "$LOCK_OUT" | grep -m2 'FAIL\|error' | sed 's/^ *//' | tr '\n' ' ')"
+fi
+
 # One call, and the status is read rather than reinterpreted. This used to try
 # a `--offline` flag first and fall back with `||`. That flag never existed:
 # check_dns_seeds.sh took it as an unknown target, matched no branch, queried

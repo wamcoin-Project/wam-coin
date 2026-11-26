@@ -52,7 +52,7 @@ the raw coinbase value instead of the distributable value.
 cd pool
 cp config.example.json config.json
 $EDITOR config.json
-npm install
+npm ci                      # exact versions from package-lock.json
 npm run build:native
 npm test
 node server.js

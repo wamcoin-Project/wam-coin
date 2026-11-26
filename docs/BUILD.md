@@ -229,7 +229,7 @@ sudo ln -sf /usr/local/bin/bitcoin-cli /usr/local/bin/wam-cli
 
 ```bash
 cd pool
-npm install
+npm ci
 cd native
 RANDOMX_INCLUDE="$PWD/../../build/randomx/src" \
 RANDOMX_LIB="$PWD/../../build/randomx/build/librandomx.a" \

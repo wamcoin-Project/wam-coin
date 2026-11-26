@@ -506,7 +506,33 @@ step "5/6  Stratum pool"
 cd "$REPO_ROOT/pool"
 
 log "installing node modules"
-npm install --omit=dev --silent || die "npm install failed"
+# npm ci, not npm install, and the difference is the only thing standing
+# between this pool and a dependency nobody chose.
+#
+# package.json names two runtime dependencies and names them as RANGES --
+# ioredis ^5.4.1 means any 5.x. With `npm install` every machine resolves
+# those ranges at the moment it runs, so the pool on this host and the pool
+# a new operator installs next month are not the same software: France has
+# been running ioredis 5.11.1, not the 5.4.1 the file names. Nine packages
+# reach a production pool and only two of them are named here; the other
+# seven arrive because something else asked for them.
+#
+# This pool holds every miner's balance in redis and drives payouts through
+# the node's wallet RPC. A compromised patch release of any of those nine
+# lands on the next install, silently, without a line changing in this
+# repository. package-lock.json pins all of them by version and by integrity
+# hash, and `npm ci` refuses to install anything that does not match -- so
+# that attack becomes a failed install instead of a running pool.
+#
+# `npm ci` also refuses outright if package-lock.json and package.json
+# disagree, which is the whole reason it is safe to rely on: a dependency
+# changed without regenerating the lock cannot reach a machine quietly.
+#
+# --omit=dev is safe here even though the addon needs node-gyp, because the
+# line below calls it through npx. `npm run build:native` calls node-gyp
+# bare and does need the dev tree, which is why docs/POOL_OPERATOR.md says
+# plain `npm ci`.
+npm ci --omit=dev --silent || die "npm ci failed"
 
 log "building the RandomX native addon"
 [ -f "$RANDOMX_DIR/build/librandomx.a" ] \

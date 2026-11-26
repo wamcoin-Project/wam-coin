@@ -525,21 +525,18 @@ if [ ! -d "$ROOT/pool/node_modules/ioredis" ]; then
     if command -v npm >/dev/null 2>&1; then
         printf '  %s....%s  installing the pool dependencies (first run only)\n' \
                "$DIM" "$OFF"
-        # --no-package-lock, which install.sh does not pass and does not need
-        # to: it installs into a copy the operator owns. This runs inside the
-        # project checkout, and the pool ships no lockfile, so without it the
-        # first run of this harness leaves a package-lock.json behind --
-        # pinning the pool's whole dependency tree to whatever one machine
-        # resolved on one afternoon, as a side effect of a test. Whether this
-        # project wants a lockfile is a decision, and a decision is not
-        # something a harness makes by running.
-        if ( cd "$ROOT/pool" \
-             && npm install --omit=dev --silent --no-package-lock ) \
+        # npm ci, which is install.sh's line and is the point: it installs
+        # exactly what package-lock.json pins and refuses anything whose
+        # integrity hash does not match. It also writes nothing back, so a
+        # test run cannot change what the next machine installs -- which an
+        # earlier version of this harness did, leaving a lockfile behind
+        # generated on one laptop on one afternoon.
+        if ( cd "$ROOT/pool" && npm ci --omit=dev --silent ) \
              >"$WORK/npm.log" 2>&1; then
             ok "pool dependencies installed"
         else
             POOL_DEPS=0
-            bad "npm install failed in pool/, so the pool could not be run" \
+            bad "npm ci failed in pool/, so the pool could not be run" \
                 "$(first_error "$WORK/npm.log")"
         fi
     else
