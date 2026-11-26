@@ -272,10 +272,39 @@ class ApiServer {
             }
             return socketIp;
         }
+        // AND THE PROXY HAS TO BE THE ONE ON THE SOCKET.
+        //
+        // apiTrustProxy says "a proxy in front of me appends the caller".
+        // This believed the header from ANY socket, so anyone who could reach
+        // the origin directly -- which is every address when apiBind is
+        // 0.0.0.0, and anyone inside the network otherwise -- wrote their own
+        // identity. Measured by Radenlingga on 2026-11-26 against this class:
+        // twelve lookups with a rotating last hop, twelve fresh buckets,
+        // twelve backend reads, zero refusals; and a last hop of 127.0.0.1
+        // from a remote socket made /api/health return the operator-only body
+        // with connection counts and memoryMb in it.
+        //
+        // The header is now believed only from a peer that could BE the
+        // proxy: the loopback, or an address the operator named in
+        // apiProxyPeers. From anywhere else it is a caller writing their own
+        // name, and the socket is the only thing that cannot be forged.
         const fwd = req.headers['x-forwarded-for'];
-        if (fwd) {
+        if (fwd && this._isProxyPeer(socketIp)) {
             const hops = String(fwd).split(',').map((s) => s.trim()).filter(Boolean);
             if (hops.length) return hops[hops.length - 1];
+        }
+        if (fwd) {
+            if (!this._warnedAboutForgedProxy) {
+                this._warnedAboutForgedProxy = true;
+                this.log.warn(
+                    `a request from ${socketIp} carried X-Forwarded-For, but ` +
+                    'that address is not the proxy: apiTrustProxy is set and ' +
+                    'the proxy reaches this API over the loopback. The header ' +
+                    'was ignored and the socket address used instead. If the ' +
+                    'proxy really is on another machine, name it in ' +
+                    'apiProxyPeers.');
+            }
+            return socketIp;
         }
         if (!this._warnedAboutProxy) {
             this._warnedAboutProxy = true;
@@ -287,6 +316,22 @@ class ApiServer {
                 'to the proxy, or unset apiTrustProxy.');
         }
         return null;
+    }
+
+    /**
+     * Could this socket address be the proxy that appends X-Forwarded-For?
+     *
+     * The loopback always, because that is where a reverse proxy on the same
+     * machine reaches us from, and whatever the operator named in
+     * apiProxyPeers for a proxy that is somewhere else. Everything else is a
+     * caller, and a caller does not get to say who it is.
+     */
+    _isProxyPeer(ip) {
+        const a = String(ip || '').replace(/^::ffff:/, '');
+        if (a === '127.0.0.1' || a === '::1' || a === '0:0:0:0:0:0:0:1') return true;
+        const named = this.config.apiProxyPeers;
+        if (!Array.isArray(named)) return false;
+        return named.some((p) => String(p).replace(/^::ffff:/, '') === a);
     }
 
     listen() {
