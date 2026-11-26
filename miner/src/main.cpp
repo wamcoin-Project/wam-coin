@@ -423,8 +423,26 @@ void WorkerLoop(int workerId, RandomXEngine& engine, SharedState& state)
  *
  * Returns false when the failure is fatal and the miner should stop.
  */
+/**
+ * Hand a template to the workers without touching the key.
+ *
+ * Used when a seed change is deferred by the rekey cooldown: the template is
+ * current and the key is the one already built, so the workers keep hashing
+ * the chain's newest block instead of one two or three blocks behind. Shares
+ * under the old key are refused by the pool, which is what the cooldown costs
+ * either way; what this saves is the block that would never have been tried.
+ */
+void PublishUnderCurrentKey(SharedState& state, const StratumJob& job)
+{
+    {
+        std::lock_guard<std::mutex> lock(state.jobMutex);
+        state.job = job;
+    }
+    state.jobEpoch.fetch_add(1);
+}
+
 bool PublishJob(RandomXEngine& engine, SharedState& state, int threads,
-                const StratumJob& incoming)
+                StratumJob incoming)
 {
         // Re-key before publishing: a worker must never hash a job against the
         // previous epoch's key, which would make every share invalid.
@@ -455,6 +473,32 @@ bool PublishJob(RandomXEngine& engine, SharedState& state, int threads,
             static int64_t lastRekeyMs = 0;
             static Bytes   deferred;
             const int64_t now = NowMs();
+            // THE JOB IS NOT THE SEED, AND DROPPING ONE DROPPED THE OTHER.
+            //
+            // This returned true BEFORE publishing, so the whole incoming job
+            // -- including a NEW BLOCK job -- was discarded for the rest of
+            // the cooldown: state.job unchanged, jobEpoch not bumped, every
+            // worker still hashing the previous template. At ~125 s a block
+            // that is two or three blocks of work thrown at a template the
+            // network has already left behind, and a block solved on the old
+            // template was never even attempted.
+            //
+            // And `deferred` was only ever assigned, compared and cleared.
+            // Nothing read it, no timer applied it: the comment promising it
+            // "is remembered and applied when the cooldown expires" described
+            // behaviour that did not exist. Recovery depended on the pool
+            // happening to re-announce the same seed after the cooldown.
+            //
+            // Measured by Radenlingga on 2026-11-26 against this function
+            // with the cooldown shortened: after expiry, with no new job, the
+            // engine was still keyed to the old seed and exactly one cache
+            // build had ever run.
+            //
+            // So: the job is published under the key we hold -- stale key,
+            // current template, which is strictly better than a stale
+            // template -- and the seed is remembered with its deadline. The
+            // next call after the deadline applies it without waiting for the
+            // pool to say it again.
             if (!previous.empty() && lastRekeyMs != 0 &&
                 now - lastRekeyMs < kRekeyCooldownMs) {
                 if (deferred != incoming.seed) {
@@ -466,7 +510,21 @@ bool PublishJob(RandomXEngine& engine, SharedState& state, int threads,
                          std::to_string((kRekeyCooldownMs - (now - lastRekeyMs)) / 1000) +
                          "s rather than stopping the miner");
                 }
-                return true;        // keep mining the key we have
+                // Publish the template anyway, under the key we are holding.
+                StratumJob held = incoming;
+                held.seed = previous;
+                PublishUnderCurrentKey(state, held);
+                return true;
+            }
+
+            // The cooldown has passed. If a seed was deferred and the job in
+            // hand does not already carry it, apply the deferred one: that is
+            // what "remembered and applied when the cooldown expires" has to
+            // mean for it to be true.
+            if (!deferred.empty() && deferred != incoming.seed) {
+                Info("applying the RandomX key that arrived during the last "
+                     "cooldown (" + ToHex(deferred).substr(0, 16) + "...)");
+                incoming.seed = deferred;
             }
             deferred.clear();
             lastRekeyMs = now;

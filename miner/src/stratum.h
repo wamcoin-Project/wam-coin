@@ -620,6 +620,9 @@ private:
                     return;
                 }
                 if (at > m_lastSeedHeight) m_lastSeedHeight = at;
+                if (!m_lastSeed.empty() && seed != m_lastSeed) m_previousSeed = m_lastSeed;
+                m_announcedSeedHeight = at;
+                m_announcedSeed = seed;
                 m_lastSeed = seed;
                 if (onSeed) onSeed(seed);
                 // AsInt(-1), not AsInt(). The seed is what this message is
@@ -778,10 +781,74 @@ private:
 
         // The WAM extension. Fall back to the last set_seedhash, because a
         // pool is allowed to announce the key out of band and omit it here.
+        // THE SECOND SEED CHANNEL, WHICH THE FIRST ONE'S GUARD DID NOT COVER.
+        //
+        // mining.set_seedhash refuses a key announced for a height already
+        // passed, and refuses a key that moves backwards. This path -- the
+        // seed carried in notify[9] -- took whatever arrived, assigned
+        // m_lastSeed, and never touched m_lastSeedHeight. So the guarantee
+        // held on one channel and not the other, and because this wrote
+        // m_lastSeed without its height it also desynchronised the state the
+        // other channel's check reads.
+        //
+        // Measured by Radenlingga on 2026-11-26 against this class, driven
+        // from a loopback pool, twice each:
+        //
+        //   notify A, notify B, notify A      -> last seed A. A replayed
+        //                                        old-epoch key accepted.
+        //   set_seedhash B@43008, notify A,
+        //   set_seedhash B@43008              -> last seed A. The pool's
+        //                                        CURRENT key now refused,
+        //                                        the client wedged on a
+        //                                        stale one.
+        //
+        // The two channels could be played against each other. The same
+        // refusal applies here now, against the height this job carries, and
+        // a job's own height is read before the seed is accepted so the two
+        // channels share one piece of state rather than two.
+        // TWO RULES, BECAUSE THE TWO CHANNELS KNOW DIFFERENT THINGS.
+        //
+        // set_seedhash announces the key for the epoch that STARTS at a
+        // stated height. That is authoritative: any job at or above that
+        // height belongs to that epoch and must carry that key. A notify
+        // saying otherwise contradicts the pool's own announcement, and the
+        // first attempt at this guard compared a job height against a seed
+        // height -- two different scales -- so it never fired. The test
+        // caught it on the first run.
+        //
+        // A notify on its own announces nothing, so the only thing knowable
+        // from this channel is which keys we have already left. A key equal
+        // to the one we moved away from is a replay, and is refused.
         Bytes seed;
+        const int64_t jobHeight = ParseCoinbaseHeight(job.coinb1);
         if (p.Size() >= 10 && ParseHex(p.At(9).AsString(), seed) && seed.size() == 32) {
-            job.seed   = seed;
-            m_lastSeed = seed;
+            const bool contradictsAnnouncement =
+                m_announcedSeedHeight >= 0 && !m_announcedSeed.empty()
+                && jobHeight >= m_announcedSeedHeight && seed != m_announcedSeed;
+            const bool isReplay =
+                !m_previousSeed.empty() && seed == m_previousSeed
+                && seed != m_lastSeed;
+
+            if (contradictsAnnouncement || isReplay) {
+                Log(std::string("ignoring a RandomX key carried by a job: ") +
+                    (contradictsAnnouncement
+                        ? "the pool announced a different key for the epoch "
+                          "starting at height " +
+                          std::to_string(m_announcedSeedHeight)
+                        : "it is the key this miner has already moved away "
+                          "from, and a key never moves backwards"));
+                if (!m_lastSeed.empty()) {
+                    job.seed = m_lastSeed;
+                } else {
+                    return;
+                }
+            } else {
+                if (!m_lastSeed.empty() && seed != m_lastSeed) {
+                    m_previousSeed = m_lastSeed;
+                }
+                job.seed   = seed;
+                m_lastSeed = seed;
+            }
         } else if (!m_lastSeed.empty()) {
             job.seed = m_lastSeed;
         } else {
@@ -793,7 +860,7 @@ private:
 
         job.extranonce1     = m_extranonce1;
         job.extranonce2Size = m_extranonce2Size;
-        job.height          = ParseCoinbaseHeight(job.coinb1);
+        job.height          = jobHeight;
         job.valid           = true;
 
         if (onJob) onJob(job);
@@ -807,6 +874,10 @@ private:
     // The highest seed height this pool has announced, so a replay of an
     // older key is refused. -1 is "none yet", which the first key must pass.
     int64_t     m_lastSeedHeight = -1;
+    // What set_seedhash ANNOUNCED, kept apart from what a job happened to
+    // carry: an announcement is authoritative for every job at or above its
+    // height, and a job height is not an announcement.
+    int64_t     m_announcedSeedHeight = -1;
     // Watched inside the line drain, so a shutdown is not queued behind
     // whatever the pool has already sent.
     const std::atomic<bool>* m_running = nullptr;
@@ -842,6 +913,8 @@ private:
     Bytes m_extranonce1;
     int   m_extranonce2Size = 4;
     Bytes m_lastSeed;
+    Bytes m_announcedSeed;      // the key set_seedhash named, if any
+    Bytes m_previousSeed;       // the key we moved away from; a replay of it is refused
 
     int             m_nextId = 100;
     std::set<int>   m_submitIds;

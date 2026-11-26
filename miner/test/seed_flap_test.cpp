@@ -73,6 +73,48 @@ std::string SetSeed(const std::string& hex, long long seedHeight, long long heig
            + std::to_string(height) + "]}";
 }
 
+/**
+ * mining.notify, with the WAM seed in params[9].
+ *
+ * THE SECOND SEED CHANNEL. Every case below this file was written for drove
+ * set_seedhash, so the monotonicity guard was tested on one channel and the
+ * other one took whatever arrived -- assigning m_lastSeed without ever
+ * touching m_lastSeedHeight, which also desynchronised the state the tested
+ * channel reads. Measured by Radenlingga on 2026-11-26: notify A, notify B,
+ * notify A ended on A, and a notify carrying an old key made the pool's
+ * CURRENT key be refused by set_seedhash afterwards.
+ *
+ * The coinbase carries the height, so a job for a height at or below the
+ * last key's height is where the refusal has to bite. coinb1 here is a
+ * minimal coinbase whose scriptSig encodes `height` BIP34-style, which is
+ * what ParseCoinbaseHeight reads.
+ */
+std::string NotifyWithSeed(const std::string& seedHex, const char* jobId,
+                           long long height)
+{
+    // BIP34 push: one length byte, then the height little-endian, minimal.
+    std::string h;
+    unsigned long long v = (unsigned long long)height;
+    std::string le;
+    while (v) { char b[3]; std::snprintf(b, sizeof(b), "%02x", (unsigned)(v & 0xff)); le += b; v >>= 8; }
+    if (le.empty()) le = "00";
+    char lenb[3];
+    std::snprintf(lenb, sizeof(lenb), "%02x", (unsigned)(le.size() / 2));
+    h = std::string(lenb) + le;
+
+    // version(4) prevout(36) scriptlen(1) <script> -- enough for the parser.
+    const std::string coinb1 =
+        "01000000" "01"
+        "0000000000000000000000000000000000000000000000000000000000000000"
+        "ffffffff" + std::string(1, "0123456789abcdef"[(h.size() / 2) >> 4])
+        + std::string(1, "0123456789abcdef"[(h.size() / 2) & 15]) + h;
+
+    std::string zeros; for (int i = 0; i < 32; i++) zeros += "00";
+    return std::string("{\"id\":null,\"method\":\"mining.notify\",\"params\":[\"")
+         + jobId + "\",\"" + zeros + "\",\"" + coinb1 + "\",\"00\",[],"
+           "\"20000000\",\"1d00ffff\",\"65000000\",true,\"" + seedHex + "\"]}";
+}
+
 /** A pool on the loopback that says whatever it is told to say. */
 struct FakePool {
     wam::sock_t listener = wam::kInvalidSock;
@@ -274,13 +316,73 @@ int main()
         }
     }
 
+    // ---------------------------------------------------------------------
+    //  THE NOTIFY CHANNEL, WHICH HAD NO GUARD AT ALL
+    // ---------------------------------------------------------------------
+    {
+        const std::string a = Seed(SEED_A), b = Seed(SEED_B);
+
+        {
+            // notify A at 43050, notify B at 43060, notify A at 43055.
+            // The replay is for a height already passed, so it is refused and
+            // the client stays on B.
+            const std::string got = DriveAndReadSeed({
+                NotifyWithSeed(a, "1", 43050),
+                NotifyWithSeed(b, "2", 43060),
+                NotifyWithSeed(a, "3", 43055)
+            });
+            if (got == b) {
+                Ok("a replayed key carried by notify is refused");
+            } else {
+                Bad("a replayed key carried by notify is refused",
+                     "the client ended on " + got.substr(0, 8) +
+                     ", so notify[9] still accepts an old-epoch key that "
+                     "set_seedhash would have refused");
+            }
+        }
+
+        {
+            // set_seedhash B@43008, then a notify carrying A for an older
+            // height. The notify must not poison the state the set_seedhash
+            // guard reads: the client stays on B.
+            const std::string got = DriveAndReadSeed({
+                SetSeed(b, 43008, 43050),
+                NotifyWithSeed(a, "1", 43010),
+                SetSeed(b, 43008, 43050)
+            });
+            if (got == b) {
+                Ok("a stale notify cannot wedge the pool's current key out");
+            } else {
+                Bad("a stale notify cannot wedge the pool's current key out",
+                     "the client ended on " + got.substr(0, 8) +
+                     ", so one notify desynchronised the seed state and the "
+                     "pool's own current key was then refused");
+            }
+        }
+
+        {
+            // And a genuine forward rotation over notify is still accepted.
+            const std::string got = DriveAndReadSeed({
+                NotifyWithSeed(a, "1", 43050),
+                NotifyWithSeed(b, "2", 45100)
+            });
+            if (got == b) {
+                Ok("a forward key rotation over notify is still accepted");
+            } else {
+                Bad("a forward key rotation over notify is still accepted",
+                     "the client ended on " + got.substr(0, 8) +
+                     ", so the new refusal is refusing honest rotations");
+            }
+        }
+    }
+
     std::printf("\n");
     if (!g_fail.empty()) {
         std::printf("\033[31m\033[1m  %zu failed\033[0m, %d passed\n\n",
                     g_fail.size(), g_pass);
         return 1;
     }
-    std::printf("  %d passed: a key does not move backwards, and a shutdown "
-                "is not queued\n\n", g_pass);
+    std::printf("  %d passed: a key does not move backwards on EITHER channel, "
+                "and a shutdown is not queued\n\n", g_pass);
     return 0;
 }

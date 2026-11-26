@@ -158,11 +158,52 @@ public:
                 // a real chain and far below hurting a machine that mines.
                 while (m_issued.size() > 4096) m_issued.pop_front();
 
+                // AND THE BACKSTOP MUST NOT UNDO THE POLICY ABOVE IT.
+                //
+                // This popped from the FRONT -- the oldest entry -- which is
+                // the job handed out first and therefore the one a worker has
+                // been hashing on for the longest. On an unmoving tip the
+                // relevance policy above keeps every job on purpose, because
+                // a block solved against any of them must still be
+                // submittable; the byte trim then threw the most important
+                // one away.
+                //
+                // Measured by Radenlingga on 2026-11-26 against this class
+                // with a loopback node serving 29 MiB templates: nine polls,
+                // about forty-five seconds, and the in-flight job was gone.
+                // Submit then refused it -- "no longer held, so the
+                // transactions it was built from are unknown" -- and a solved
+                // block was discarded. That is the loss of 2026-09-26 again,
+                // through the new cap instead of the old one.
+                //
+                // So the trim drops the jobs the policy does NOT protect,
+                // newest first among them, and never touches a job for the
+                // current tip or the one before it. If every held job is
+                // protected and the total is still over, nothing is dropped
+                // and it is said out loud: losing the block is worse than
+                // holding the bytes, and an operator who is told can act.
                 size_t held = 0;
                 for (const auto& e : m_issued) held += IssuedBytes(e);
-                while (held > kMaxIssuedBytes && m_issued.size() > 1) {
-                    held -= IssuedBytes(m_issued.front());
-                    m_issued.pop_front();
+                if (held > kMaxIssuedBytes) {
+                    for (auto it = m_issued.end();
+                         it != m_issued.begin() && held > kMaxIssuedBytes; ) {
+                        --it;
+                        if (Protected(*it)) continue;
+                        held -= IssuedBytes(*it);
+                        it = m_issued.erase(it);
+                    }
+                    if (held > kMaxIssuedBytes) {
+                        // solo.h has no logger of its own; the miner prints
+                        // what Refresh reports. This is the one case where
+                        // the backstop refuses to act, so it is said rather
+                        // than passed over in silence.
+                        std::fprintf(stderr,
+                            "  holding %zu MiB of templates, over the %zu MiB "
+                            "backstop: every one is for the current tip or the "
+                            "one before it, and dropping one would discard a "
+                            "block solved against it. Nothing was dropped.\n",
+                            held >> 20, size_t(kMaxIssuedBytes) >> 20);
+                    }
                 }
             }
 
@@ -332,6 +373,19 @@ private:
         std::string             prevHashHex;
         std::vector<TemplateTx> txs;
     };
+
+    /**
+     * Is this job one the relevance policy keeps on purpose?
+     *
+     * A job built on the current tip, or on the one before it, must stay: a
+     * worker may be hashing it right now, and a block solved against it can
+     * still be submitted. The byte backstop skips these, because dropping one
+     * throws away the block it was about to find.
+     */
+    bool Protected(const IssuedJob& j) const
+    {
+        return j.prevHashHex == m_prevTipHex || j.prevHashHex == m_olderTipHex;
+    }
 
     /** What one remembered job costs, near enough to bound it. */
     static size_t IssuedBytes(const IssuedJob& j)

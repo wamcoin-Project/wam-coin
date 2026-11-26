@@ -161,6 +161,36 @@ class Parser {
 public:
     explicit Parser(const std::string& text) : m_text(text) {}
 
+    // THE REPLY CEILING BOUNDS BYTES ON THE WIRE, NOT MEMORY IN HERE.
+    //
+    // rpc.h refuses a reply over 64 MiB, which is the right thing to measure
+    // at the socket. It is not what the parse costs: sizeof(Value) is about
+    // 120 bytes, and every element of an array or member of an object
+    // materialises one. A dense scalar array -- "[0,0,0,...]" -- costs two
+    // bytes on the wire per element and 120 in here, before vector growth.
+    //
+    // Measured by Radenlingga on 2026-11-26 against this header: a 7 MiB
+    // reply of that shape reached 502 MB of resident memory, twice, and the
+    // accepted 64 MiB ceiling extrapolates to about 4.5 GB. One
+    // getblocktemplate poll from a hostile or compromised node -- or anyone
+    // on the plaintext RPC path, which is the threat the ceiling exists for
+    // -- OOM-kills the miner.
+    //
+    // So the parse carries its own budget, in NODES rather than bytes.
+    //
+    // The largest honest reply is a block template. Its transactions are
+    // objects of three members each -- data, txid, fee -- so a block full of
+    // 250-byte transactions is on the order of half a million nodes, and the
+    // 64 MiB wire ceiling is reached long before a million. One million is
+    // therefore several times any real template and still bounds the parse
+    // at roughly 120 MB of Values.
+    //
+    // The first number tried here was four million. The measurement refused
+    // it: the reported 3.5-million-element case still parsed, at 501 MB.
+    // A budget that does not refuse the case it was written for is not a
+    // budget.
+    static constexpr size_t kMaxNodes = 1u * 1000u * 1000u;
+
     bool Parse(Value& out)
     {
         SkipSpace();
@@ -237,6 +267,7 @@ private:
 
             Value child;
             if (!ParseValue(child)) return false;
+            if (!CountNode()) return false;
             out.object[key] = std::move(child);
 
             SkipSpace();
@@ -257,6 +288,7 @@ private:
         for (;;) {
             Value child;
             if (!ParseValue(child)) return false;
+            if (!CountNode()) return false;
             out.array.push_back(std::move(child));
 
             SkipSpace();
@@ -345,9 +377,23 @@ private:
         return true;
     }
 
+    /** One more parsed element or member. False once the budget is spent. */
+    bool CountNode()
+    {
+        if (++m_nodes > kMaxNodes) {
+            m_error = "the reply holds more than " + std::to_string(kMaxNodes) +
+                      " values. A valid WAM reply is nowhere near that; this "
+                      "one would cost hundreds of megabytes to hold, so it is "
+                      "refused rather than parsed.";
+            return false;
+        }
+        return true;
+    }
+
     const std::string& m_text;
     size_t      m_pos = 0;
     int         m_depth = 0;
+    size_t      m_nodes = 0;
     std::string m_error;
 };
 
