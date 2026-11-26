@@ -223,24 +223,54 @@ ok "$checked file(s) match the signed list, byte for byte"
 # did not build. A missed step produces exactly this directory.
 #
 # Found in the pre-release review of v0.1.15.
-unlisted=""
-for f in wam-coin-* wam-miner-* wam-qt-*; do
-    [ -e "$f" ] || continue
-    case "$f" in *.asc|SHA256SUMS*) continue ;; esac
-    # `sed`, not `awk '{print $2}'`. sha256sum writes the name in BINARY
-    # mode on some platforms -- `<hash> *<name>` -- and the star made every
-    # genuine file read as unlisted, which would have refused every honest
-    # download. Caught by scripts/test/test_verify_release_unlisted.sh
-    # before it shipped.
-    if ! sed 's/^[^ ]*  *[*]\?//' SHA256SUMS | grep -qxF -- "$f"; then
-        unlisted="$unlisted $f"
+# THREE PREFIXES IS NOT "EVERY FILE", AND THAT IS WHAT THE BANNER CLAIMS.
+#
+# This looped over `wam-coin-* wam-miner-* wam-qt-*` in the top directory.
+# A shell glob matches none of: a file called anything else, a bare
+# executable, a dotfile, or anything in a subdirectory. Measured by
+# Radenlingga on 2026-11-26 against the real script with a throwaway key:
+# evil.tar.gz, a bare `wamd`, a dotfile and sub/wam-coin-... all sat beside
+# a genuine signed release and the script printed "unmodified since it was
+# signed", exit 0, naming none of them.
+#
+# And the listed test was `grep -qxF`, which treats a newline inside the
+# pattern as SEVERAL patterns -- so a file whose name contains a newline
+# whose second line is a genuine listed name read as listed.
+#
+# Every file in the directory is examined now, at any depth, dotfiles
+# included, except the two this verification is made of. `find -print0` and
+# a NUL-separated read, because a file name may contain anything at all --
+# which is the second half of the same finding.
+listed_names="$(sed 's/^[^ ]*  *[*]\?//' SHA256SUMS)"
+unlisted_count=0
+unlisted_show=""
+while IFS= read -r -d '' f; do
+    f="${f#./}"
+    case "$f" in
+        SHA256SUMS|SHA256SUMS.asc|SIGNING-KEY.asc) continue ;;
+        verify_release.sh|verify_release.ps1) continue ;;
+    esac
+    # printf '%s\n' then a whole-line compare, with the name ending the
+    # stream: a name carrying a newline cannot match a single listed line.
+    if ! printf '%s\n' "$listed_names" | grep -qxF -- "$f"; then
+        unlisted_count=$((unlisted_count + 1))
+        if [ "$unlisted_count" -le 20 ]; then
+            unlisted_show="$unlisted_show$(printf '%s' "$f" | tr '\n' '?')
+"
+        fi
     fi
-done
-if [ -n "$unlisted" ]; then
-    bad "these file(s) are here and are NOT in the signed list:"
-    for f in $unlisted; do printf '       %s\n' "$f"; done
+done < <(find . -type f -print0 2>/dev/null)
+
+if [ "$unlisted_count" -gt 0 ]; then
+    bad "$unlisted_count file(s) are here and are NOT in the signed list:"
+    printf '%s' "$unlisted_show" | while IFS= read -r n; do
+        [ -n "$n" ] && printf '       %s\n' "$n"
+    done
+    [ "$unlisted_count" -gt 20 ] && say "       ... and $((unlisted_count - 20)) more"
     say "SHA256SUMS.asc signs SHA256SUMS and nothing else. A file the list"
     say "does not name is covered by nothing, whoever gave it to you."
+    say "A '?' above is a character that cannot be printed -- a name holding"
+    say "one is not a name this project ever wrote."
     echo; exit 1
 fi
 

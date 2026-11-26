@@ -161,8 +161,33 @@ def main() -> int:
     if abs(total - 2_000_000) > 1e-8:
         problems.append(f"premine total is {total:,.8f}, expected 2,000,000")
     if len(rows) == 5:
-        if abs(unlocked - 400_000) > 1e-8:
-            problems.append(f"spendable now is {unlocked:,.2f}, expected 400,000")
+        # WHAT IS SPENDABLE DEPENDS ON THE DATE, AND THIS ASSERTED ONE NUMBER.
+        #
+        # It expected exactly 400,000 whatever the day. The consensus schedule
+        # CLTV-locks all five tranches, unlocking one each 15 September from
+        # 2027 to 2031, and this script counts an output spendable only once
+        # its lock time has passed -- so before 2027-09-15 the honest answer
+        # is 0, and the tool reported PROBLEMS and exited 1 against a genesis
+        # that matches the published table exactly. It could only have passed
+        # during the twelve months after September 2027.
+        #
+        # A verifier that accuses the correct chain teaches its readers to
+        # ignore it, and this is the one tool a stranger uses to check the
+        # founder reserve. Reported by Radenlingga on 2026-11-26, run against
+        # a genesis built from wam-params.h itself.
+        #
+        # The expectation is now derived the way the table is: count the
+        # tranches whose unlock time has passed. That is the same arithmetic
+        # the rows above print, so the two can no longer disagree.
+        # rows is (index, value, when, kind, is_open, script); is_open is the
+        # same test the table above printed as SPENDABLE.
+        unlocked_tranches = sum(1 for r in rows if r[4])
+        expected = unlocked_tranches * 400_000
+        if abs(unlocked - expected) > 1e-8:
+            problems.append(
+                f"spendable now is {unlocked:,.2f}, but {unlocked_tranches} "
+                f"of 5 tranches have reached their unlock date, so it should "
+                f"be {expected:,.2f}")
     elif len(rows) == 1:
         print("  note: single-output genesis (regtest) -- no vesting to show")
     else:

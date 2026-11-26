@@ -111,6 +111,23 @@ WHERE = ["scripts/*.sh", "scripts/*.py", "scripts/test/*.sh", "scripts/lib/*.sh"
 #
 # Three alternatives now, in order: `=value`, whitespace `value`, and the
 # list form -- a closing quote, then a comma or whitespace, then the value.
+# THE SHAPE THAT ACTUALLY HAPPENED, AND NOTHING WIDER.
+#
+# install.sh invoked `python3 - <path> "$RPC_PASS" ...`: an interpreter
+# reading its program from stdin, handed a secret as a positional
+# argument. No flag, so OPT could not see it, and every account on the
+# machine could read it from /proc/<pid>/cmdline.
+#
+# The first pattern written here matched any secret-named expansion in
+# quotes and fired 44 times on `if [ -n "$KEYFILE" ]` and its like. A
+# guard that cries that often is a guard that gets switched off. This
+# one names the invocation: python/perl/ruby/sh/bash reading from stdin,
+# with a PASS/PASSWORD/SECRET/WIF expansion among its arguments.
+BARE_SECRET_ARG = re.compile(
+    r"\b(?:python3?|perl|ruby|bash|sh)\s+-(?:\s|s\b)[^\n|;]*"
+    r"\"\$\{?([A-Z_]*(?:PASS|PASSWORD|SECRET|WIF)[A-Z_]*)"
+)
+
 OPT = re.compile(
     r"-{1,2}rpcpassword"
     r"(?:"
@@ -171,6 +188,27 @@ def main() -> int:
             # mention-is-not-use rule, in the file that enforces it.
             if line.lstrip().startswith(("#", "//")):
                 continue
+            # A SECRET WITH NO FLAG IN FRONT OF IT IS STILL ON THE COMMAND
+            # LINE.
+            #
+            # install.sh:533 passed the node's RPC password and the pool's
+            # Redis password to python3 as bare positional arguments. No
+            # `-rpcpassword` anywhere, so OPT could not match, and this gate
+            # listed install.sh among the files it scanned and passed the
+            # tree. Reported by Radenlingga on 2026-11-26, who read both
+            # values out of /proc/<pid>/cmdline of a live process.
+            #
+            # A bare value cannot be recognised by its shape, so what is
+            # recognised instead is the VARIABLE: a shell expansion whose
+            # name says password or secret, appearing as an argument to a
+            # command, with no flag attached. That is narrow enough to name
+            # the mistake and wide enough to catch it with no flag at all.
+            bare = BARE_SECRET_ARG.search(line)
+            if bare and "add_argument" not in line:
+                fails.append((rel, i, bare.group(1),
+                              line.strip()[:110]))
+                continue
+
             # An argparse DECLARATION is not a password on a command line.
             # `p.add_argument("--rpcpassword", default="")` names the option
             # so a caller can pass one; the value beside it is argparse's own

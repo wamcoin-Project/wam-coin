@@ -275,9 +275,39 @@ function rememberVersions(list) {
         }
     }
 
-    saveSeen(seen);
+    // ONE SYNCHRONOUS REWRITE PER REQUEST, WHETHER OR NOT ANYTHING CHANGED.
+    //
+    // /api/network is deliberately uncached, so every single request reached
+    // here and did writeFileSync(seen.json.tmp) + renameSync, on the event
+    // loop, on the explorer's own state file. Measured by Radenlingga on
+    // 2026-11-26 against the real server: 30 requests produced exactly 30
+    // writes and 30 renames, alongside 120 RPC calls, none of them cached,
+    // slowed or refused.
+    //
+    // The file is a rolling record of versions seen in the last window. It
+    // does not need to be on disk the instant it changes: losing a few
+    // seconds of it on a crash costs nothing, and a reader who hits refresh
+    // should not be able to pin the process in fsync.
+    //
+    // So it is written at most once every SAVE_EVERY_MS, and only when
+    // something actually changed since the last write.
+    const fingerprint = Object.keys(seen).length + ':' +
+        Object.values(seen).reduce((n, r) => n + Object.keys(r.v || {}).length, 0);
+    const now_ms = Date.now();
+    if (fingerprint !== _lastSavedFingerprint
+        && now_ms - _lastSavedAt >= SAVE_EVERY_MS) {
+        _lastSavedFingerprint = fingerprint;
+        _lastSavedAt = now_ms;
+        saveSeen(seen);
+    }
     return seen;
 }
+
+// How often the rolling version record may touch the disk, and what it
+// looked like when it last did.
+const SAVE_EVERY_MS = 30 * 1000;
+let _lastSavedFingerprint = null;
+let _lastSavedAt = 0;
 
 function summariseSeen(seen, connectedNow) {
     const now = Math.floor(Date.now() / 1000);

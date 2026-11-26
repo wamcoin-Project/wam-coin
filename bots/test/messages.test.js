@@ -89,7 +89,12 @@ test('a release', () => {
     }));
     assert.ok(out.startsWith('\u{1F680} <b>WAM Coin v0.1.0</b>'), out.slice(0, 60));
     assert.ok(out.includes('first line\nsecond line'));
-    assert.ok(out.endsWith('<i>Verify the checksums before you run it.</i>'));
+    // The tail now NAMES what to verify with, because telling a reader to
+    // check the checksums and giving him no address is telling him to go
+    // and look. Radenlingga, 2026-11-26.
+    assert.ok(/SHA256SUMS/.test(out) && /SHA256SUMS\.asc/.test(out),
+        'the announcement says to verify but names neither the list nor '
+        + 'its signature. Tail: ' + out.slice(-300));
 });
 
 test('a heartbeat', () => {

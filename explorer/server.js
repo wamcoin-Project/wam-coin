@@ -268,6 +268,49 @@ WAM Network Dashboard
     const webRoot = path.join(__dirname, 'web');
     const brandRoot = path.join(__dirname, '..', 'brand');
 
+    /**
+     * One bucket per socket address, refilled every minute.
+     *
+     * Deliberately smaller than the pool's: the pool serves miners polling
+     * on a schedule, this serves people reading a page. A browser refreshing
+     * every six seconds makes ten requests a minute per panel; the default
+     * leaves room for several tabs and still bounds a caller who is not
+     * reading anything.
+     *
+     * Keyed on the socket, not on X-Forwarded-For, for the reason the pool
+     * learned the hard way: a header anyone can write is a limit anyone can
+     * remove. An operator behind a proxy sees one bucket for the proxy, and
+     * explorerRequestsPerMinute is there to be raised when that is the shape.
+     */
+    const limiter = (() => {
+        const perMinute = Number(config.explorerRequestsPerMinute) > 0
+            ? Number(config.explorerRequestsPerMinute) : 120;
+        const maxCallers = 4096;
+        const buckets = new Map();
+        return {
+            take(who) {
+                const now = Date.now();
+                let b = buckets.get(who);
+                if (!b || now - b.start >= 60_000) {
+                    if (buckets.size >= maxCallers && !buckets.has(who)) {
+                        // Oldest window first: a table that grows without
+                        // limit is the denial of service it was meant to stop.
+                        let oldestKey = null, oldest = Infinity;
+                        for (const [k, v] of buckets) {
+                            if (v.start < oldest) { oldest = v.start; oldestKey = k; }
+                        }
+                        if (oldestKey !== null) buckets.delete(oldestKey);
+                    }
+                    b = { start: now, n: 0 };
+                    buckets.set(who, b);
+                }
+                b.n++;
+                if (b.n <= perMinute) return null;
+                return Math.max(1, Math.ceil((b.start + 60_000 - now) / 1000));
+            }
+        };
+    })();
+
     const server = http.createServer(async (req, res) => {
         // WHATWG URL, not the legacy url.parse(): Node deprecated the latter
         // precisely because its non-standard parsing has produced path-handling
@@ -286,6 +329,38 @@ WAM Network Dashboard
 
         if (req.method !== 'GET' && req.method !== 'HEAD') {
             return json(res, 405, { error: 'only GET is supported' });
+        }
+
+        // THE EXPLORER HAD NO LIMIT AT ALL, AND ITS ENDPOINTS COST RPC.
+        //
+        // In the same release the pool API gained a per-caller limiter and
+        // this gained none. Measured by Radenlingga on 2026-11-26 against the
+        // real server: 30 requests to /api/network cost exactly 120 node RPC
+        // calls -- 4 each, uncached by design -- plus a synchronous state
+        // file rewrite each; /api/search and /api/audit cost 2 RPC calls each
+        // by height; and 50 requests produced 50 x HTTP 200 and zero refusals
+        // of any kind.
+        //
+        // The explorer binds the loopback by default, so this needs the
+        // operator to have exposed it -- which the shipped config presents as
+        // the public deployment behind a proxy. Wherever it is reachable, an
+        // unauthenticated caller could keep the node answering explorer RPCs
+        // at whatever rate they chose, against the two pieces of tooling an
+        // operator reaches for when something is already wrong.
+        //
+        // Only the RPC-backed paths are limited. Static files and /api/health
+        // cost nothing and refusing them would break the very monitoring this
+        // protects.
+        if (pathname.startsWith('/api/') && pathname !== '/api/health') {
+            const who = (req.socket && req.socket.remoteAddress) || '?';
+            const wait = limiter.take(who);
+            if (wait !== null) {
+                res.setHeader('Retry-After', String(wait));
+                return json(res, 429, {
+                    error: 'too many requests',
+                    retryAfterSec: wait
+                });
+            }
         }
 
         try {

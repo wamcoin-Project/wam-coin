@@ -530,9 +530,39 @@ if [ ! -f config.json ]; then
     # The pool refuses to start without a Redis password, so leaving this to
     # the operator would mean a fresh install that cannot run.
     if [ -n "${RPC_PASS:-}" ] || [ -n "${WAM_REDIS_PASS:-}" ]; then
-        python3 - "$PWD/config.json" "${RPC_PASS:-}" "$NETWORK" "${WAM_REDIS_PASS:-}" <<'PY'
-import json, sys
-path, password, network, redis_pass = sys.argv[1:5]
+        # THE TWO SECRETS GO ON STDIN, NOT ON THE COMMAND LINE.
+        #
+        # This passed them as bare positional arguments, so both the node's
+        # RPC password and the pool's Redis password sat in
+        # /proc/<pid>/cmdline, readable by every account on the machine for
+        # as long as the python process lived. That is the exposure class
+        # v0.1.15 fixed everywhere else and added a gate for -- and the gate
+        # could not see it, because it looks for the literal text
+        # `-rpcpassword` and these travelled with no flag at all.
+        #
+        # Reported by Radenlingga on 2026-11-26, who captured both sentinels
+        # out of a PATH shim's argv log and then out of /proc/<pid>/cmdline
+        # of a live process.
+        #
+        # The first attempt at this piped the two values into the heredoc,
+        # and the measurement caught it immediately: `python3 -` reads the
+        # PROGRAM from stdin, so the pipe and the heredoc collided and
+        # neither password reached the config at all. argv was clean and the
+        # file was empty, which is a worse failure than the one being fixed.
+        #
+        # The environment is the right place. Both values are already in this
+        # script's environment and python inherits them, so nothing new is
+        # written anywhere -- and /proc/<pid>/environ is readable only by the
+        # process's own user, where /proc/<pid>/cmdline is readable by
+        # everyone on the machine. That difference is the whole finding.
+        #
+        # The path and the network stay in argv: neither is a secret.
+        WAM_RPC_PASS_IN="${RPC_PASS:-}" WAM_REDIS_PASS_IN="${WAM_REDIS_PASS:-}" \
+        python3 - "$PWD/config.json" "$NETWORK" <<'PY'
+import json, os, sys
+path, network = sys.argv[1:3]
+password = os.environ.get("WAM_RPC_PASS_IN", "")
+redis_pass = os.environ.get("WAM_REDIS_PASS_IN", "")
 with open(path) as fh:
     cfg = json.load(fh)
 cfg["network"] = network

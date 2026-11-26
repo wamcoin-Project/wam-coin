@@ -214,9 +214,26 @@ def main() -> int:
         last = min((e + 1) * INTERVAL, SUNSET)
         dev_total += (last - first + 1) * ((subsidy * DEVFEE) // 100)
 
-    sunset_days = SUNSET * SPACING / 86400
+    # THE SAME SCRIPT MUST NOT PRINT TWO DURATIONS FOR ONE HEIGHT.
+    #
+    # This divided by SPACING, the 120 s consensus target. Section [5] of
+    # this very script derives the DGW equilibrium -- 24 targets across 23
+    # intervals, 125.2174 s -- which is the figure v0.1.15 proved is what the
+    # chain actually runs at, and corrected everywhere else. Here it still
+    # said "~18.3 months", the pre-fix number, while section [5] printed the
+    # spacing that makes it 19.0.
+    #
+    # Anyone auditing the treasury sunset with the project's own tool was
+    # given the wrong figure by the section that states the sunset, in the
+    # same run as the right spacing. Reported by Radenlingga on 2026-11-26.
+    #
+    # 400,000 x 125.2174 = 50,086,960 s = 579.7 days = 19.0 months, which is
+    # what src/wam/wam-params.h says in words.
+    equilibrium = SPACING * DGW_PAST / (DGW_PAST - 1)
+    sunset_days = SUNSET * equilibrium / 86400
     print(f"      fee applies to heights 1..{SUNSET:,} "
-          f"(~{sunset_days / 30.44:.1f} months), then ZERO")
+          f"(~{sunset_days / 30.44:.1f} months at the {equilibrium:.4g} s "
+          f"equilibrium), then ZERO")
     print(f"      lifetime treasury income   : {dev_total / COIN:>12,.2f} WAM"
           f"   ({100 * dev_total / MAX_MONEY:.2f}% of the cap)")
     print(f"      founder total (premine+fee): {(dev_total + PREMINE) / COIN:>12,.2f} WAM"

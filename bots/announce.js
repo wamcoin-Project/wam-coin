@@ -469,6 +469,28 @@ function withoutPreamble(text) {
 
 function releaseMessage(release) {
     const raw = withoutPreamble(String(release.body || ''));
+
+    // AN ANNOUNCEMENT WITH NOTHING IN IT IS NOT AN ANNOUNCEMENT.
+    //
+    // Nothing validated the body before it was sent: an empty one still
+    // assembled a complete message -- title, download links, sources,
+    // "Full notes at the link below." -- so a wrong announcement carried the
+    // same reassurance as a right one. That is how the preamble failure went
+    // out twice without anything noticing. Reported by Radenlingga on
+    // 2026-11-26, who measured 19 assembled lines from an empty body.
+    //
+    // Throwing is right here. The caller is the bot, the bot has a channel
+    // and a log, and a release that cannot describe itself is a release a
+    // person must look at -- not one the channels should hear about in its
+    // absence.
+    if (!raw.replace(/\s+/g, ' ').trim()) {
+        throw new Error(
+            `release ${release.tag || '?'} has no notes to announce: its body ` +
+            'is empty once the tag file preamble is removed. Nothing was sent. ' +
+            'Check posts/<version>/TAG_MESSAGE.txt and the release body on ' +
+            'GitHub -- they are two different strings and either can be empty.');
+    }
+
     const flag = raw.match(MANDATORY);
 
     // The marker line is removed from the body it is quoted from, so the
@@ -544,7 +566,16 @@ function releaseMessage(release) {
         // is exactly when a reader can check least. It has to be written
         // where people already are, before it is needed. Every release
         // announcement this bot has sent named one domain.
-        ...(DOWNLOADS_URL ? [b('Download'), t(DOWNLOADS_URL), ``] : []),
+        // THE VERSION'S OWN DIRECTORY, NOT THE INDEX.
+        //
+        // This printed the unversioned downloads page while the last line of
+        // the same message said "verify the checksums" -- with no SHA256SUMS
+        // address anywhere in it. A reader of the announcement alone was told
+        // to verify and given neither the list nor where it lives. Reported
+        // by Radenlingga on 2026-11-26.
+        ...(DOWNLOADS_URL
+            ? [b('Download'), t(versionedDownloads(DOWNLOADS_URL, release.tag)), ``]
+            : []),
         b('Source, in three places'),
         ...SOURCES.map((u) => t(u)),
         ``,
@@ -552,8 +583,26 @@ function releaseMessage(release) {
                            t(RESERVE_URL), ``] : []),
         t(release.url),
         ``,
-        i('Verify the checksums before you run it.')
+        ...(DOWNLOADS_URL ? [
+            i('Verify it before you run it:'),
+            t(versionedDownloads(DOWNLOADS_URL, release.tag) + 'SHA256SUMS'),
+            t(versionedDownloads(DOWNLOADS_URL, release.tag) + 'SHA256SUMS.asc')
+        ] : [i('Verify the checksums before you run it.')])
     ].join('\n');
+}
+
+/**
+ * The directory this release's files actually live in.
+ *
+ * wamcoin.org/downloads/ is an index; wamcoin.org/downloads/v0.1.15/ is where
+ * the archives and the signed list are. Telling a reader to verify and then
+ * handing him the index is telling him to go and look.
+ */
+function versionedDownloads(base, tag) {
+    const root = String(base).replace(/\/+$/, '') + '/';
+    const v = String(tag || '').trim();
+    if (!/^v?\d+\.\d+\.\d+/.test(v)) return root;
+    return root + (v.startsWith('v') ? v : 'v' + v) + '/';
 }
 
 function milestoneMessage(kind, value) {

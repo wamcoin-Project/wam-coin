@@ -22,14 +22,44 @@ OnFailure=wam-alert@%n.service
 
 [Service]
 Type=oneshot
-Environment=HOME=/root
+
+# AND IT RUNS AS NOBODY, WHICH THE RELEASE NOTES SAID AND THE UNIT DID NOT.
+#
+# v0.1.15's notes described the solo_gate fix as two halves: verify against
+# the fingerprint this repository holds, AND run as nobody. The first half
+# shipped. The second did not exist anywhere -- no User=, no DynamicUser=,
+# no setpriv, no runuser, in the script or in this unit -- so every day, on
+# a timer, on a host carrying a mainnet node, this downloaded release
+# tarballs, extracted them and executed wamd, wam-cli and wam-miner as root.
+#
+# The fingerprint check means the executed code must be signed by the project
+# key, so this was never the arbitrary-code hole the original report was
+# about. What was missing is exactly the containment the notes claimed:
+# nothing stood between a verified binary and the whole machine if that
+# binary were ever compromised at source, or exploited by the chain data it
+# processes on its throwaway regtest.
+#
+# Found by Radenlingga on 2026-11-26, in the working tree and in the tag
+# object, against the sentence that promised it.
+#
+# DynamicUser gives a transient unprivileged account with no home, no shell
+# and no existence between runs -- stronger than a named `nobody`, which
+# other services on the host may share. StateDirectory and the paths below
+# follow it automatically.
+DynamicUser=yes
+Environment=HOME=%S/wam-solo-gate
 WorkingDirectory=/opt/wam
 ExecStart=/usr/bin/bash /opt/wam/scripts/solo_gate.sh
 
 # It writes its own alarm where the ops panel already counts them, and
 # removes it again when the next run passes.
+# Both are declared as StateDirectory rather than only granted through
+# ReadWritePaths, because under DynamicUser systemd must own and chown them
+# for the transient account -- a path merely made writable stays owned by
+# root and the gate could not write its alarm. The panel's other writer is
+# root, which is unaffected by the ownership.
+StateDirectory=wam-solo-gate wam-reorg
 ReadWritePaths=/var/lib/wam-reorg /var/lib/wam-solo-gate
-StateDirectory=wam-solo-gate
 NoNewPrivileges=yes
 ProtectHome=read-only
 PrivateTmp=yes

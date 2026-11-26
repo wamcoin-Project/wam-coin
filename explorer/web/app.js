@@ -246,13 +246,41 @@ function renderRandomX(s) {
     text($('rxSeedHash'), 'node lacks getrandomxinfo');
     return;
   }
-  text($('rxSeedHeight'), rx.bootstrap ? 'bootstrap epoch'
-    : rx.seedHeight.toLocaleString());
+  // A MISSING FIELD IS NOT A DEAD SERVER, AND THIS REPORTED IT AS ONE.
+  //
+  // rx.seedHeight.toLocaleString() and rx.epochBlocks.toLocaleString() were
+  // dereferenced on the strength of rx itself being non-null. The collector
+  // copies both verbatim from getrandomxinfo, and its stated design is that
+  // every WAM-specific RPC is optional -- a node built before those commands
+  // existed, or one whose answer is partial, must make the explorer "show
+  // less rather than fall over". JSON.stringify drops undefined, so
+  // /api/status then serves a randomx object with those keys simply absent.
+  //
+  // The TypeError lands inside refresh()'s try, after the tiles have painted.
+  // Its catch treats it exactly like an unreachable server: the pill reads
+  // "dashboard API unreachable", the banner blames the dashboard server, and
+  // everything after this -- the blocks table, the network panel, the
+  // concentration panel, the footer -- never runs, on every six-second poll,
+  // for as long as the node answers that way. The operator who opened the
+  // explorer because something was already wrong is told the one tool that
+  // could show him the chain is itself down, while it and the node are both
+  // up. Reported by Radenlingga on 2026-11-26, reproduced with the real
+  // collector and the real page.
+  //
+  // Same shape as the pool dashboard's unguarded seedHeight read that
+  // v0.1.15 fixed. That fix did not touch this file.
+  const n = (v) => (typeof v === 'number' && Number.isFinite(v))
+    ? v.toLocaleString() : '—';
+  text($('rxSeedHeight'), rx.bootstrap ? 'bootstrap epoch' : n(rx.seedHeight));
   text($('rxSeedHash'), rx.seedHash || '—');
   $('rxSeedHash').title = rx.seedHash || '';
-  text($('rxEpoch'), `${rx.epochBlocks.toLocaleString()} blocks (lag ${rx.epochLag})`);
-  text($('rxRotation'), `${rx.blocksUntilRotation} blocks (~${duration(rx.secondsUntilRotation)})`);
-  text($('rxMemory'), bytes(rx.memoryBytes));
+  text($('rxEpoch'), rx.epochBlocks === undefined || rx.epochBlocks === null
+    ? '—'
+    : `${n(rx.epochBlocks)} blocks (lag ${rx.epochLag ?? '—'})`);
+  text($('rxRotation'), rx.blocksUntilRotation === undefined || rx.blocksUntilRotation === null
+    ? '—'
+    : `${rx.blocksUntilRotation} blocks (~${duration(rx.secondsUntilRotation || 0)})`);
+  text($('rxMemory'), rx.memoryBytes ? bytes(rx.memoryBytes) : '—');
 }
 
 function renderBlocks(blocks) {

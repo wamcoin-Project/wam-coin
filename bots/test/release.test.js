@@ -84,7 +84,7 @@ function stubGithub(status, body) {
     await test('a stable release is not flagged', async () => {
         const g = stubGithub(200, [{
             tag_name: 'v1.0.0', name: 'v1.0.0', html_url: 'https://x/y',
-            body: '', prerelease: false, draft: false
+            body: 'what changed in this release', prerelease: false, draft: false
         }]);
         let r;
         try {
@@ -162,7 +162,7 @@ function stubGithub(status, body) {
         const { toTelegram } = require('../lib/markup');
         const A = require('../announce');
         const out = toTelegram(A.releaseMessage({
-            tag: 'v1.0.0', name: 'v1.0.0', url: 'https://x/y', body: '', prerelease: false
+            tag: 'v1.0.0', name: 'v1.0.0', url: 'https://x/y', body: 'what changed in this release', prerelease: false
         }));
         assert.ok(!out.includes('Pre-release'), out);
     });
