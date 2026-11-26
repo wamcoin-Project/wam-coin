@@ -161,11 +161,72 @@ async function nodeHasTx(daemon, txid) {
             // So the wallet is asked, and only a transaction that BOTH deny
             // may be called never-sent. A wallet that errors, or a node
             // without the wallet loaded, returns null: unknown, not absent.
+            //
+            // AND A NODE THAT CANNOT KNOW IS ASKED WHETHER IT CAN KNOW.
+            //
+            // This script's own header promises that "a transaction that
+            // cannot be found by a node that has not finished syncing is not
+            // a transaction that does not exist", and lists a still-syncing
+            // node under "change nothing". The code never asked: there was no
+            // getblockchaininfo call anywhere in the file. A node that is
+            // syncing, reindexing, freshly restored, or simply behind answers
+            // exactly this error for a payment confirmed in a block past its
+            // tip -- and this script runs precisely after the crashes,
+            // restores and reindexes that leave a node in that state.
+            //
+            // Measured by Radenlingga on 2026-11-26 against the repository's
+            // real DaemonInterface: a node reporting blocks=500,
+            // headers=900, initialblockdownload=true answered Core's verbatim
+            // not-found error, and the classification returned a definitive
+            // false -- abandoned, marker cleared, the whole batch paid again.
+            if (!(await nodeCanKnow(daemon))) return null;
             return await walletHasTx(daemon, txid);
         }
         console.error(`  ${DIM}the node said: ${msg}${OFF}`);
         return null;
     }
+}
+
+/**
+ * Is this node in a position to say a transaction does not exist?
+ *
+ * A node answers "no such mempool or blockchain transaction" for two very
+ * different reasons: the transaction was never sent, or it is in a block
+ * this node has not reached. Only the first may be acted on, and only a
+ * node that is synced can tell them apart.
+ *
+ * Refuses on: initial block download, a tip behind the headers it has
+ * already seen, or a verification progress that is not essentially one.
+ * Refuses also when it cannot ask -- an unanswerable node is not a synced
+ * one.
+ */
+async function nodeCanKnow(daemon) {
+    let info;
+    try {
+        info = await daemon.cmd('getblockchaininfo', []);
+    } catch (err) {
+        console.error(`  ${DIM}the node would not say whether it is synced: ` +
+                      `${String((err && err.message) || err)}${OFF}`);
+        return false;
+    }
+    if (!info) return false;
+
+    const behind = Number(info.headers || 0) - Number(info.blocks || 0);
+    const progress = info.verificationprogress === undefined
+        ? 1 : Number(info.verificationprogress);
+
+    if (info.initialblockdownload === true || behind > 0 || progress < 0.9999) {
+        console.log(`  ${YLW}!!${OFF}  this node cannot say whether a payment exists:`);
+        console.log(`      blocks ${info.blocks}, headers ${info.headers}` +
+                    (info.initialblockdownload ? ', still in initial block download' : '') +
+                    `, progress ${progress}`);
+        console.log('      A node behind its own headers answers "no such');
+        console.log('      transaction" for a payment confirmed above its tip.');
+        console.log('      Nothing is abandoned on that answer. Let it finish');
+        console.log('      syncing and run this again.');
+        return false;
+    }
+    return true;
 }
 
 /**
@@ -276,6 +337,48 @@ async function walletHasTx(daemon, txid) {
         // So the marker itself is now a case. It is asked about, answered
         // and cleared here, or it is said plainly that it could not be --
         // never called resolved.
+        // A MARKER WITH NO TXID AT ALL: NOTHING COULD HAVE BEEN SENT.
+        //
+        // _processPayments claims payment:inflight with SET NX before the
+        // create, fund and sign RPCs, and only adds the txid afterwards. A
+        // crash anywhere in that window leaves a marker with no txid and no
+        // journal line -- a state in which, by construction, no transaction
+        // was ever broadcast.
+        //
+        // The pool pauses on that marker at startup and on every tick, for
+        // ever, and this script could not clear it: there was no txid to ask
+        // the node about, so reconcile raised nothing, so the zero-fatal
+        // early return printed "nothing is unresolved" and exited 0. The only
+        // way out was the manual DEL that every banner forbids.
+        //
+        // Measured by Radenlingga on 2026-11-26 against the real
+        // ShareProcessor: reconcile complaints [], fatal 0, startupReconcile
+        // false, paused true, marker still present after a payment tick.
+        //
+        // There is nothing to ask anybody. The intent is recorded so the
+        // history keeps the fact that a run began and died, and the marker is
+        // cleared so the pool can pay again.
+        if (!fatal.length && inflightRaw && !inflightTxid) {
+            console.log(`  ${YLW}!!${OFF}  a payment marker is present with NO transaction id.`);
+            console.log('      The run died between claiming the marker and');
+            console.log('      building the transaction, so nothing was broadcast:');
+            console.log('      there is no txid because none was ever created.');
+            console.log();
+            if (args.dryRun) {
+                console.log(`  ${DIM}--dry-run: would record the dead run and clear the marker${OFF}\n`);
+                return;
+            }
+            let intent = {};
+            try { intent = JSON.parse(inflightRaw) || {}; } catch { /* shape is the point */ }
+            journal.recordDeadRun(intent);
+            await redis.del(k('payment:inflight'));
+            console.log(`  ${GRN}ok${OFF}    recorded and cleared. Payouts can run again.`);
+            console.log('      The balances it was going to pay are still owed');
+            console.log('      and the next run will pay them.');
+            console.log();
+            return;
+        }
+
         if (!fatal.length && inflightTxid) {
             console.log(`  ${YLW}!!${OFF}  a payment marker is present and the journal raises nothing:`);
             console.log(`      ${inflightTxid}`);

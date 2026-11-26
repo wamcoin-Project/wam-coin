@@ -64,12 +64,27 @@ KINDS = components.recognise_pairs()
 
 
 def bot_text(tag_message: pathlib.Path) -> str:
-    """Exactly what bots/announce.js would send, rendered by that same file."""
+    """Exactly what bots/announce.js would send, rendered by that same file.
+
+    THE BODY IS BUILT THE WAY release.yml BUILDS IT, WHICH IT WAS NOT.
+
+    This used to do `txt.split('-'.repeat(78))[1]` -- discard the title, the
+    preamble and everything else above the rule, then measure. release.yml
+    did `tail -n +2`, which discards the title and nothing else. So this
+    rendered an announcement production never sent, and could not see the
+    defect it existed to catch: for v0.1.14 and v0.1.15 the channels got the
+    tag file's editing instructions and "Full notes at the link below".
+
+    Reported by Radenlingga on 2026-11-26. The body now starts from the whole
+    tag message minus its title, exactly as the workflow does, and the
+    preamble is dropped by announce.js itself -- so what this measures is
+    what the bot does, including the dropping.
+    """
     script = """
     const A = require('./bots/announce.js');
     const { toDiscord } = require('./bots/lib/markup.js');
     const txt = require('fs').readFileSync(process.argv[1], 'utf8');
-    const body = txt.split('-'.repeat(78))[1].replace(/^\\n+/, '');
+    const body = txt.split('\\n').slice(1).join('\\n');
     console.log(toDiscord(A.releaseMessage({ tag: 'v0.0.0', name: 'render',
       url: 'https://wamcoin.org/downloads/', body, prerelease: true })));
     """

@@ -41,6 +41,9 @@ import subprocess
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
+import quoted  # noqa: E402  -- this reads tracked files, so it honours the marks
+
 ROOT = Path(__file__).resolve().parent.parent
 PATCH = ROOT / "scripts" / "patch_upstream.py"
 CHAINPARAMS = ROOT / "src" / "wam" / "chainparams.cpp"
@@ -69,7 +72,9 @@ def main() -> int:
     print(f"{BLD}presync claimed-work cap{OFF}")
     print()
 
-    src = PATCH.read_text(encoding="utf-8", errors="replace")
+    # The marks are honoured: a comment QUOTING the cap expression
+    # is not a tree that has one.
+    src = quoted.strip_quoted(PATCH.read_text(encoding="utf-8", errors="replace"))
     m = re.search(r"UintToArith256\(consensusParams\.powLimit\)\s*>>\s*(\d+)", src)
     if not m:
         bad("scripts/patch_upstream.py no longer caps a presynced header's "
@@ -82,7 +87,7 @@ def main() -> int:
     shift = int(m.group(1))
     ok(f"the cap is powLimit >> {shift}")
 
-    cp = CHAINPARAMS.read_text(encoding="utf-8", errors="replace")
+    cp = quoted.strip_quoted(CHAINPARAMS.read_text(encoding="utf-8", errors="replace"))
     pm = re.search(r'consensus\.powLimit\s*=\s*uint256S\("([0-9a-fA-F]+)"\)', cp)
     if not pm:
         warn("powLimit could not be read from src/wam/chainparams.cpp")

@@ -877,6 +877,56 @@ class ShareProcessor extends EventEmitter {
             let record;
             try { record = JSON.parse(raw); } catch { continue; }
             if (!record || !record.blockHash) continue;
+
+            // ASK THE CHAIN AGAIN. THE CLAIM IS OLD AND THE CHAIN IS NOT.
+            //
+            // _checkPendingBlocks asks the node before it credits anything,
+            // and routes a block at confirmations === -1 to _orphan instead
+            // of paying it. This drain asked nothing: it took the frozen
+            // payout record and applied it on the strength of a maturation
+            // claim that may be arbitrarily old, because a refused credit
+            // leaves the block here until some later sweep finds the fault
+            // cleared.
+            //
+            // So a block claimed mature, refused, and then reorganised off
+            // the best chain while it sat here was credited in full on the
+            // next sweep. Measured by Radenlingga on 2026-11-26 against this
+            // class: 4,750,000,000 base units credited across two miners,
+            // the block written to blocks:confirmed, the maturing list
+            // drained -- with getBlock called ZERO times during the
+            // crediting sweep, while the daemon was reporting
+            // confirmations: -1 the whole time.
+            //
+            // A node that cannot be asked is not a reason to pay: the block
+            // stays where it is and the next sweep tries again. That is the
+            // same answer _checkPendingBlocks gives, and this is the same
+            // question.
+            let chain = null;
+            try {
+                chain = await this.daemon.getBlock(record.blockHash);
+            } catch (err) {
+                this.log.warn(`block ${record.height} could not be re-checked ` +
+                              `against the chain (${err.message}); it stays ` +
+                              'where it is rather than being credited unseen');
+                continue;
+            }
+            if (!chain || typeof chain.confirmations !== 'number') {
+                this.log.warn(`block ${record.height}: the node gave no ` +
+                              'confirmation count, so it stays where it is');
+                continue;
+            }
+            if (chain.confirmations < 0) {
+                this.log.warn(
+                    `block ${record.height} (${record.blockHash.slice(0, 12)}) ` +
+                    'was claimed mature and is now OFF the best chain. It is ' +
+                    'not credited; it is orphaned, which is what the pending ' +
+                    'sweep would have done had the credit not been refused first.');
+                await this._orphan(record.blockHash, record,
+                                   'reorganised while stranded in blocks:maturing');
+                await this.redis.lrem(this.k('blocks:maturing'), 0, raw);
+                continue;
+            }
+
             try {
                 await this._credit(record, raw);
             } catch (err) {
@@ -1017,8 +1067,48 @@ class ShareProcessor extends EventEmitter {
             //
             // Credit when the coin can actually move. A pool that credits
             // earlier is promising money it cannot send.
+            // AND IT IS WRITTEN BACK ONLY IF IT IS STILL THERE TO WRITE.
+            //
+            // This was an unconditional hset, and the snapshot it writes was
+            // taken at the top of the sweep. Two pool processes, or one that
+            // failed over to a daemon at a different height, are enough:
+            // process B reads blocks:pending, stalls on a lagging daemon that
+            // still calls the block immature, and by the time it writes the
+            // field back, process A has claimed that same block through
+            // CLAIM_AND_RECORD and orphaned or credited it. The write-back
+            // puts the field back, and A's next sweep wins the exactly-once
+            // claim a second time.
+            //
+            // Measured by Radenlingga on 2026-11-26 against this class and
+            // the real atomic scripts: one block orphaned twice, poolfees
+            // 500 -> 0 -> -500, blocks:orphaned:count 2 for a single block --
+            // the double fee reversal the claim check was written to stop,
+            // reached by rewriting the field the claim had consumed. The
+            // credit variant did not double-credit (the SADD holds) but
+            // stranded the block in blocks:maturing for ever.
+            //
+            // The first fix tried here was hsetnx, and the test written with
+            // it failed immediately: hsetnx refuses to overwrite a field that
+            // EXISTS, and the hazard is writing back a field that was
+            // deliberately REMOVED. A claimed block's field is gone, so
+            // hsetnx happily put it back.
+            //
+            // The question is not whether the field is free. It is whether
+            // this block has already been accounted for -- orphaned,
+            // credited, or sitting in blocks:maturing with its claim spent --
+            // and whereAccountedFor is the answer this class already has.
+            // A block that is accounted for is never written back, whatever
+            // this sweep's daemon believes about its depth.
             if (block.confirmations <= this.maturity) {
-                await this.redis.hset(this.k('blocks:pending'), hash, JSON.stringify(record));
+                const settled = await this.whereAccountedFor(hash);
+                if (settled) {
+                    this.log.info(
+                        `[blocks] ${hash.slice(0, 12)} is already ${settled}; a ` +
+                        'sweep that read it as immature did not write it back');
+                    continue;
+                }
+                await this.redis.hset(this.k('blocks:pending'), hash,
+                                      JSON.stringify(record));
                 continue;
             }
 

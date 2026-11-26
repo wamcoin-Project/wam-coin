@@ -466,7 +466,35 @@ jobs:
           # "whether the tag message needs a" followed by "on v0.1.4 forks
           # itself off at height 1". A release note is the last thing that
           # should be edited by a regular expression it never asked for.
+          # AND THE PREAMBLE IS NOT PART OF THE RELEASE.
+          #
+          # This was `tail -n +2`, which drops line 1 -- the title -- and
+          # publishes everything else, including the four paragraphs at the
+          # top of posts/<version>/TAG_MESSAGE.txt that exist to warn whoever
+          # EDITS the file. The published release page for v0.1.14 and
+          # v0.1.15 therefore opened with "THIS IS THE FILE THE ANNOUNCEMENT
+          # BOT READS. Read the warning before editing."
+          #
+          # Worse, bots/announce.js reads this body and sends the first whole
+          # paragraphs that fit in twelve lines. The preamble costs exactly
+          # twelve. Both releases were announced to Telegram and Discord as
+          # their own editing instructions and nothing else.
+          #
+          # docs/RELEASING.md's render command and
+          # scripts/test/test_announcement_covers_release.py both split the
+          # tag file on the line of dashes and take what is below it -- so
+          # the two things meant to catch this were measuring a body this
+          # step never produced. Reported by Radenlingga on 2026-11-26.
+          #
+          # One construction now, and it is theirs: everything below the
+          # first rule of dashes. If the file has no such rule the old
+          # behaviour stands, so a tag message written without a preamble is
+          # published whole.
           body="$(printf '%s\n' "$tagmsg" | tail -n +2)"
+          if printf '%s\n' "$body" | grep -qE '^-{20,}[[:space:]]*$'; then
+            body="$(printf '%s\n' "$body" \
+                    | awk '!d && /^-{20,}[[:space:]]*$/ { d = 1; next } d')"
+          fi
           if [ -n "$mandatory" ]; then
             body="$(printf '%s\n' "$body" \
                     | awk -v m="$mandatory" '!d && $0 == m { d = 1; next } { print }')"

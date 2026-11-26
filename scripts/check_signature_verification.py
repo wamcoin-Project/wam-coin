@@ -98,7 +98,21 @@ OWN_KEYRING = {
 
 def main() -> int:
     files = sorted(
-        p for pat in ("*.sh", "*.py", "**/*.sh", "**/*.py")
+        # *.ps1 BELONGS HERE, AND WAS NOT HERE.
+        #
+        # verify_release.ps1 is the verification this project publishes for
+        # Windows -- the audience its own header calls "the entire audience
+        # the Windows build was added for" -- and this gate never globbed it.
+        # So when verify_release.sh gained the present-but-unlisted check in
+        # v0.1.15 and the .ps1 did not, nothing noticed: the same directory
+        # passed one verifier and failed the other, and the gate that exists
+        # to compare them read 175 scripts without opening either .ps1.
+        #
+        # Reported by Warung Bunda Kanse Bunda on 2026-11-22 (the missing
+        # check) and by Radenlingga on 2026-11-26, who named this glob as the
+        # reason it could go unnoticed.
+        p for pat in ("*.sh", "*.py", "*.ps1",
+                      "**/*.sh", "**/*.py", "**/*.ps1")
         for p in (ROOT / "scripts").glob(pat)
     ) + [ROOT / "install.sh"]
     seen, checked = set(), []

@@ -148,6 +148,32 @@ class PaymentJournal {
         this._append({ at: Date.now(), state: ABANDONED, txid, why: String(why).slice(0, 300) });
     }
 
+    /**
+     * A payment run that died before it had a transaction to name.
+     *
+     * _processPayments claims payment:inflight before the create, fund and
+     * sign RPCs. A crash in that window leaves a marker with no txid: no
+     * transaction was built, so none was broadcast, so there is nothing to
+     * reconcile and nothing any future check could ask the node about.
+     *
+     * It is written down anyway, with the intent the marker carried, so the
+     * history records that a run began and died rather than leaving a gap
+     * somebody has to infer. It carries no txid by design and read() keys on
+     * txid, so it is deliberately not an entry: it is a line for a person.
+     */
+    recordDeadRun(intent) {
+        this._append({
+            at: Date.now(),
+            state: 'dead-run',
+            total: (intent && intent.total) || 0,
+            startedAt: (intent && intent.startedAt) || null,
+            payees: intent && intent.payouts
+                ? Object.keys(intent.payouts).length : 0,
+            why: 'the run died between claiming payment:inflight and building ' +
+                 'the transaction; nothing was broadcast'
+        });
+    }
+
     /** True if the file has ever been written. */
     exists() {
         return fs.existsSync(this.path);
@@ -193,6 +219,13 @@ class PaymentJournal {
             if (!line.trim()) continue;
             let rec;
             try { rec = JSON.parse(line); } catch { damaged++; continue; }
+            // A dead-run line carries no txid BY DESIGN -- the run died
+            // before a transaction existed to name. It is a note for a
+            // person, not an entry to reconcile, and counting it as damaged
+            // would raise "the file has been edited" over a line this code
+            // wrote itself. Measured when recordDeadRun was first added:
+            // damaged went to 1 on a journal with one such line.
+            if (rec && rec.state === 'dead-run') continue;
             if (!rec || typeof rec.txid !== 'string') { damaged++; continue; }
             const held = entries.get(rec.txid) || { txid: rec.txid };
             if (rec.state === BROADCAST) {
@@ -253,7 +286,7 @@ async function reconcile(journal, redis, doneKey, inflightRaw) {
         return complaints;
     }
 
-    const { entries, damaged } = journal.read();
+    const { entries, damaged, partial } = journal.read();
 
     if (damaged) {
         complaints.push({
@@ -271,7 +304,58 @@ async function reconcile(journal, redis, doneKey, inflightRaw) {
         } catch { /* the unfinished-run report says this better */ }
     }
 
-    const recent = [...entries.values()].slice(-CHECK_RECENT);
+    // THE WINDOW IS ORDERED BY BROADCAST, AND A LATE COMMIT NEVER MOVES.
+    //
+    // read() builds its Map keyed by txid, so an entry's position is fixed by
+    // the line that created it -- the broadcast. When the committed line for
+    // an old broadcast arrives later, entries.set() on an existing key does
+    // not move it to the end. A payment broadcast, left uncommitted while a
+    // hundred newer payments came and went, and only then committed, sits at
+    // the FRONT of the Map for ever and falls out of slice(-CHECK_RECENT).
+    //
+    // The header of this file argues nothing scrolls out unnoticed, because
+    // whatever the window is looking for would have stopped the pool. An
+    // entry that was never checked cannot stop anything. Measured by
+    // Radenlingga on 2026-11-26: 106 entries, the victim at index 0 with
+    // committedAt set, redis holding all 105 newer txids and not the victim
+    // -- reconcile() returned an empty list. Zero complaints for a committed
+    // payment whose redis record was lost, which is the one thing this
+    // function exists to catch.
+    //
+    // Committed entries are now ALWAYS checked, however old. There are at
+    // most as many of them as the journal holds, each costs one sismember,
+    // and the alternative is the failure above. The window still bounds the
+    // uncommitted ones, where it is doing what it was written for.
+    const all = [...entries.values()];
+    const window = all.slice(-CHECK_RECENT);
+    const older = all.slice(0, Math.max(0, all.length - CHECK_RECENT))
+                     .filter((e) => e.committedAt && !e.abandonedAt);
+    const recent = older.concat(window);
+
+    // AND A TRUNCATED READ IS NOT A CLEAN ONE.
+    //
+    // read() returns partial: true when the journal is longer than TAIL_BYTES
+    // and it could only read the tail -- so every payment whose lines fell
+    // before that point is ABSENT from entries, not merely outside the
+    // window. reconcile() destructured { entries, damaged } and dropped the
+    // flag on the floor: a committed payment in the unread region was never
+    // checked, and nothing said the file had been truncated. The same report
+    // measured it: a 587,667-byte journal, the victim's two lines at the very
+    // start, read() reporting partial: true and 982 entries without the
+    // victim, and reconcile() returning [].
+    //
+    // It is not fatal -- a long journal is normal and the tail is the part
+    // that matters most -- but it is said, because "I checked" and "I checked
+    // what I could see" are different sentences.
+    if (partial) {
+        complaints.push({
+            fatal: false,
+            text: `${journal.path} is longer than ${TAIL_BYTES} bytes, so only ` +
+                  'its tail was read. Payments recorded before that point were ' +
+                  'not compared against redis at all. Rotate or archive the ' +
+                  'journal if you want the whole history checked.'
+        });
+    }
 
     for (const entry of recent) {
         // The node refused it outright, so no coins moved and there is

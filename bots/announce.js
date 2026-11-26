@@ -424,8 +424,51 @@ function headParagraphs(text, maxLines) {
 }
 
 
+/**
+ * Drop the tag file's editorial preamble, if the body still carries it.
+ *
+ * posts/<version>/TAG_MESSAGE.txt opens with instructions to whoever edits
+ * it -- "THIS IS THE FILE THE ANNOUNCEMENT BOT READS", the git command, and
+ * the warning that the first two paragraphs are what the channels see. A
+ * line of dashes then separates that from the release itself.
+ *
+ * That preamble is four paragraphs and costs exactly twelve lines under
+ * headParagraphs' counting: 1, then 1+1, then 5+1, then 2+1. So when a body
+ * arrives with it still attached, the whole budget is spent on the editing
+ * instructions and not one word of the release is sent.
+ *
+ * It happened twice. The Telegram and Discord announcements for v0.1.14 and
+ * v0.1.15 were the preamble followed by "Full notes at the link below", and
+ * the published release pages opened with it too. Reported by Radenlingga on
+ * 2026-11-26 with a proof-of-concept that reproduces both word for word.
+ *
+ * The root cause is that three places built the body three different ways:
+ * release.yml took `tail -n +2`, while docs/RELEASING.md's render command and
+ * the coverage test split on the dashes -- so the two things meant to catch
+ * this measured an announcement production never sends. release.yml is fixed
+ * to agree with them, and this is here as well: the bot is the last thing
+ * between a tag file and five thousand people, and it should not depend on
+ * every caller upstream having got it right.
+ */
+function withoutPreamble(text) {
+    const lines = String(text).split('\n');
+    // The first separator of 20 dashes or more, within the first 60 lines.
+    // Bounded on both counts: a release note may legitimately draw a rule
+    // under a heading further down, and that is not a preamble boundary.
+    for (let i = 0; i < Math.min(lines.length, 60); i++) {
+        if (/^-{20,}\s*$/.test(lines[i])) {
+            const rest = lines.slice(i + 1).join('\n').replace(/^\s*\n+/, '');
+            // Only if something is left. A body that is nothing but preamble
+            // is a different fault and is not silently emptied here.
+            if (rest.trim()) return rest;
+            return text;
+        }
+    }
+    return text;
+}
+
 function releaseMessage(release) {
-    const raw = String(release.body || '');
+    const raw = withoutPreamble(String(release.body || ''));
     const flag = raw.match(MANDATORY);
 
     // The marker line is removed from the body it is quoted from, so the

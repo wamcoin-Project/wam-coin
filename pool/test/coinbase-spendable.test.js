@@ -51,6 +51,23 @@ function fakeRedis() {
         async hgetall(k) { return Object.fromEntries(hash(k)); },
         async hdel(k, f) { return hash(k).delete(f) ? 1 : 0; },
         async hset(k, f, v) { hash(k).set(f, v); return 1; },
+        // The immature write-back uses hsetnx so a sweep cannot resurrect a
+        // block another sweep has already claimed. A double that does not
+        // implement what production calls is a double that cannot catch
+        // anything, so it is implemented here with redis's own semantics:
+        // write and return 1 only when the field is absent.
+        async hsetnx(k, f, v) {
+            if (hash(k).has(f)) return 0;
+            hash(k).set(f, v);
+            return 1;
+        },
+        // whereAccountedFor asks this before a sweep writes an immature
+        // snapshot back, so a block another sweep already claimed is never
+        // resurrected. A double without it fails with "not a function",
+        // which is the double's fault and not the code's.
+        async hexists(k, f) { return hash(k).has(f) ? 1 : 0; },
+        // whereAccountedFor also reads blocks:maturing, which is a list.
+        async lrange() { return []; },
         async hincrby(k, f, n) {
             const cur = Number(hash(k).get(f) || 0) + Number(n);
             hash(k).set(f, String(cur));
