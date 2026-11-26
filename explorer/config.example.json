@@ -15,6 +15,12 @@
   "siteName": "WAM Network",
   "logLevel": "info",
 
+  "_explorerRequestsPerMinute": "Per-caller ceiling on /api/* in any 60-second window, keyed on the socket address. /api/health is never refused, because monitoring polls it. 120 is two a second, well above a browser refreshing several panels. Raise it when a reverse proxy fronts the dashboard: every request then arrives from the proxy and shares one bucket. Until 2026-11-26 this key was accepted and ignored -- the loader dropped it and the limiter used its own default -- which is why it is written down here now.",
+  "explorerRequestsPerMinute": 120,
+
+  "_seedHostnames": "Seed names without the x9. prefix, for the network panel. Leave it out to use this project's own seeds.",
+
+
   "rpc": {
     "host": "127.0.0.1",
     "port": 9554,

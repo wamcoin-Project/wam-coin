@@ -317,6 +317,39 @@ not the URL a stranger follows. `release_watch` held the announcement and
 alarmed, which is why nothing incomplete reached the channels. The guard is
 the net; this step is so the net is never needed.
 
+### And then install it as a stranger, before anyone is told
+
+```
+bash scripts/test/stranger.sh <version>
+```
+
+`check_release_ready.sh` proves the files are there and signed.
+`stranger.sh` proves they **run**, and it is the one step in this runbook
+that uses nothing from the working tree: the binaries come out of the
+published archives, the verification is the `verify_release.sh` the website
+serves, and the chain is made from an empty directory. It then starts the
+node, runs the miner's `--check` against it, brings the pool and the
+explorer up against that node, counts refusals from both rate limiters, and
+renders the announcement through the bot's own code.
+
+It hashes nothing. `--check` builds one block from the template and asks the
+node whether it is valid; proof of work is proved by `test_platform_solo.sh`
+on hardware this project owns, for the reason in `scripts/test/stranger.sh`.
+
+**Run it here, between uploading and publishing.** The files are reachable
+at `wamcoin.org/downloads/<version>/` from the step above and nothing has
+been announced, so a failure costs a re-upload instead of a correction in
+six channels. Before anything is uploaded at all it takes `--from <dir>`
+against the staged archives, which is how a candidate is tested; that run
+prints `skip` for the website's own copies of the verifier and the key,
+because it had to take them from the checkout, and a skip is a gap in the
+evidence rather than a pass.
+
+Why this exists, in one line: v0.1.15 passed the release gate, the sweep,
+four test suites and a three-agent review, and two readers then sent
+twenty-eight defects in it. Every report they sent carried a number and
+every check of ours carried an argument. They ran it; we read it.
+
 ## 4c. Our own machines run it, immediately after publishing
 
 ```

@@ -150,7 +150,37 @@ function loadConfig(argv) {
             '  config.example.json to config.json and fill in rpcuser/rpcpassword.');
     }
 
+    // THE OPERATOR'S CONFIG GOES THROUGH; THE NAMED KEYS ARE NORMALISED.
+    //
+    // This was a literal naming six keys, so every other key in config.json
+    // was dropped between the file and the server -- read later as undefined
+    // and silently replaced by a default. Two settings were lost that way:
+    //
+    //   explorerRequestsPerMinute  the per-caller rate limit added in
+    //                              v0.1.15. The limiter ran at its own
+    //                              default of 120 whatever the operator
+    //                              wrote, and the comment above it says
+    //                              "explorerRequestsPerMinute is there to be
+    //                              raised when that is the shape" -- a
+    //                              promise three lines above code that could
+    //                              not keep it.
+    //   seedHostnames              the seed list, which fell back to the
+    //                              compiled-in names.
+    //
+    // Neither is visible at runtime. The limiter still refuses at 120, the
+    // seed panel still fills, and every test of both passed -- because every
+    // test used the default, and at the default a dropped setting and an
+    // honoured one are the same thing. Found on 2026-11-26 by
+    // scripts/test/stranger.sh, on the first run that set the limit to five
+    // and counted the refusals: twelve requests, twelve 200s.
+    //
+    // Spreading cfg first is the fix for the class, not for the two keys. A
+    // setting added to config.json next year arrives at the server without
+    // anybody remembering to widen this list, which is the mistake that was
+    // made here and would be made again. The normalised keys follow the
+    // spread so they still win.
     return {
+        ...cfg,
         rpc: {
             host: cfg.rpc.host || '127.0.0.1',
             port: cfg.rpc.port || DEFAULT_RPC_PORTS.main,
