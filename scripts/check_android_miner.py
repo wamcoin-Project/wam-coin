@@ -46,6 +46,7 @@ verifies the output differs from miner/src by only ANDROID_EDITS.
 
 import difflib
 import pathlib
+import re
 import subprocess
 import sys
 import tempfile
@@ -187,8 +188,78 @@ def main() -> int:
                                       "fix it, and until somebody runs one this "
                                       "is what a `git checkout` compiles"))
 
+        # AND THE FILES THIS CHECK HAS NEVER LOOKED AT.
+        #
+        # Everything above compares cpp/src against miner/src. miner_jni.cpp
+        # lives in cpp/ itself -- it is the JNI glue, it has no counterpart
+        # in miner/src, and so it was never diffed and never missed. It had
+        # drifted on two counts by 26 November 2026: no rekey cooldown, where
+        # main.cpp defers for five minutes, and the pre-fix extranonce2 shift
+        # that is undefined behaviour at size 8. Reported by mpit, who also
+        # named the reason: "miner_jni.cpp sits in cpp/ itself, not under
+        # cpp/src, so it is never diffed".
+        #
+        # A file with no counterpart cannot be diffed. What it can be is
+        # DECLARED: every source under cpp/ is either diffed above, or named
+        # here with the invariants it has to keep. A new file appearing in
+        # cpp/ fails this until somebody says which of the two it is, so the
+        # blind spot cannot come back silently.
+        app_root = (ROOT / "contrib" / "wam-miner-android" / "app" / "src"
+                    / "main" / "cpp")
+        # name -> list of (what must be present, why it matters)
+        # THE NEEDLE HAS TO BE THE DECLARATION, NOT THE NAME.
+        #
+        # The first version of this list asked for "kRekeyCooldownMs" and
+        # passed when the declaration was renamed away, because the name
+        # still appeared in the comment above it and at the use site below
+        # -- a file that would not compile, reported as intact. Proved by
+        # removing it and watching this say ok.
+        #
+        # So each invariant names the line that would have to be rewritten
+        # for the behaviour to be gone, and comments are stripped before the
+        # search: a check satisfiable by prose about the check is not a
+        # check.
+        APP_ONLY = {
+            "miner_jni.cpp": [
+                ("constexpr int64_t kRekeyCooldownMs = 5 * 60 * 1000;",
+                 "the five-minute rekey cooldown declaration main.cpp has; "
+                 "without it a flapping pool rebuilds the dataset on every "
+                 "job, on a phone, on battery"),
+                ("now - lastRekeyMs < kRekeyCooldownMs",
+                 "the cooldown's use: declaring it and never testing it is "
+                 "the same as not having it"),
+                ("en2[size_t(job.extranonce2Size - 1 - i)] =",
+                 "the extranonce2 written from the low end; the old form "
+                 "shifts a uint32_t by up to 56, which is undefined and makes "
+                 "every worker share one prefix on 32-bit ARM"),
+            ],
+        }
+
+        def code_only(text):
+            """Comments removed, for the reason in the block above."""
+            text = re.sub(r"/\*.*?\*/", " ", text, flags=re.S)
+            return re.sub(r"//[^\n]*", " ", text)
+
+        if app_root.is_dir():
+            for p in sorted(app_root.glob("*.c*")) + sorted(app_root.glob("*.h")):
+                name = p.name
+                if name in shared:
+                    continue
+                if name not in APP_ONLY:
+                    bad.append((name,
+                                "is in cpp/ and is neither diffed against "
+                                "miner/src nor declared in APP_ONLY, so "
+                                "nothing checks it at all -- which is how "
+                                "miner_jni.cpp drifted for weeks"))
+                    continue
+                text = code_only(p.read_text(encoding="utf-8", errors="replace"))
+                for needle, why in APP_ONLY[name]:
+                    if needle not in text:
+                        bad.append((name, f"has lost {why}"))
+
         print(f"  {GRN}ok{OFF}    {len(shared)} shared file(s), "
               f"{len(ANDROID_EDITS)} recorded Android difference(s), "
+              f"{len(APP_ONLY)} app-only file(s) with declared invariants, "
               f"tracked copy included")
 
         if bad:

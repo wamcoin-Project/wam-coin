@@ -264,12 +264,39 @@ foreach ($line in Get-Content -LiteralPath $sums) {
         $listed[$matches[2]] = $true
     }
 }
+# THREE GLOBS IN THE TOP DIRECTORY IS NOT "EVERY FILE", AND THAT IS WHAT THE
+# BANNER CLAIMS.
+#
+# This enumerated -Include 'wam-coin-*','wam-miner-*','wam-qt-*' with no
+# -Recurse and no -Force, so it saw nothing in a subdirectory, nothing
+# hidden, and nothing named anything else -- a bare wamd.exe, an installer,
+# a dotfile. The .sh had exactly this shape and was widened on 26 November
+# 2026; this one was left, which is the half-fix that keeps happening here.
+# Reported by mpit the same day as the residual.
+#
+# Every file, at any depth, hidden included, except the three this
+# verification is made of and the verifiers themselves -- the same exception
+# list the .sh uses, for the same reason: you are running one of them, so you
+# chose it.
+#
+# Paths are compared relative to $Directory and with forward slashes, because
+# that is how SHA256SUMS writes a name that is in a subdirectory, and a
+# backslash would make a genuine listed path read as unlisted.
+$root = (Resolve-Path -LiteralPath $Directory).Path.TrimEnd('\', '/')
+$selfFiles = @('SHA256SUMS', 'SHA256SUMS.asc', 'SIGNING-KEY.asc',
+               'verify_release.ps1', 'verify_release.sh')
 $unlisted = @()
-foreach ($item in Get-ChildItem -LiteralPath $Directory -File `
-                    -Include 'wam-coin-*','wam-miner-*','wam-qt-*' `
-                    -Name -ErrorAction SilentlyContinue) {
-    if ($item -like '*.asc' -or $item -like 'SHA256SUMS*') { continue }
-    if (-not $listed.ContainsKey($item)) { $unlisted += $item }
+foreach ($item in Get-ChildItem -LiteralPath $Directory -File -Recurse -Force `
+                    -ErrorAction SilentlyContinue) {
+    $rel = $item.FullName
+    if ($rel.StartsWith($root)) { $rel = $rel.Substring($root.Length) }
+    $rel = $rel.TrimStart('\', '/') -replace '\\', '/'
+
+    # An array test and not a switch: in PowerShell `continue` inside a
+    # switch leaves the SWITCH, not the enclosing foreach, so every name
+    # after the first match would have fallen through to the check below.
+    if ($selfFiles -contains $rel) { continue }
+    if (-not $listed.ContainsKey($rel)) { $unlisted += $rel }
 }
 if ($unlisted.Count -gt 0) {
     Write-Host ""

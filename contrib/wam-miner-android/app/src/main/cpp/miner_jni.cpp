@@ -7,6 +7,8 @@
 #include <memory>
 #include <functional>
 #include <cstring>
+#include <chrono>
+#include <cstdint>
 #include <android/log.h>
 
 #include "randomx_engine.h"
@@ -117,9 +119,23 @@ void wamWorkerLoop(int workerId, wam::RandomXEngine &engine, wam::SharedState &s
                 continue;
             }
 
+            // WRITTEN FROM THE LOW END, so the shift is only ever 0, 8, 16
+            // or 24.
+            //
+            // This shifted a uint32_t by 8 * (size - 1 - i). At the
+            // extranonce2Size of 8 a pool is allowed to ask for, i == 0 gives
+            // a shift of 56 -- undefined behaviour, and on 32-bit ARM the CPU
+            // masks it to 24, so every worker writes the same first byte and
+            // they all collide on one prefix and duplicate each other's work.
+            //
+            // miner/src/main.cpp was fixed in the v0.1.15 review cycle. This
+            // copy was not, because scripts/check_android_miner.py diffs
+            // cpp/src against miner/src and this file is in cpp/. Reported
+            // by mpit, 26 November 2026.
             en2.assign(size_t(job.extranonce2Size), 0);
             for (int i = 0; i < job.extranonce2Size && i < 4; i++) {
-                en2[size_t(i)] = uint8_t(uint32_t(workerId) >> (8 * (job.extranonce2Size - 1 - i)));
+                en2[size_t(job.extranonce2Size - 1 - i)] =
+                    uint8_t(uint32_t(workerId) >> (8 * i));
             }
             job.extranonce2Hex = wam::ToHex(en2);
             wam::BuildHeader(job, en2, header);
@@ -188,11 +204,72 @@ void wamWorkerLoop(int workerId, wam::RandomXEngine &engine, wam::SharedState &s
 // =======================================================================
 // FIX: Inject the UI piping handler directly inside the job dispatch layer
 // =======================================================================
+// A REKEY COOLDOWN, BECAUSE THE DESKTOP MINER HAS ONE AND THIS IS THE SAME
+// MINER ON A PHONE.
+//
+// miner/src/main.cpp:73 holds kRekeyCooldownMs at five minutes and defers a
+// rekey that arrives inside it, publishing the template under the key it is
+// already holding. The key rotates about once every three days, so a second
+// change inside five minutes is a pool that is broken or somebody on the
+// path who is not the pool -- and rebuilding a RandomX dataset on a phone
+// costs far more than it costs a desktop, in battery as well as time.
+//
+// This file had none of it and rekeyed on every seed change it was handed.
+// Reported by mpit, 26 November 2026: the same class as the Android copy
+// that was already paid for, in the one file the sync checker never looks
+// at, because it lives in cpp/ rather than cpp/src.
+static constexpr int64_t kRekeyCooldownMs = 5 * 60 * 1000;
+
+static int64_t wamNowMs() {
+    return std::chrono::duration_cast<std::chrono::milliseconds>(
+               std::chrono::steady_clock::now().time_since_epoch()).count();
+}
+
 bool wamPublishJob(wam::RandomXEngine &engine, wam::SharedState &state, int threads,
                    const wam::StratumJob &incoming) {
     std::string seedErr;
     const wam::Bytes previous = engine.CurrentSeed();
-    if (previous != incoming.seed) {
+
+    // Held across calls, exactly as main.cpp holds them across its loop.
+    static int64_t lastRekeyMs = 0;
+    static wam::Bytes deferred;
+
+    wam::StratumJob job = incoming;
+
+    if (previous != job.seed) {
+        const int64_t now = wamNowMs();
+        if (!previous.empty() && lastRekeyMs != 0 &&
+            now - lastRekeyMs < kRekeyCooldownMs) {
+            if (deferred != job.seed) {
+                deferred = job.seed;
+                LOGI("a RandomX key change arrived %llds after the last one; "
+                     "it waits %llds rather than rebuilding again",
+                     (long long) ((now - lastRekeyMs) / 1000),
+                     (long long) ((kRekeyCooldownMs - (now - lastRekeyMs)) / 1000));
+                pipeMessageToAndroidUI(
+                    "⏳ A second RandomX key change arrived within five "
+                    "minutes. Mining continues on the current key.");
+            }
+            // The current template under the key we are holding: a stale key
+            // with a current template beats a stale template.
+            job.seed = previous;
+            {
+                std::lock_guard<std::mutex> lock(state.jobMutex);
+                state.job = job;
+            }
+            state.jobEpoch.fetch_add(1);
+            return true;
+        }
+
+        // The cooldown has passed. A key that arrived during it is applied
+        // now, without waiting for the pool to send it again.
+        if (!deferred.empty() && deferred != job.seed) {
+            LOGI("applying the RandomX key that arrived during the cooldown");
+            job.seed = deferred;
+        }
+        deferred.clear();
+        lastRekeyMs = now;
+
         if (!previous.empty()) {
             LOGI("RandomX context key rotating... recalculating dataset.");
             pipeMessageToAndroidUI("🔄 RandomX context key rotating... recalculating dataset.");
@@ -200,7 +277,7 @@ bool wamPublishJob(wam::RandomXEngine &engine, wam::SharedState &state, int thre
             LOGI("Preparing RandomX allocations (this takes a moment)...");
             pipeMessageToAndroidUI("🧠 Preparing RandomX allocations (this takes a moment)...");
         }
-        if (!engine.SetSeed(incoming.seed, seedErr)) {
+        if (!engine.SetSeed(job.seed, seedErr)) {
             LOGE("Dataset error configuration pass dropped: %s", seedErr.c_str());
             pipeMessageToAndroidUI("❌ Dataset error configuration pass dropped: " + seedErr);
             state.running.store(false);
@@ -220,7 +297,10 @@ bool wamPublishJob(wam::RandomXEngine &engine, wam::SharedState &state, int thre
 
     {
         std::lock_guard<std::mutex> lock(state.jobMutex);
-        state.job = incoming;
+        // `job`, not `incoming`: a key deferred through the cooldown above is
+        // applied into `job`, and publishing `incoming` here would throw it
+        // away and leave the engine keyed to something the job does not name.
+        state.job = job;
     }
     state.jobEpoch.fetch_add(1);
 

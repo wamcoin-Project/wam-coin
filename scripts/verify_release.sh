@@ -242,6 +242,7 @@ ok "$checked file(s) match the signed list, byte for byte"
 # a NUL-separated read, because a file name may contain anything at all --
 # which is the second half of the same finding.
 listed_names="$(sed 's/^[^ ]*  *[*]\?//' SHA256SUMS)"
+NL=$'\n'
 unlisted_count=0
 unlisted_show=""
 while IFS= read -r -d '' f; do
@@ -250,9 +251,36 @@ while IFS= read -r -d '' f; do
         SHA256SUMS|SHA256SUMS.asc|SIGNING-KEY.asc) continue ;;
         verify_release.sh|verify_release.ps1) continue ;;
     esac
-    # printf '%s\n' then a whole-line compare, with the name ending the
-    # stream: a name carrying a newline cannot match a single listed line.
-    if ! printf '%s\n' "$listed_names" | grep -qxF -- "$f"; then
+    # A NAME WITH A NEWLINE IN IT IS NOT A NAME, AND grep CANNOT BE ASKED
+    # ABOUT ONE.
+    #
+    # The line above used to read "a name carrying a newline cannot match a
+    # single listed line", and that was false. grep -F splits its PATTERN on
+    # newlines, so `grep -qxF -- "$f"` with a two-line name asks whether any
+    # listed line equals line one OR line two. A file called
+    #
+    #     evil-payload.exe<newline>wam-coin-v0.1.15-x86_64-linux-gnu.tar.gz
+    #
+    # matched on its second line and was treated as listed, so an unsigned
+    # file sat in the release directory and this script printed "unmodified
+    # since it was signed" and exited 0.
+    #
+    # Measured by mpit on 26 November 2026 against this script and the real
+    # published release. It was the SECOND hole in this one check: the first
+    # was three globs in the top directory, reported the same day.
+    #
+    # The fix is not a better grep. This project has never written a file
+    # name containing a newline and never will, SHA256SUMS cannot express
+    # one unambiguously, and a download carrying one is hostile by
+    # construction. So it is unlisted by definition, before grep is asked
+    # anything -- and grep is then only ever handed a single line.
+    if [ "${f#*"$NL"}" != "$f" ]; then
+        unlisted_count=$((unlisted_count + 1))
+        if [ "$unlisted_count" -le 20 ]; then
+            unlisted_show="$unlisted_show$(printf '%s' "$f" | tr '\n' '?')
+"
+        fi
+    elif ! printf '%s\n' "$listed_names" | grep -qxF -- "$f"; then
         unlisted_count=$((unlisted_count + 1))
         if [ "$unlisted_count" -le 20 ]; then
             unlisted_show="$unlisted_show$(printf '%s' "$f" | tr '\n' '?')

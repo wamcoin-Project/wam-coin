@@ -82,13 +82,30 @@ for path in CONFIGS:
 
 lower = {d.lower(): d for d in defined}
 
+def without_comments(text):
+    """Code only, because a comment is where the mistake gets EXPLAINED.
+
+    The first version of this guard scanned whole files, so the comment
+    written above the fix -- naming the wrong key in order to say it was
+    wrong -- made the guard report the defect it had just caused to be
+    fixed. A check that fires on its own fix is a check the next reader
+    learns to skip, and that is worse than not having it.
+
+    Block comments first, then line comments. A `//` inside a string
+    literal takes the rest of that line with it, which can only ever lose
+    a `config.X` that was inside a string -- not a read either.
+    """
+    text = re.sub(r"/\*.*?\*/", " ", text, flags=re.S)
+    return re.sub(r"//[^\n]*", " ", text)
+
+
 read = {}
 for path in SOURCES:
     if not os.path.exists(path):
         continue
     try:
         with io.open(path, encoding="utf-8", errors="replace") as handle:
-            text = handle.read()
+            text = without_comments(handle.read())
     except OSError as err:
         print("%serror%s  %s: %s" % (RED, OFF, path, err))
         sys.exit(2)
@@ -122,7 +139,7 @@ for parent, children in sorted(nested.items()):
         if not os.path.exists(path):
             continue
         with io.open(path, encoding="utf-8", errors="replace") as handle:
-            text = handle.read()
+            text = without_comments(handle.read())
         pattern = r"\bconfig\.%s\.([a-zA-Z_][a-zA-Z0-9_]*)" % re.escape(parent)
         for match in re.finditer(pattern, text):
             child = match.group(1)

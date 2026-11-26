@@ -177,8 +177,26 @@ inline Target DifficultyToTarget(double difficulty)
 {
     Target t;
 
+    // THE CLAMP WENT THE WRONG WAY, AND SO DID THE COMMENT ABOVE IT.
+    //
+    // MeetsTarget is `memcmp(hash, target) <= 0`, so a LARGER target is an
+    // easier one. This branch filled the target with 0xFF -- the largest
+    // 256-bit value there is -- and the comment beside it said "impossible
+    // to beat". Every hash beats it. A difficulty of zero, or a NaN, asked
+    // for the hardest target and got the easiest.
+    //
+    // main.cpp never reaches it: GetDifficulty() returns `d > 0 ? d : 1.0`,
+    // so the live caller cannot pass zero or NaN. That is why it survived --
+    // and why it is worth fixing rather than leaving, because a defensive
+    // branch that is wrong is a trap set for the next caller, with a comment
+    // that tells them it is safe.
+    //
+    // All zeroes is the hardest target expressible: only a hash of 32 zero
+    // bytes meets it. A caller who asks for an impossible difficulty gets an
+    // impossible target and submits nothing, which is the failure that costs
+    // nobody anything.
     if (!(difficulty > 0)) {                    // also catches NaN
-        std::memset(t.bytes, 0xFF, 32);         // impossible to beat
+        std::memset(t.bytes, 0x00, 32);         // nothing beats this
         return t;
     }
 
@@ -190,7 +208,18 @@ inline Target DifficultyToTarget(double difficulty)
     uint64_t scaled = (scaledF >= 18446744073709549568.0)
         ? 0xFFFFFFFFFFFFFFFFull
         : uint64_t(scaledF);
-    if (scaled == 0) scaled = 1;
+    // Same direction as the branch above, for the same reason. This clamped
+    // to 1, which divides DIFF1<<32 by one and returns the largest target
+    // the function can produce -- so every difficulty below 2^-32 made every
+    // hash a share. Reported by mpit, 26 November 2026. mining.set_difficulty
+    // now refuses anything under the pool's own 1e-9 floor before it reaches
+    // here; this is the arithmetic saying the same thing, so a caller
+    // arriving by another road gets an impossible target instead of a free
+    // one.
+    if (scaled == 0) {
+        std::memset(t.bytes, 0x00, 32);
+        return t;
+    }
 
     // Long division, most significant limb first. The intermediate is at most
     // 96 bits, so a 128-bit accumulator is exact.

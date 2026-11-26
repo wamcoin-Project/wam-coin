@@ -300,6 +300,14 @@ run "pool, miner and node agree on addresses" \
 run "the phone runs the same miner" \
     "$PY" scripts/check_android_miner.py
 
+# And it still compiles. miner_jni.cpp is the only C++ here that nothing on
+# a developer's machine builds -- the NDK does it, and everywhere else it is
+# a text file. It was missing the desktop's rekey cooldown and carrying an
+# extranonce2 shift that is undefined at size 8, in a file neither compiled
+# nor diffed. Reported by mpit, 26 November 2026.
+run "the phone's C++ still compiles" \
+    bash scripts/test/test_android_jni_syntax.sh
+
 # And the miner's own tests are actually run. Until 9 November 2026 nothing
 # in this repository opened miner/test/ -- three test programs, one of them
 # extended the day before to hold down a paid finding, and no gate that could

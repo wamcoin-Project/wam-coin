@@ -251,18 +251,36 @@ const ADDR = 'WdMMqW1DcgWZ6HtyJuEMdce6QkKg4raGmE';
             'it stopped answering the question it exists for');
     });
 
-    await test('while the operator reading it directly still gets all of it',
-               async () => {
-        // No proxy header: the request really did come from this machine.
+    await test('and a loopback caller gets no more, because it may not be '
+               + 'the operator', async () => {
+        // THIS CASE USED TO ASSERT THE OPPOSITE, AND THAT WAS THE FOURTH LEAK.
+        //
+        // It required that a request with no forwarded header carried
+        // memoryMb and connections, on the reasoning that such a request
+        // "really did come from this machine". It does not. nginx only sets
+        // X-Forwarded-For when it is configured to, and when apiBind is
+        // 127.0.0.1 a remote caller can ONLY arrive through a local proxy --
+        // so a loopback socket with no header is exactly as likely to be a
+        // stranger as the operator, and nothing in the request can tell them
+        // apart.
+        //
+        // Two fixes narrowed that condition and it leaked both times.
+        // Reported a third time by mpit on 26 November 2026. The condition
+        // is gone: detail is opt-in through apiHealthDetail, and the case
+        // below proves an operator who asks for it still gets it.
         const { api, port } = await listen();
         const r = await get(port, '/api/health');
         api.close();
         const body = JSON.parse(r.raw.toString());
-        for (const kept of ['memoryMb', 'connections']) {
-            assert.ok(kept in body,
-                `the operator's own monitoring lost ${kept}, which is what it `
-                + 'reads this endpoint for');
+        for (const leak of ['memoryMb', 'connections']) {
+            assert.ok(!(leak in body),
+                `a caller with no forwarded header got the pool's ${leak}. `
+                + 'Behind a proxy that does not set X-Forwarded-For -- which '
+                + 'is nginx\'s default -- that is every stranger on the '
+                + 'internet.');
         }
+        assert.ok('ok' in body && 'problems' in body && 'uptimeSec' in body,
+            'it stopped answering the question it exists for');
     });
 
     await test('and the operator\'s own reply is not then handed to a stranger',
@@ -279,21 +297,28 @@ const ADDR = 'WdMMqW1DcgWZ6HtyJuEMdce6QkKg4raGmE';
         // read the socket address, which behind nginx is the proxy. The
         // second read the forwarded caller, correctly, and the cache in
         // front of it handed the answer out anyway.
+        // AND THE HAZARD IS GONE RATHER THAN GUARDED, which is the point of
+        // the change above: _health no longer decides anything from the
+        // caller, so there is no caller-specific body for a shared cache to
+        // hand to the wrong person. The assertion is the strong one -- the
+        // two replies are the same -- because "the stranger did not get the
+        // detail" would also pass if the operator never got it and the cache
+        // were still caller-dependent.
         const { api, port } = await listen({ apiCacheMs: 3000 });
-        const operator = JSON.parse(
+        const loopback = JSON.parse(
             (await get(port, '/api/health')).raw.toString());
         const stranger = JSON.parse(
             (await get(port, '/api/health',
                        { 'X-Forwarded-For': '203.0.113.9' })).raw.toString());
         api.close();
 
-        assert.ok('memoryMb' in operator,
-            'the operator stopped getting the detail, so the fixture proves '
-            + 'nothing about what follows');
+        assert.deepStrictEqual(
+            Object.keys(loopback).sort(), Object.keys(stranger).sort(),
+            'the health body still depends on who asked, so a shared cache '
+            + 'can serve one caller\'s answer to another');
         for (const leak of ['memoryMb', 'connections']) {
-            assert.ok(!(leak in stranger),
-                `a stranger got the pool's ${leak} out of the cache, written `
-                + 'there by the operator\'s own monitoring a moment earlier');
+            assert.ok(!(leak in stranger) && !(leak in loopback),
+                `/api/health served the pool's ${leak} without apiHealthDetail`);
         }
     });
 

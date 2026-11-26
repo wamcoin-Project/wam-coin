@@ -117,19 +117,6 @@ function redactIdentities(value, keyName = null) {
 // asks about hundreds of addresses.
 //
 // Reported 13 November 2026.
-/**
- * Is this request from this machine?
- *
- * The operator's monitoring reads /api/health over the loopback and gets the
- * whole of it; a stranger on the internet gets the one bit it is for. See
- * _health.
- */
-function isLoopback(addr) {
-    if (!addr) return false;
-    const a = String(addr).replace(/^::ffff:/, '');
-    return a === '127.0.0.1' || a === '::1' || a.startsWith('127.');
-}
-
 /** Below this, compressing costs more than it saves. /api/health is ~100 B. */
 const SMALL_BODY = 1024;
 
@@ -1032,12 +1019,43 @@ class ApiServer {
         // header cannot be believed and neither can the socket address. That
         // is not the operator, and detail is refused. An operator whose
         // monitoring does sit behind such a proxy sets apiHealthDetail.
-        const caller = req ? this._caller(req) : null;
-        const throughUnknownProxy =
-            !this.config.apiTrustProxy
-            && !!(req && req.headers && req.headers['x-forwarded-for']);
-        const detailed = this.config.apiHealthDetail === true
-            || (!throughUnknownProxy && caller !== null && isLoopback(caller));
+        // A LOOPBACK SOCKET IS NOT PROOF THAT THE CALLER IS THE OPERATOR,
+        // AND THIS IS THE THIRD TIME THAT HAS BEEN TRUE HERE.
+        //
+        // The rule was: detail goes to a loopback caller, unless a forwarded
+        // header says there is a proxy in front we were told nothing about.
+        // Behind an nginx that does NOT set X-Forwarded-For -- and nginx
+        // only sets it when configured to -- every request arrives from
+        // 127.0.0.1 with no header at all. So throughUnknownProxy was false,
+        // isLoopback was true, and the operator-only body went to whoever
+        // was on the other side of that proxy, anywhere on the internet.
+        //
+        // The two previous fixes each narrowed the condition. The condition
+        // is the problem: when apiBind is 127.0.0.1, a remote caller can
+        // ONLY arrive through a local proxy, so a loopback socket address is
+        // exactly as likely to be a stranger as it is to be the operator,
+        // and nothing in the request can tell them apart. A rule that cannot
+        // be decided correctly should not be decided at all.
+        //
+        // So detail is opt-in now, and nothing else grants it. An operator
+        // who wants connections and memoryMb sets apiHealthDetail: true and
+        // knows what they are exposing; everyone else gets the body that is
+        // safe to serve to anybody, which is what this endpoint is for --
+        // monitoring, which needs `ok` and `problems` and nothing else.
+        //
+        // Reported by mpit, 26 November 2026, as the residual of the two
+        // earlier fixes.
+        const detailed = this.config.apiHealthDetail === true;
+
+        if (!detailed && !this._saidHowToGetHealthDetail && req
+            && this._isProxyPeer((req.socket && req.socket.remoteAddress) || '?')) {
+            this._saidHowToGetHealthDetail = true;
+            this.log.info(
+                'a loopback caller asked /api/health for operator detail. ' +
+                'It is no longer inferred from the socket address, because ' +
+                'behind a proxy every caller has one. Set apiHealthDetail: ' +
+                'true in config.json if this API is reachable only by you.');
+        }
 
         const out = {
             ok: problems.length === 0,

@@ -282,15 +282,50 @@ if [ -s "$DL/verify_release.sh" ] && [ -s "$DL/SHA256SUMS" ]; then
     printf 'not ours\n' > "$DL/evil-setup.exe"
     printf 'not ours\n' > "$DL/.hidden.tar.gz"
     printf 'not ours\n' > "$DL/sub/wam-coin-$VERSION-x86_64-linux-gnu.tar.gz"
+    # AND A NAME WITH A NEWLINE IN IT, whose second line is a name the list
+    # really does carry. grep -F splits its pattern on newlines, so the
+    # widened check still read this as listed and the script printed
+    # "unmodified since it was signed" over it. Measured by mpit,
+    # 26 November 2026 -- the second hole in the same check, four days after
+    # the first. Planted here because the hole was in the fix for the hole.
+    NEWLINE_EVIL="$(printf 'evil-payload.exe\nwam-coin-%s-x86_64-linux-gnu.tar.gz' "$VERSION")"
+    printf 'not ours\n' > "$DL/$NEWLINE_EVIL" 2>/dev/null || NEWLINE_EVIL=""
     if ( cd "$DL" && bash verify_release.sh . ) >"$WORK/verify-hostile.log" 2>&1; then
-        bad "the verifier accepted three unsigned files sitting in the release" \
-            "evil-setup.exe, a dotfile, and one in a subdirectory." \
-            "SHA256SUMS.asc covers none of them, and it said the release was" \
-            "unmodified since it was signed. This is the hostile-mirror case."
+        bad "the verifier accepted unsigned files sitting in the release" \
+            "evil-setup.exe, a dotfile, one in a subdirectory, and a name" \
+            "carrying a newline. SHA256SUMS.asc covers none of them, and it" \
+            "said the release was unmodified since it was signed. This is" \
+            "the hostile-mirror case."
     else
         ok "it refuses unsigned files beside the release (any name, any depth)"
     fi
+    [ -n "$NEWLINE_EVIL" ] && rm -f -- "$DL/$NEWLINE_EVIL"
     rm -rf -- "$DL/evil-setup.exe" "$DL/.hidden.tar.gz" "$DL/sub"
+
+    # ONE AT A TIME, because four planted files prove only that the check
+    # caught at least one of them. The first version of this planted three
+    # and would have passed with two of the three invisible.
+    for shape in "evil-setup.exe" ".hidden.tar.gz" \
+                 "sub/wam-coin-$VERSION-x86_64-linux-gnu.tar.gz" \
+                 "NEWLINE"; do
+        if [ "$shape" = "NEWLINE" ]; then
+            [ -n "$NEWLINE_EVIL" ] || { skip "this filesystem refuses a newline in a name"; continue; }
+            target="$NEWLINE_EVIL"
+            label="a name carrying a newline"
+        else
+            target="$shape"
+            label="$shape"
+        fi
+        mkdir -p "$(dirname "$DL/$target")" 2>/dev/null
+        printf 'not ours\n' > "$DL/$target" 2>/dev/null
+        if ( cd "$DL" && bash verify_release.sh . ) >/dev/null 2>&1; then
+            bad "the verifier accepted an unsigned file: $label"
+        else
+            ok "refused on its own: $label"
+        fi
+        rm -f -- "$DL/$target"
+        rm -rf -- "$DL/sub"
+    done
 else
     skip "there is nothing to verify, so the verifier was not exercised"
 fi
