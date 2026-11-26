@@ -189,11 +189,22 @@ int main()
     std::printf("\n  a hostile pool line does not kill the miner\n\n");
 
     // ---- the control: an ordinary line is handled ------------------------
+    //
+    // AND IT WAS NOT AN ORDINARY LINE. This read [seed, "x", 12345] -- a
+    // string where pool/lib/stratumServer.js:308 sends the epoch height,
+    // which is parameter ONE: [seedHex, job.seedHeight, job.height]. So the
+    // control here was the capture that miner/test/stratum_state_test.cpp
+    // was written for, and it passed, because this file asks whether the
+    // miner died and that attack leaves it alive.
+    //
+    // A control that is secretly the attack makes every later case in the
+    // file mean less than it looks like it means. Corrected 26 November 2026
+    // while fixing what it was hiding.
     {
         bool connected = false;
         const std::string benign =
             std::string("{\"id\":null,\"method\":\"mining.set_seedhash\",\"params\":[\"")
-            + SEED64 + "\",\"x\",12345]}";
+            + SEED64 + "\",12345,12345]}";
         const bool lived = SurvivesLine(benign, connected);
         Check("an ordinary set_seedhash is handled and the miner keeps mining",
               lived && connected);
@@ -207,7 +218,7 @@ int main()
         bool connected = false;
         const std::string hostile =
             std::string("{\"id\":null,\"method\":\"mining.set_seedhash\",\"params\":[\"")
-            + SEED64 + "\",\"x\",1e300]}";
+            + SEED64 + "\",1e300,1e300]}";
         const bool lived = SurvivesLine(hostile, connected);
         Check("a set_seedhash height of 1e300 does not abort the process", lived);
         Check("and the connection is kept, so the next notify still arrives",

@@ -415,6 +415,37 @@ if [ "$NODE_UP" = 1 ] && [ -x "$BIN/wam-miner" ]; then
     else
         skip "no wallet address -- is this node built with wallet support?"
     fi
+
+    # THE TEST THAT NEEDS A NODE, RUN WHERE THERE IS ONE.
+    #
+    # miner/test/solo_jobs_test.cpp holds down a paid finding: a miner that
+    # solved height 7838 after ninety-nine seconds could not submit it,
+    # because the job it was still hashing had been thrown away. It needs a
+    # regtest node, so scripts/test_miner.sh cannot run it and now says so
+    # instead of leaving it out -- for weeks it was in neither place, and a
+    # test nobody runs is green because nobody asked it.
+    #
+    # Here there is a node, three steps above, with its credentials to hand.
+    if command -v g++ >/dev/null 2>&1 && [ -f "$ROOT/miner/test/solo_jobs_test.cpp" ]
+    then
+        if g++ -std=c++17 -I "$ROOT/miner/src" -O1 -pthread \
+               -o "$WORK/solo_jobs_test" "$ROOT/miner/test/solo_jobs_test.cpp" \
+               >"$WORK/solojobs.build.log" 2>&1; then
+            # No cookie exists: this node has an rpcpassword, so Core writes
+            # none. The user and password go in as arguments 3 and 4.
+            if ( cd "$WORK" && timeout 180 ./solo_jobs_test 29554 "" \
+                 "$RPCUSER" "$RPCPASS" ) >"$WORK/solojobs.log" 2>&1; then
+                ok "a job a worker still holds is still held (solo_jobs_test)"
+            else
+                bad "solo_jobs_test failed against this node" \
+                    "$(first_error "$WORK/solojobs.log")"
+            fi
+        else
+            skip "solo_jobs_test did not build here"
+        fi
+    else
+        skip "no g++, so solo_jobs_test was not run"
+    fi
 fi
 
 # ---------------------------------------------------------------------------

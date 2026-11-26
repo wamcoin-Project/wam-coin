@@ -590,7 +590,37 @@ private:
         if (method == "mining.notify") {
             HandleNotify(params);
         } else if (method == "mining.set_difficulty") {
+            // A FLOOR, BECAUSE `d > 0` IS NOT ONE.
+            //
+            // DifficultyToTarget computes round(d * 2^32). For any d below
+            // 2^-32 that is zero, and zero was clamped UP to one -- the
+            // largest target the function can return. Every hash then meets
+            // the share target, so the miner submits on every nonce it tries
+            // until the pool's flood limiter disconnects it, reconnects, and
+            // is told the same thing again.
+            //
+            // 1e-9 is not a number invented here: it is the pool's own
+            // floor. pool/lib/varDiff.js never sends below it, on either
+            // branch -- `Math.max(this.minDiff, 1e-9)` and
+            // `Math.max(this.networkDiff / SHARES_PER_BLOCK, 1e-9)`. So
+            // nothing an honest WAM pool sends is refused here, and a value
+            // no honest pool sends is.
+            //
+            // Reported by mpit, 26 November 2026. The arithmetic itself is
+            // fixed too, in util.h: a value that rounds to zero now yields
+            // the hardest target rather than the easiest, so a caller that
+            // reaches it some other way submits nothing instead of
+            // everything.
+            static constexpr double kMinShareDifficulty = 1e-9;
             const double d = params.At(0).AsNumber(0);
+            if (d > 0 && d < kMinShareDifficulty) {
+                Report("the pool asked for a share difficulty of " +
+                       std::to_string(d) + ", below the floor any WAM pool "
+                       "uses. At that value every hash is a share and this "
+                       "miner would flood the pool until it was banned. "
+                       "Ignored; the previous difficulty stands.");
+                return;
+            }
             if (d > 0 && onDifficulty) onDifficulty(d);
         } else if (method == "mining.set_seedhash") {
             Bytes seed;
@@ -611,8 +641,45 @@ private:
                 // Backwards is refused here. Forwards is rate-limited where
                 // the rebuild happens, because a claimed height costs an
                 // attacker nothing to increment.
+                // THE HEIGHT IS THE WHOLE AUTHORITY OF THIS MESSAGE, AND IT
+                // WAS BEING TREATED AS DECORATION.
+                //
+                // AsInt(-1) returns -1 for a height that is missing, a
+                // height that is a string, a height out of int64_t range,
+                // and a height that is genuinely negative. Every one of
+                // those skipped the backwards guard below -- it tested
+                // `at >= 0` -- and then wrote -1 into m_announcedSeedHeight.
+                //
+                // That is the capture. m_announcedSeedHeight < 0 makes
+                // contradictsAnnouncement in HandleNotify permanently false,
+                // while m_previousSeed now holds the pool's real key, so the
+                // pool's next honest job carrying that key reads as a replay
+                // and is refused. The miner hashes the injected key until
+                // the epoch ends -- about three days -- while staying alive,
+                // connected, and rejected on every share it submits. One
+                // frame on plaintext stratum does it.
+                //
+                // Reported by mpit on 26 November 2026 for the missing
+                // height. miner/test/stratum_state_test.cpp swept the field
+                // instead of the instance and found the same capture through
+                // a height that is a string and a height that is negative.
+                //
+                // So the rule is the class: an announcement without a usable
+                // height announces nothing and is ignored. It costs an
+                // honest pool nothing -- pool/lib/blockTemplate.js puts the
+                // key in mining.notify[9] of every job, and
+                // pool/lib/stratumServer.js sends the height here as a
+                // number -- and it leaves no shape of this message able to
+                // move the miner off the key its jobs are carrying.
                 const int64_t at = params.At(1).AsInt(-1);
-                if (at >= 0 && at <= m_lastSeedHeight && seed != m_lastSeed) {
+                if (at < 0) {
+                    Log("ignoring a RandomX key announced with no usable "
+                        "height: the key a job carries is the one this miner "
+                        "follows, and an announcement that cannot say which "
+                        "epoch it is for cannot be checked against anything");
+                    return;
+                }
+                if (at <= m_lastSeedHeight && seed != m_lastSeed) {
                     Log("ignoring a RandomX key announced for height " +
                         std::to_string(at) + ": the last was for " +
                         std::to_string(m_lastSeedHeight) +

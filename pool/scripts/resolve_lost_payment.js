@@ -293,7 +293,27 @@ async function walletHasTx(daemon, txid) {
     const k = (...p) => [prefix, ...p].join(':');
 
     const redis = new Redis(config.redis || {});
-    const daemon = new Daemon(config.daemon, quiet);
+    // config.daemonS. Every config this project ships -- example, mainnet,
+    // testnet -- writes the plural, because a pool can be given more than one
+    // node. Read as the singular it was undefined, the constructor threw "at
+    // least one daemon must be configured", and this script exited 2 before
+    // printing a single line about the journal it had just found.
+    //
+    // Which means the one recovery the pool's own pause banner tells the
+    // operator to run has never started on any shipped config. Their
+    // remaining choices were to hand-edit redis and delete the journal entry
+    // -- the sequence that causes the double payment this journal exists to
+    // prevent -- or to leave the money lost.
+    //
+    // Nothing caught it because nothing runs this file: it is reached only
+    // when a payment has already gone wrong, and a singular read of a plural
+    // key is invisible to every test that does not execute this exact line
+    // against a real config. scripts/check_pool_config_keys.py now refuses
+    // the shape, and scripts/test/test_pool_scripts_start.sh runs every
+    // operator script in this directory once against a shipped config.
+    //
+    // Reported by mpit, 26 November 2026, with the fix.
+    const daemon = new Daemon(config.daemons, quiet);
     const journal = new PaymentJournal(journalPath, quiet);
 
     let exitCode = 0;

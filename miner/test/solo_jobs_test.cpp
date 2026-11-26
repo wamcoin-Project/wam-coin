@@ -60,12 +60,25 @@ static void Ok(bool cond, const char* what)
 
 int main(int argc, char** argv)
 {
+    // USER AND PASSWORD AS WELL AS THE COOKIE, because a node that has an
+    // rpcpassword does not write a cookie at all.
+    //
+    // This took only a cookie path, which is right for a node started with
+    // no credentials. scripts/test/stranger.sh starts its regtest node from
+    // a wam.conf carrying rpcuser and rpcpassword -- it has to, because the
+    // explorer's RPC client has no cookie support and the pool config names
+    // a user and a password -- so there is no cookie on disk for this to
+    // read. Both forms are accepted now; neither changes what is asserted.
+    //
+    //      solo_jobs_test <port> [cookie-path] [user] [password]
     const int port = argc > 1 ? std::atoi(argv[1]) : 29554;
     const std::string cookie = argc > 2 ? argv[2] : std::string();
+    const std::string user   = argc > 3 ? argv[3] : std::string();
+    const std::string pass   = argc > 4 ? argv[4] : std::string();
 
     std::printf("\nsolo_jobs_test -- against a node on 127.0.0.1:%d\n", port);
 
-    RpcClient rpc("127.0.0.1", port, "", "", cookie);
+    RpcClient rpc("127.0.0.1", port, user, pass, cookie);
     SoloSession solo(rpc, "wamrt1q9uynnmupf5jl920vgztyef0v3esfjvdzfxfhyt",
                      NetParamsFor("regtest"), "/wam-miner/");
 

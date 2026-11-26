@@ -79,7 +79,24 @@ fi
 OUT="${MINER_TEST_OUT:-$(mktemp -d)}"
 mkdir -p "$OUT"
 
-TESTS=(address_test plaintext_test rpc_limits_test seed_flap_test solo_template_test stratum_hostile_test tls_test)
+# EVERY TEST IN miner/test, AND THE TWO THAT WERE NOT IN THIS LIST.
+#
+# solo_jobs_test and fuzz_solo_template were written, committed, and never
+# run by anything: this array named seven of the nine .cpp files beside it.
+# That is the defect bobbyning was paid for on 7 November in another
+# component -- "the vesting tests are compiled but no gate ever ran them" --
+# repeated here, in the gate itself.
+#
+# stratum_state_test is new on 26 November. stratum_hostile_test asks whether
+# a bad line kills the miner; this one asks what the miner is left mining
+# afterwards, which is where mpit's seed-capture and share-difficulty
+# findings live: both leave the process alive, connected, and wrong.
+#
+# scripts/test/test_miner_suite_complete.sh now refuses a .cpp in miner/test
+# that this array does not name, so the list cannot fall behind again.
+TESTS=(address_test fuzz_solo_template plaintext_test rpc_limits_test
+       seed_flap_test solo_jobs_test solo_template_test stratum_hostile_test
+       stratum_state_test tls_test)
 
 # TLS IS OPTIONAL IN THE BINARY, SO IT IS OPTIONAL HERE -- AND SAID EITHER WAY.
 #
@@ -129,9 +146,36 @@ for t in "${TESTS[@]}"; do
         continue
     fi
 
+    # ONE OF THESE IS NOT A UNIT TEST, AND SAYING SO IS THE POINT.
+    #
+    # solo_jobs_test needs a regtest node: it calls getblocktemplate twenty
+    # times and asserts the job a worker still holds is still held. Without
+    # one it prints "could not reach the node" and exits 1.
+    #
+    # It was left out of TESTS entirely rather than written down, so for
+    # weeks it was neither run nor missed. Both of those are worse than a
+    # line that says what it needs. This project's convention is that a check
+    # which COULD NOT RUN is reported as not checked and never as a pass --
+    # so that is what this does, and scripts/test/stranger.sh runs it for
+    # real against the regtest node that harness already starts.
+    if [ "$t" = "solo_jobs_test" ] && [ -z "${WAM_REGTEST_RPCPORT:-}" ]; then
+        printf '  %s....%s  %s NOT CHECKED -- it needs a regtest node.\n' \
+               "$YLW" "$OFF" "$t"
+        printf '          scripts/test/stranger.sh runs it against one.\n'
+        printf '          Here: WAM_REGTEST_RPCPORT=29554 WAM_REGTEST_COOKIE=<path>\n'
+        unchecked=$((${unchecked:-0} + 1))
+        continue
+    fi
+
+    args=""
+    if [ "$t" = "solo_jobs_test" ]; then
+        args="${WAM_REGTEST_RPCPORT} ${WAM_REGTEST_COOKIE:-}"
+    fi
+
     # A test that hangs is a failed test, not a stuck sweep. The socket one
     # talks to itself on the loopback and should be done in seconds.
-    if out="$(cd "$OUT" && timeout 120 "./$t" 2>&1)"; then
+    # shellcheck disable=SC2086
+    if out="$(cd "$OUT" && timeout 120 "./$t" $args 2>&1)"; then
         printf '  %sok%s    %s\n' "$GRN" "$OFF" "$t"
         printf '%s' "$out" | sed -n 's/^ *\([0-9]\+ passed.*\)$/          \1/p'
     else
@@ -268,6 +312,16 @@ printf '\n'
 if [ "$failed" -eq 0 ] && [ -n "$policy_unchecked" ]; then
     printf '%s%s  %s test program(s) passed; the refusals could not be checked%s\n\n' \
            "$YLW" "$BLD" "${#TESTS[@]}" "$OFF"
+    exit 2
+fi
+if [ "$failed" -eq 0 ] && [ "${unchecked:-0}" -gt 0 ]; then
+    # "all N passed" while one of the N was never run is the sentence this
+    # project keeps being bitten by. Exit 2 is the convention for a check
+    # that could not run; sweep.sh prints it as "could not check" and counts
+    # it as neither a pass nor a finding.
+    printf '%s%s  %s of %s miner test program(s) passed; %s was NOT CHECKED%s\n\n' \
+           "$YLW" "$BLD" "$((${#TESTS[@]} - unchecked))" "${#TESTS[@]}" \
+           "$unchecked" "$OFF"
     exit 2
 fi
 if [ "$failed" -eq 0 ]; then

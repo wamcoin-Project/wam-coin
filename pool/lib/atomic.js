@@ -149,6 +149,56 @@ return 1
 const CLAIM_AND_RECORD_NAME = 'wamClaimAndRecord';
 
 /**
+ * The same transition for a block that is NOT in blocks:pending.
+ *
+ * WHY THERE ARE TWO OF THESE
+ *
+ * CLAIM_AND_RECORD claims a block by HDELing it from blocks:pending, which
+ * is both the removal and the exactly-once token: whoever gets the 1 owns
+ * the transition. That is right for every block that is still pending.
+ *
+ * A block stranded in blocks:maturing is not in blocks:pending. It was taken
+ * out of pending when the credit was claimed, and the credit then failed, so
+ * it sits in the maturing list waiting to be offered again. When the chain
+ * has moved past it, _drainMaturing orphans it -- and it called the script
+ * above, whose HDEL removed nothing, returned 0, and sent _orphan down its
+ * "another run already did this" branch. No orphan record, no fee reversal,
+ * no count, and _drainMaturing removed the maturing entry anyway. The block
+ * ended in no state at all, with nothing written down about who earned it.
+ *
+ * Reported by mpit, 26 November 2026.
+ *
+ * So the claim is made where the block actually is. For this one the token
+ * is the LREM: redis removes the entry or it does not, and only the caller
+ * that removed it writes the evidence. Same shape, same guarantee, different
+ * source -- and in one round trip, so a death between the two cannot leave a
+ * block removed from the list with no record of where it went.
+ *
+ * KEYS[1]  the list the block is in           (blocks:maturing)
+ * KEYS[2]  where the evidence goes            (blocks:orphaned)
+ * ARGV[1]  the exact entry to remove, as it was stored
+ * ARGV[2]  the record to write
+ *
+ * Returns 1 when this caller owns the transition, 0 when somebody else did.
+ */
+const CLAIM_FROM_LIST_AND_RECORD = `
+if redis.call('EXISTS', KEYS[1]) == 1 and redis.call('TYPE', KEYS[1])['ok'] ~= 'list' then
+  return redis.error_reply('wamClaimFromListAndRecord refused: the source is not a list')
+end
+if redis.call('EXISTS', KEYS[2]) == 1 and redis.call('TYPE', KEYS[2])['ok'] ~= 'list' then
+  return redis.error_reply('wamClaimFromListAndRecord refused: the evidence list is not a list')
+end
+
+if redis.call('LREM', KEYS[1], 0, ARGV[1]) < 1 then
+  return 0
+end
+redis.call('LPUSH', KEYS[2], ARGV[2])
+return 1
+`;
+
+const CLAIM_FROM_LIST_AND_RECORD_NAME = 'wamClaimFromListAndRecord';
+
+/**
  * Record a found block, and close the round it was found in, or do neither.
  *
  * KEYS[1]  the hash of payout tables          (blocks:pending)
@@ -477,6 +527,8 @@ const COMMIT_PAYMENT_NAME = 'wamCommitPayment';
 /** Every script this pool requires, with the key count each one takes. */
 const SCRIPTS = [
     { name: CLAIM_AND_RECORD_NAME, numberOfKeys: 2, lua: CLAIM_AND_RECORD },
+    { name: CLAIM_FROM_LIST_AND_RECORD_NAME, numberOfKeys: 2,
+      lua: CLAIM_FROM_LIST_AND_RECORD },
     { name: RECORD_BLOCK_NAME, numberOfKeys: 4, lua: RECORD_BLOCK },
     { name: CREDIT_MATURED_NAME, numberOfKeys: 6, lua: CREDIT_MATURED },
     { name: CREDIT_SHARE_NAME, numberOfKeys: 4, lua: CREDIT_SHARE },
@@ -517,6 +569,8 @@ module.exports = {
     SCRIPTS,
     CLAIM_AND_RECORD,
     CLAIM_AND_RECORD_NAME,
+    CLAIM_FROM_LIST_AND_RECORD,
+    CLAIM_FROM_LIST_AND_RECORD_NAME,
     RECORD_BLOCK,
     RECORD_BLOCK_NAME,
     CREDIT_MATURED,

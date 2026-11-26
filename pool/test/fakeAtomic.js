@@ -32,8 +32,8 @@
 //  ever does reach maturation, it stops and says the double is the problem.
 // ===========================================================================
 
-const { CLAIM_AND_RECORD_NAME, RECORD_BLOCK_NAME,
-        CREDIT_MATURED_NAME, CREDIT_SHARE_NAME,
+const { CLAIM_AND_RECORD_NAME, CLAIM_FROM_LIST_AND_RECORD_NAME,
+        RECORD_BLOCK_NAME, CREDIT_MATURED_NAME, CREDIT_SHARE_NAME,
         COMMIT_PAYMENT_NAME } = require('../lib/atomic');
 
 /**
@@ -72,6 +72,20 @@ function attachAtomic(fake, hash, list, store) {
     fake[CLAIM_AND_RECORD_NAME] =
         async (pendingKey, listKey, field, evidence) => {
             if (!hash(pendingKey).delete(field)) return 0;
+            list(listKey).unshift(evidence);
+            return 1;
+        };
+
+    // The same transition for a block that is in a LIST rather than in
+    // blocks:pending -- one stranded in blocks:maturing by a credit that was
+    // refused. The removal from the source list is the claim, exactly as the
+    // HDEL is above, so a second caller gets 0 and writes nothing.
+    fake[CLAIM_FROM_LIST_AND_RECORD_NAME] =
+        async (sourceKey, listKey, raw, evidence) => {
+            const src = list(sourceKey);
+            const at = src.indexOf(raw);
+            if (at === -1) return 0;
+            src.splice(at, 1);
             list(listKey).unshift(evidence);
             return 1;
         };
@@ -293,7 +307,8 @@ function attachSet(fake, strings, before) {
  */
 function attachUnsupported(fake, why, which) {
     for (const name of which ||
-         [CLAIM_AND_RECORD_NAME, RECORD_BLOCK_NAME, CREDIT_MATURED_NAME,
+         [CLAIM_AND_RECORD_NAME, CLAIM_FROM_LIST_AND_RECORD_NAME,
+          RECORD_BLOCK_NAME, CREDIT_MATURED_NAME,
           CREDIT_SHARE_NAME, COMMIT_PAYMENT_NAME]) {
         fake[name] = async () => {
             throw new Error(
@@ -308,6 +323,7 @@ function attachUnsupported(fake, why, which) {
 
 module.exports = {
     attachAtomic, attachSet, attachUnsupported,
-    CLAIM_AND_RECORD_NAME, RECORD_BLOCK_NAME, CREDIT_MATURED_NAME,
+    CLAIM_AND_RECORD_NAME, CLAIM_FROM_LIST_AND_RECORD_NAME,
+    RECORD_BLOCK_NAME, CREDIT_MATURED_NAME,
     CREDIT_SHARE_NAME, COMMIT_PAYMENT_NAME
 };

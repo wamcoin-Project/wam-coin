@@ -40,6 +40,7 @@ const { computeBlockRewards, estimateHashrate, pplnsWindowDifficulty } = require
 const { PaymentJournal, reconcile, DEFAULT_JOURNAL } = require('./journal');
 const { COIN, COINBASE_MATURITY } = require('./constants');
 const { defineAtomicCommands, CLAIM_AND_RECORD_NAME,
+        CLAIM_FROM_LIST_AND_RECORD_NAME,
         RECORD_BLOCK_NAME, CREDIT_MATURED_NAME,
         CREDIT_SHARE_NAME, COMMIT_PAYMENT_NAME } = require('./atomic');
 
@@ -921,9 +922,14 @@ class ShareProcessor extends EventEmitter {
                     'was claimed mature and is now OFF the best chain. It is ' +
                     'not credited; it is orphaned, which is what the pending ' +
                     'sweep would have done had the credit not been refused first.');
+                // The removal from this list IS the claim, and it happens
+                // inside the same atom that writes the orphan record. It
+                // used to be a separate lrem after the fact, which ran
+                // whether or not anything had been recorded -- so a claim
+                // that found nothing still erased the block.
                 await this._orphan(record.blockHash, record,
-                                   'reorganised while stranded in blocks:maturing');
-                await this.redis.lrem(this.k('blocks:maturing'), 0, raw);
+                                   'reorganised while stranded in blocks:maturing',
+                                   { list: this.k('blocks:maturing'), raw });
                 continue;
             }
 
@@ -1100,11 +1106,34 @@ class ShareProcessor extends EventEmitter {
             // A block that is accounted for is never written back, whatever
             // this sweep's daemon believes about its depth.
             if (block.confirmations <= this.maturity) {
+                // WHAT THE QUESTION ACTUALLY IS: is the field still there?
+                //
+                // whereAccountedFor returns {pending, confirmed, maturing} --
+                // an object, so `if (settled)` was taken on every single
+                // block and the hset below it has never run. The guard meant
+                // to stop a resurrection stopped the write-back as well, and
+                // an operator watching an immature block saw its confirmation
+                // count frozen at whatever it was when the block was found.
+                // The log line printed "[object Object]", so it could not
+                // even say which state it thought the block was in.
+                //
+                // The write-back is safe exactly while the block is STILL in
+                // blocks:pending. If it is not -- because another run's
+                // claim consumed the field, whether it went on to be
+                // credited, to blocks:maturing, or to blocks:orphaned --
+                // putting the field back hands that block to the next sweep,
+                // which wins the exactly-once claim a second time. That is
+                // the double fee reversal measured on 26 November 2026.
+                //
+                // Reported by mpit the same day: the guard was always true.
                 const settled = await this.whereAccountedFor(hash);
-                if (settled) {
+                if (!settled.pending) {
+                    const where = Object.keys(settled)
+                        .filter((k) => settled[k]).join(', ') || 'nowhere';
                     this.log.info(
-                        `[blocks] ${hash.slice(0, 12)} is already ${settled}; a ` +
-                        'sweep that read it as immature did not write it back');
+                        `[blocks] ${hash.slice(0, 12)} left blocks:pending ` +
+                        `while this sweep ran (now: ${where}); its snapshot ` +
+                        'was not written back');
                     continue;
                 }
                 await this.redis.hset(this.k('blocks:pending'), hash,
@@ -1143,7 +1172,15 @@ class ShareProcessor extends EventEmitter {
         }
     }
 
-    async _orphan(hash, record, reason) {
+    /**
+     * @param from  where this block is being claimed FROM. Omitted means
+     *              blocks:pending, which is where all but one caller finds
+     *              it. { list, raw } means it is stranded in that list and
+     *              the exact entry to remove is `raw` -- see
+     *              CLAIM_FROM_LIST_AND_RECORD in lib/atomic.js for why the
+     *              claim has to be made where the block actually is.
+     */
+    async _orphan(hash, record, reason, from = null) {
         this.log.warn(`block ${record.height} ORPHANED (${reason}); ` +
                       `${(record.minerPot / COIN).toFixed(8)} WAM will not be paid`);
 
@@ -1161,9 +1198,23 @@ class ShareProcessor extends EventEmitter {
         //
         // It also now checks that it won the claim. It never did, so two runs
         // could each orphan the same block and decrement poolfees twice.
-        const claimed = Number(await this.redis[CLAIM_AND_RECORD_NAME](
-            this.k('blocks:pending'), this.k('blocks:orphaned'),
-            hash, JSON.stringify(record)));
+        //
+        // AND THE CLAIM IS MADE WHERE THE BLOCK IS.
+        //
+        // This always claimed out of blocks:pending. A block stranded in
+        // blocks:maturing is not there -- it left pending when its credit
+        // was claimed and the credit then failed -- so the HDEL removed
+        // nothing, returned 0, and this function took the branch below and
+        // returned without writing anything. _drainMaturing removed the
+        // maturing entry regardless, and the block ended in no state at all.
+        // Reported by mpit, 26 November 2026.
+        const claimed = from
+            ? Number(await this.redis[CLAIM_FROM_LIST_AND_RECORD_NAME](
+                from.list, this.k('blocks:orphaned'),
+                from.raw, JSON.stringify(record)))
+            : Number(await this.redis[CLAIM_AND_RECORD_NAME](
+                this.k('blocks:pending'), this.k('blocks:orphaned'),
+                hash, JSON.stringify(record)));
         if (claimed !== 1) {
             this.log.warn(`block ${record.height} was already orphaned by ` +
                           'another run; not counting it again');
