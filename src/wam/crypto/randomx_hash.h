@@ -8,6 +8,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <vector>
 
 class CBlockHeader;
 class CBlockIndex;
@@ -100,6 +101,54 @@ uint256 GetRandomXHashRaw(const unsigned char* input, size_t len, const uint256&
 
 /** Bytes currently held by RandomX structures; surfaced by `getrandomxinfo`. */
 size_t GetRandomXMemoryUsage();
+
+/**
+ * Keep the chain we are following out of reach of the branches we are not.
+ *
+ * Verification contexts live in an LRU of two, and a block's seed is a
+ * property of the BRANCH being verified: GetRandomXSeedHash walks
+ * pindexPrev's ancestors. So an attacker who mines two competing blocks at
+ * an epoch-boundary height and extends both forks manufactures two extra
+ * live seeds, and rotating valid headers across three seeds evicts a
+ * context on every one of them. Each miss is a full randomx_init_cache --
+ * about 0.65 s against the 0.05 s a cached verification costs -- and it runs
+ * inside ContextualCheckBlockHeader with cs_main held, so what stalls is the
+ * node and not one connection thread.
+ *
+ * Reported by Doms99 on 26 November 2026, with a functional test: eight
+ * honest headers on one seed cost one initialisation; twenty-four headers
+ * rotating three seeds cost twenty-four, and getblocktemplate against the
+ * busy node took 0.60 s where an idle one answers in 1 ms.
+ *
+ * This pins the two seeds that chain legitimately needs, so nothing on a
+ * branch it is not on can evict either. It is the whole of the fix for
+ * OUR chain's processing and none of the fix for the attacker's own
+ * headers: those still pay an initialisation each, because with both slots
+ * pinned a third seed is verified without being cached. Bounding what a
+ * peer can spend of our time is a separate question, and a different kind
+ * of change -- see the comment in randomx_hash.cpp.
+ *
+ * WHICH TWO, AND WHY IT IS NOT A TUNING KNOB
+ *
+ * The seed for the next block, and the seed for the last height that still
+ * used the previous one. Both are derived from nRandomXEpochBlocks and
+ * nRandomXEpochLag, so they stay correct on a network configured with a
+ * shorter epoch and they will still be two when this chain is a thousand
+ * times larger: the number comes from the consensus rule, not from traffic.
+ *
+ * An ordinary reorg needs no third seed. A fork only has a DIFFERENT seed
+ * if it diverges at or before the seed height, which is more than the lag
+ * behind the tip and across a boundary -- a deep reorg, and that case uses
+ * the previous seed, which is the second pinned one. Everything shallower
+ * shares the seed already pinned.
+ *
+ * Call it with the active tip while cs_main is held. Passing nullptr pins
+ * nothing, which is the state before the first block is connected.
+ */
+void PinActiveChainSeeds(const CBlockIndex* tip, const Consensus::Params& params);
+
+/** The seeds currently pinned, for getrandomxinfo and for tests. */
+std::vector<uint256> GetPinnedRandomXSeeds();
 
 // WHAT USED TO BE DECLARED HERE, AND WHY IT IS NOT.
 //

@@ -628,6 +628,8 @@ def build_changes() -> list[Change]:
              "test/functional/feature_wam_randomx_epoch.py"),
             ("test/functional/feature_wam_header_dos.py",
              "test/functional/feature_wam_header_dos.py"),
+            ("test/functional/feature_wam_seed_thrash.py",
+             "test/functional/feature_wam_seed_thrash.py"),
         ]))
 
     # -----------------------------------------------------------------------
@@ -1032,6 +1034,37 @@ def build_changes() -> list[Change]:
                     "    // fails more than one of them costs us, and which failure is\n"
                     "    // reported first.\n"
                     "    {\n"
+                    "        // WAM_RANDOMX_PIN_ACTIVE_SEEDS\n"
+                    "        //\n"
+                    "        // A block's RandomX seed is a property of the BRANCH being\n"
+                    "        // verified -- GetRandomXSeedHash walks pindexPrev's ancestors\n"
+                    "        // to the seed-height block on that branch. So somebody who\n"
+                    "        // mines two competing blocks at an epoch-boundary height and\n"
+                    "        // extends both forks manufactures two extra live seeds, and\n"
+                    "        // the verification cache holds two. Rotating valid headers\n"
+                    "        // across three seeds evicted a context on every header, each\n"
+                    "        // miss costing a full randomx_init_cache -- about 0.65 s\n"
+                    "        // against 0.05 s cached -- with cs_main held, so the node\n"
+                    "        // stalled rather than one connection thread.\n"
+                    "        //\n"
+                    "        // Measured and reported by Doms99 on 26 November 2026 with a\n"
+                    "        // functional test: 8 honest headers on one seed cost 1\n"
+                    "        // initialisation; 24 headers rotating 3 seeds cost 24, and\n"
+                    "        // getblocktemplate against the busy node took 0.60 s where an\n"
+                    "        // idle one answers in 1 ms.\n"
+                    "        //\n"
+                    "        // Told here rather than from a hook on tip changes because\n"
+                    "        // this is where the chain manager is already in scope with\n"
+                    "        // cs_main already held: no new seam into upstream, and the\n"
+                    "        // answer is refreshed exactly when it could matter.\n"
+                    "        //\n"
+                    "        // This protects the chain we are FOLLOWING. The headers of a\n"
+                    "        // branch we are not on still pay an initialisation each --\n"
+                    "        // bounding what one peer can spend of our time is a different\n"
+                    "        // question, and the honest answer to it is to stop doing this\n"
+                    "        // work under cs_main at all.\n"
+                    "        wam::PinActiveChainSeeds(chainman.ActiveChain().Tip(), consensusParams);\n"
+                    "\n"
                     "        const uint256 seed = wam::GetRandomXSeedHash(pindexPrev, consensusParams);\n"
                     "        const uint256 pow_hash = wam::GetRandomXPoWHash(block, seed);\n"
                     "        if (!wam::CheckProofOfWork(pow_hash, block.nBits, consensusParams)) {\n"

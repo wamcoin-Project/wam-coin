@@ -18,6 +18,7 @@
 #include <list>
 #include <memory>
 #include <stdexcept>
+#include <vector>
 
 namespace wam {
 
@@ -119,6 +120,22 @@ constexpr size_t MAX_CACHED_CONTEXTS = 2;
 Mutex g_randomx_mutex;
 std::list<std::shared_ptr<RandomXContext>> g_contexts GUARDED_BY(g_randomx_mutex);
 
+// The seeds of the chain this node is following. See PinActiveChainSeeds in
+// the header for what they are and why there are two of them.
+//
+// Held as plain values rather than as context pointers: a seed is pinned
+// whether or not a context for it has been built yet, and the first block
+// after a key rotation should find the new seed already protected.
+std::vector<uint256> g_pinned GUARDED_BY(g_randomx_mutex);
+
+bool IsPinned(const uint256& seed) EXCLUSIVE_LOCKS_REQUIRED(g_randomx_mutex)
+{
+    for (const uint256& s : g_pinned) {
+        if (s == seed) return true;
+    }
+    return false;
+}
+
 std::shared_ptr<RandomXContext> GetContext(const uint256& seed) EXCLUSIVE_LOCKS_REQUIRED(g_randomx_mutex)
 {
     for (auto it = g_contexts.begin(); it != g_contexts.end(); ++it) {
@@ -135,11 +152,40 @@ std::shared_ptr<RandomXContext> GetContext(const uint256& seed) EXCLUSIVE_LOCKS_
               seed.ToString());
 
     auto ctx = std::make_shared<RandomXContext>(seed);
-    g_contexts.push_front(ctx);
 
-    while (g_contexts.size() > MAX_CACHED_CONTEXTS) {
-        g_contexts.pop_back();
+    // WHAT GETS A SLOT, AND WHAT DOES NOT.
+    //
+    // This used to push the new context and pop from the back until the
+    // list was short enough, which is a plain LRU -- and a plain LRU hands
+    // the choice of what to evict to whoever sends the headers. Rotating
+    // three branch seeds evicted the chain's own context on every header,
+    // so the node paid a full initialisation to verify blocks of the chain
+    // it was already following. Reported by Doms99, 26 November 2026.
+    //
+    // A pinned seed is never evicted. If every slot is pinned there is no
+    // room, and the context is returned WITHOUT being cached: it lives for
+    // this one verification and is released when the caller is done with
+    // it. That is deliberate and it is the whole memory argument -- the
+    // ceiling stays MAX_CACHED_CONTEXTS, so a node on a 2 GB machine is not
+    // priced out by an attacker who can mint seeds for the cost of one
+    // block each. He pays to make us initialise; we never pay to store what
+    // he sent.
+    if (g_contexts.size() < MAX_CACHED_CONTEXTS) {
+        g_contexts.push_front(ctx);
+        return ctx;
     }
+
+    for (auto it = g_contexts.end(); it != g_contexts.begin();) {
+        --it;
+        if (!IsPinned((*it)->seed)) {
+            g_contexts.erase(it);
+            g_contexts.push_front(ctx);
+            return ctx;
+        }
+    }
+
+    // Every slot belongs to the chain we are following. This seed is on a
+    // branch we are not on, so it is verified and forgotten.
     return ctx;
 }
 
@@ -236,6 +282,65 @@ uint256 GetRandomXPoWHash(const CBlockHeader& header, const uint256& seed)
 
     return GetRandomXHashRaw(reinterpret_cast<const unsigned char*>(ss.data()),
                              ss.size(), seed);
+}
+
+void PinActiveChainSeeds(const CBlockIndex* tip, const Consensus::Params& params)
+{
+    std::vector<uint256> want;
+
+    if (tip != nullptr) {
+        // The seed the NEXT block will be verified against. This is the one
+        // every block arriving on this chain needs.
+        want.push_back(GetRandomXSeedHash(tip, params));
+
+        // And the seed the previous epoch used, which a reorg reaching back
+        // across the boundary needs and which stragglers from the old epoch
+        // still carry.
+        //
+        // Derived, not remembered: the last height that used the previous
+        // seed is the one just below where this epoch's seed takes effect.
+        // GetRandomXSeedHeight(h) is ((h - lag) / epoch) * epoch, so this
+        // epoch's seed first applies at seedHeight + lag, and the height
+        // below that is the last one on the old key. Asking the same
+        // function for it keeps the two in step if the epoch rule ever
+        // changes -- the mistake this file has already made once, when it
+        // read the mainnet constants instead of these and the test networks
+        // silently used an epoch they do not have.
+        const int nHeight = tip->nHeight + 1;
+        const int nSeedHeight = GetRandomXSeedHeight(nHeight, params);
+        const int nLastOld = nSeedHeight + params.nRandomXEpochLag - 1;
+        if (nLastOld >= 0 && nLastOld < nHeight) {
+            const CBlockIndex* pPrevEpoch = tip->GetAncestor(nLastOld);
+            // GetRandomXSeedHash takes the block BEFORE the one being
+            // verified, so ask about the block at nLastOld by handing it
+            // that block's parent.
+            if (pPrevEpoch != nullptr && pPrevEpoch->pprev != nullptr) {
+                want.push_back(GetRandomXSeedHash(pPrevEpoch->pprev, params));
+            } else if (pPrevEpoch != nullptr) {
+                want.push_back(GetRandomXBootstrapSeed());
+            }
+        }
+    }
+
+    // Two at most, and never the same one twice: a slot spent on a
+    // duplicate is a slot the chain does not have.
+    std::vector<uint256> unique;
+    for (const uint256& s : want) {
+        bool seen = false;
+        for (const uint256& u : unique) {
+            if (u == s) { seen = true; break; }
+        }
+        if (!seen && unique.size() < MAX_CACHED_CONTEXTS) unique.push_back(s);
+    }
+
+    LOCK(g_randomx_mutex);
+    g_pinned = std::move(unique);
+}
+
+std::vector<uint256> GetPinnedRandomXSeeds()
+{
+    LOCK(g_randomx_mutex);
+    return g_pinned;
 }
 
 size_t GetRandomXMemoryUsage()

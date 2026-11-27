@@ -308,6 +308,17 @@ run "the phone runs the same miner" \
 run "the phone's C++ still compiles" \
     bash scripts/test/test_android_jni_syntax.sh
 
+# And the six functional tests this project wrote are actually run. On
+# 27 November 2026 nothing ran any of them: not this file, not preflight,
+# not either CI workflow. Six tests, one holding down a paid finding and one
+# holding down a finding from the day before, green on every run because
+# they were on no run. The third time this shape has turned up in a week.
+#
+# They need a built node and say "could not check" without one, which is not
+# a pass.
+run "the functional tests we wrote" \
+    bash scripts/test/test_wam_functional.sh
+
 # And the miner's own tests are actually run. Until 9 November 2026 nothing
 # in this repository opened miner/test/ -- three test programs, one of them
 # extended the day before to hold down a paid finding, and no gate that could
