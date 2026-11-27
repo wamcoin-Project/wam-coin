@@ -317,6 +317,31 @@ not the URL a stranger follows. `release_watch` held the announcement and
 alarmed, which is why nothing incomplete reached the channels. The guard is
 the net; this step is so the net is never needed.
 
+### Before any of this: the candidate runs as its own network
+
+```
+bash scripts/test/isolated_network.sh
+```
+
+This is the step that comes before a tag exists, and it is the reason the
+live network is never the place something is tried. It takes a build nobody
+has released, stands up three nodes of it on the loopback, and makes that
+network do what the real one does: mine, propagate a block to everybody,
+rotate the RandomX key and follow it, split and reorganise back onto one
+chain, answer RPC while it is working, and fit in the memory of a machine
+somebody would actually rent. Every one of those is measured and printed.
+
+Nothing it does can reach anybody. Regtest, 127.0.0.1, its own datadirs and
+ports, torn down at the end, and every peer any node is told about is one of
+the others in the run.
+
+**A build that fails here does not get a tag.** That is the whole shape: an
+experiment costs a directory in /tmp, not an upgrade on three seeds and
+whoever else is running one. The deepest changes this project can make --
+anything touching validation, the locks, or consensus-adjacent code -- are
+done on a branch and proved here first, and reach main when this passes and
+not before.
+
 ### And then install it as a stranger, before anyone is told
 
 ```
