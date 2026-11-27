@@ -70,6 +70,53 @@ while [ $# -gt 0 ]; do
     esac
 done
 
+# ---------------------------------------------------------------------------
+# IT MINES. SO IT NEVER RUNS ON SOMEBODY ELSE'S MACHINE.
+#
+# Regtest proof of work is arithmetic on a laptop, but it is still mining,
+# and on 24 September 2026 a miner on a hosted runner suspended this
+# project's GitHub account and took the website and every download link with
+# it, on release day. Nothing in .github/workflows runs this file today;
+# this is so that adding one line to a workflow cannot change that by
+# accident.
+#
+# WAM_ALLOW_CI_MINING exists only so that this refusal is testable. It is
+# not an escape hatch and there is no reason to set it on a runner.
+if [ -z "${WAM_ALLOW_CI_MINING:-}" ] \
+   && { [ -n "${CI:-}" ] || [ -n "${GITHUB_ACTIONS:-}" ] \
+        || [ -n "${GITLAB_CI:-}" ] || [ -n "${BUILDKITE:-}" ]; }; then
+    printf '\n  this harness MINES, and it is running on a CI runner.\n'
+    printf '  Refused. A miner on a hosted runner suspended this project'"'"'s\n'
+    printf '  GitHub account on 2026-09-24 and took wamcoin.org and every\n'
+    printf '  download link with it, on release day.\n'
+    printf '  It belongs on a developer machine. Nothing in .github/workflows\n'
+    printf '  calls it, and nothing should.\n\n'
+    exit 2
+fi
+
+# ---------------------------------------------------------------------------
+# AND IT RUNS WHERE IT CANNOT REACH ANYTHING, NOT WHERE IT PROMISES NOT TO.
+#
+# Every node below is started with -regtest -dnsseed=0 bound to 127.0.0.1,
+# which is a promise this file makes about flags. A network namespace is the
+# kernel making it instead: inside one there is no interface but loopback,
+# no route off the machine, and no DNS -- so a mistake in a flag, or a
+# future edit, or a node that decides to look for peers, cannot reach the
+# live network because there is no network to reach.
+#
+# unshare -r maps this user to root INSIDE the namespace only; nothing
+# outside it gains anything. Where user namespaces are unavailable the run
+# continues without one and says so, because a harness that refuses to run
+# teaches people to stop running it.
+if [ -z "${WAM_ISOLATED_NETNS:-}" ] && [ "${WAM_NO_SANDBOX:-}" != "1" ]; then
+    if command -v unshare >/dev/null 2>&1 \
+       && unshare -rn --fork true >/dev/null 2>&1; then
+        export WAM_ISOLATED_NETNS=1
+        exec unshare -rn --fork -- bash -c \
+            'ip link set lo up 2>/dev/null; exec "$@"' _ "$0" "$@"
+    fi
+fi
+
 PASS=0
 FAILED=()
 ok()   { PASS=$((PASS+1)); printf '  %sok%s    %s\n' "$GRN" "$OFF" "$*"; }
@@ -113,6 +160,14 @@ printf ' %san isolated network of %d, from %s%s\n' "$BLD" "$NODES" \
        "$("$WAMD" -version 2>/dev/null | head -1)" "$OFF"
 printf '=================================================================\n'
 printf '%s %s%s\n' "$DIM" "$WORK" "$OFF"
+if [ -n "${WAM_ISOLATED_NETNS:-}" ]; then
+    printf '%s in a network namespace: no interface but loopback, no route off\n' "$DIM"
+    printf ' this machine, no DNS. It cannot reach the live network.%s\n' "$OFF"
+else
+    printf '%s %sNOT in a network namespace%s -- loopback and -dnsseed=0 only.\n' \
+           "$DIM" "$YLW" "$DIM"
+    printf ' The flags are the whole isolation here. unshare was unavailable.%s\n' "$OFF"
+fi
 
 # ---------------------------------------------------------------------------
 step "1. the network comes up and finds itself"
